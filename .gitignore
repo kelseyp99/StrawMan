@@ -41,8 +41,6 @@ yarn-error.log*
 # ✅ TypeScript Build Info
 *.tsbuildinfo
 
-# ✅ Firebase Config (Sensitive API Keys)
-src/firebaseConfig.ts
 
 # ✅ Miscellaneous
 app-example/
