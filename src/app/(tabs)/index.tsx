@@ -66,6 +66,21 @@ export default function AskJanet() {
   } | null>(null);
   const router = useRouter();
   const [responses, setResponses] = useState<{ responseType: string; text: string }[]>([]);
+  const [isAdMobInitialized, setIsAdMobInitialized] = useState(false);
+
+  useEffect(() => {
+    async function initAdMob() {
+      try {
+        await setTestDeviceIDAsync('EMULATOR'); // Use 'EMULATOR' for testing
+        setIsAdMobInitialized(true);
+      } catch (error) {
+        console.error('AdMob Initialization Error:', error);
+      }
+    }
+
+    initAdMob();
+  }, []);
+  
   // ✅ Fetch API key when the component mounts
   useEffect(() => {
     async function loadDiscussion() {
