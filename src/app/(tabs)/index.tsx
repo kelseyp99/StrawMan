@@ -1,3 +1,5 @@
+console.log("Environment Variables:", process.env);
+
 import React, { useState, useEffect } from "react";
 import { Text, View, ActivityIndicator } from "react-native";
 import { getAIResponse, getModelAPIkey, getParsedGPTResponses } from "../../services/databaseService"; // Adjust path
