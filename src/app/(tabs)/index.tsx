@@ -27,6 +27,7 @@ import ActionButtons from "@/components/ActionButtons";
 import HistoryList from "@/components/HistoryList";
 import SettingsButton from "@/components/SettingsButton";
 import { analyzeActivity, ModelAPIkey } from "@/services/openaiAPI";
+import { setTestDeviceIDAsync } from 'expo-ads-admob';
 
 // ✅ Fetch API Key in a separate component before rendering AskJanet
 const IndexScreen = ({ onApiKeyLoaded }: { onApiKeyLoaded: (cachedApiKey: string | null) => void }) => {
