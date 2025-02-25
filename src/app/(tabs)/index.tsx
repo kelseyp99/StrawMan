@@ -1,4 +1,4 @@
-console.log("Environment Variables:", process.env);
+//console.log("Environment Variables:", process.env);
 
 import React, { useState, useEffect } from "react";
 import { Text, View, ActivityIndicator } from "react-native";
