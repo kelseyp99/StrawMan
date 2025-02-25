@@ -2,27 +2,32 @@
   "extends": "expo/tsconfig.base",
   "compilerOptions": {
     "strict": true,
-    "baseUrl": "./src", // Base directory for absolute imports
+    "baseUrl": "./src",
     "paths": {
-      "@/*": ["*"] // Allows imports like "@/components/MyComponent"
+      "@/*": [
+        "*"
+      ]
     },
     "jsx": "react",
     "moduleResolution": "node",
     "target": "ESNext",
-    "lib": ["ESNext", "DOM"],
+    "lib": [
+      "ESNext",
+      "DOM"
+    ],
     "allowSyntheticDefaultImports": true,
     "skipLibCheck": true
   },
   "include": [
     "src/**/*.ts",
     "src/**/*.tsx",
-    ".expo/types/**/*.ts",
-    "expo-env.d.ts", "junk/HistoryList copy.tsx"],
+    "junk/HistoryList copy.tsx"
+  ],
   "exclude": [
     "node_modules",
-    "junk", 
+    "junk",
     "junk/**",
     "junk/**/*",
-    "**/junk/**/*" // Add this to ensure all junk directories are excluded
+    "**/junk/**/*"
   ]
 }

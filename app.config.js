@@ -10,7 +10,6 @@ export default ({ config }) => {
     icon: "./assets/images/icon.png",
     scheme: "lifelog",
     userInterfaceStyle: "automatic",
-    newArchEnabled: true,
     ios: {
       supportsTablet: true,
       usesAppTrackingTransparency: true
@@ -25,32 +24,17 @@ export default ({ config }) => {
       },
       package: "com.anonymous.LifeLog"
     },
-    plugins: [
-      "expo-router",
-      [
-        "expo-splash-screen",
-        {
-          image: "./assets/images/splash-icon.png",
-          imageWidth: 200,
-          resizeMode: "contain",
-          backgroundColor: "#ffffff"
-        }
-      ]
-    ],
     web: {
       bundler: "metro",
       output: "static",
       favicon: "./assets/images/favicon.png"
     },
-    experiments: {
-      typedRoutes: true
-    },
     extra: {
-      router: {
-        origin: false
-      },
       eas: {
         projectId: "a27bcb78-af2a-4ef8-adeb-7fae3e17731d"
+      },
+      "expo-router": {
+        "appRoot": "src/app" // ✅ Ensures Expo Router detects `src/app/`
       }
     },
     owner: "kelseyp99"
