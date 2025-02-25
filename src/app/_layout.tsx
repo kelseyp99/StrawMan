@@ -29,7 +29,7 @@ export default function RootLayout() {
     <ThemeProvider value={colorScheme === "dark" ? DarkTheme : DefaultTheme}>
       <StatusBar style={colorScheme === "dark" ? "light" : "dark"} />
       <Stack>
-        {/* Stack should ONLY contain standalone pages like Settings */}
+        <Stack.Screen name="(tabs)" options={{ headerShown: false }} /> {/* ✅ Handles tab navigation */}
         <Stack.Screen name="settings" options={{ title: "Settings" }} />
       </Stack>
     </ThemeProvider>
