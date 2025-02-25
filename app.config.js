@@ -1,9 +1,6 @@
 import 'dotenv/config';
 
 export default ({ config }) => {
-  // Ensure Expo picks up the environment variable
-  const androidAdMobAppId = process.env.EXPO_PUBLIC_ANDROID_ADMOB_APP_ID || "YOUR_FALLBACK_ADMOB_APP_ID";
-
   return {
     ...config,
     name: "LifeLog",
@@ -26,7 +23,6 @@ export default ({ config }) => {
       buildProperties: {
         enableHermes: true
       },
-      permissions: ["com.google.android.gms.permission.AD_ID"],
       package: "com.anonymous.LifeLog"
     },
     plugins: [
@@ -55,11 +51,7 @@ export default ({ config }) => {
       },
       eas: {
         projectId: "a27bcb78-af2a-4ef8-adeb-7fae3e17731d"
-      },
-      androidAdMobAppId
-    },
-    "react-native-google-mobile-ads": {
-      android_app_id: androidAdMobAppId
+      }
     },
     owner: "kelseyp99"
   };

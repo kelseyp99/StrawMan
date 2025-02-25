@@ -43,7 +43,6 @@
     "react-native-config": "^1.5.3",
     "react-native-document-picker": "^9.3.1",
     "react-native-gesture-handler": "~2.20.2",
-    "react-native-google-mobile-ads": "^14.8.1",
     "react-native-paper": "^5.13.1",
     "react-native-reanimated": "~3.16.1",
     "react-native-safe-area-context": "4.12.0",
