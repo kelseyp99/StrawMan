@@ -68,7 +68,6 @@ export default function AskJanet() {
   const [responses, setResponses] = useState<{ responseType: string; text: string }[]>([]);
   const [isAdMobInitialized, setIsAdMobInitialized] = useState(false);
 
-  
   // ✅ Fetch API key when the component mounts
   useEffect(() => {
     async function loadDiscussion() {
