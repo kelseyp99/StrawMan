@@ -27,7 +27,6 @@ import ActionButtons from "@/components/ActionButtons";
 import HistoryList from "@/components/HistoryList";
 import SettingsButton from "@/components/SettingsButton";
 import { analyzeActivity, ModelAPIkey } from "@/services/openaiAPI";
-import { setTestDeviceIDAsync } from 'expo-ads-admob';
 
 // ✅ Fetch API Key in a separate component before rendering AskJanet
 const IndexScreen = ({ onApiKeyLoaded }: { onApiKeyLoaded: (cachedApiKey: string | null) => void }) => {
@@ -69,18 +68,6 @@ export default function AskJanet() {
   const [responses, setResponses] = useState<{ responseType: string; text: string }[]>([]);
   const [isAdMobInitialized, setIsAdMobInitialized] = useState(false);
 
-  useEffect(() => {
-    async function initAdMob() {
-      try {
-        await setTestDeviceIDAsync('EMULATOR'); // Use 'EMULATOR' for testing
-        setIsAdMobInitialized(true);
-      } catch (error) {
-        console.error('AdMob Initialization Error:', error);
-      }
-    }
-
-    initAdMob();
-  }, []);
   
   // ✅ Fetch API key when the component mounts
   useEffect(() => {
