@@ -7,7 +7,7 @@ export default ({ config }) => {
     slug: "LifeLog",
     version: "1.0.0",
     orientation: "portrait",
-    icon: "./assets/images/icon.png",
+    icon: "./assets/images/ask-janet-icon.png",
     scheme: "lifelog",
     userInterfaceStyle: "automatic",
     ios: {
@@ -32,9 +32,6 @@ export default ({ config }) => {
     extra: {
       eas: {
         projectId: "a27bcb78-af2a-4ef8-adeb-7fae3e17731d"
-      },
-      "expo-router": {
-        "appRoot": "src/app" // ✅ Ensures Expo Router detects `src/app/`
       }
     },
     owner: "kelseyp99"
