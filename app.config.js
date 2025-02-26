@@ -24,6 +24,9 @@ export default ({ config }) => {
       },
       package: "com.anonymous.LifeLog"
     },
+    plugins: [
+      "expo-router"
+    ],
     web: {
       bundler: "metro",
       output: "static",
