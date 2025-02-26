@@ -1,44 +1,14 @@
-import React, { useEffect } from "react";
-import { DarkTheme, DefaultTheme, ThemeProvider } from "@react-navigation/native";
-import { useFonts } from "expo-font";
 import { Stack } from "expo-router";
-import * as SplashScreen from "expo-splash-screen";
-import { StatusBar } from "expo-status-bar";
-import "react-native-reanimated";
-import { useColorScheme } from "react-native";
-import { LogBox } from "react-native";
-
-LogBox.ignoreLogs([
-  "new NativeEventEmitter() was called",
-  "EventEmitter.removeListener",
-]);
-
-
-SplashScreen.preventAutoHideAsync();
+import React from "react";
 
 export default function RootLayout() {
-  const colorScheme = useColorScheme();
-  const [loaded] = useFonts({
-    SpaceMono: require("../../assets/fonts/SpaceMono-Regular.ttf"),
-  });
-
-  useEffect(() => {
-    if (loaded) {
-      SplashScreen.hideAsync();
-    }
-  }, [loaded]);
-
-  if (!loaded) {
-    return null;
-  }
-
+  console.log("RootLayout loaded"); // Debug log for terminal/browser console
   return (
-    <ThemeProvider value={colorScheme === "dark" ? DarkTheme : DefaultTheme}>
-      <StatusBar style={colorScheme === "dark" ? "light" : "dark"} />
-      <Stack>
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} /> {/* ✅ Handles tab navigation */}
-        <Stack.Screen name="settings" options={{ title: "Settings" }} />
-      </Stack>
-    </ThemeProvider>
+    <Stack screenOptions={{ headerShown: false }}>
+      <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+      <Stack.Screen name="settings" options={{ title: "Settings" }} />
+      {/* Optionally include index if you want AskJanet as a separate route */}
+      {/* <Stack.Screen name="index" options={{ headerShown: false }} /> */}
+    </Stack>
   );
 }
