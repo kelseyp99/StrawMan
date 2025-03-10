@@ -17,6 +17,7 @@ expo-env.d.ts
 *.p12
 *.key
 *.mobileprovision
+*.apk
 
 # ✅ Metro Bundler
 .metro-health-check*
@@ -46,3 +47,19 @@ yarn-error.log*
 app-example/
 junk/
 crash_log.txt
+
+# Exclude APK files
+*.apk
+
+# Exclude Realm files
+*.realm
+*.realm.lock
+
+# Exclude node_modules
+node_modules/
+
+# Exclude any large image or binary files (check if needed)
+*.png
+*.jpg
+*.jpeg
+*.gif
