@@ -1,4 +1,4 @@
-//app\login.tsx CHANGE!!!!!!
+//app\login.tsx CHANGE!!!!
 import React, { useState, useEffect } from "react";
 import { View, Text, TextInput, TouchableOpacity, StyleSheet } from "react-native";
 import { auth } from "../src/firebaseConfig";
@@ -68,7 +68,7 @@ export default function Login() {
     }
   };
 
-  // Dummy handlers for Google and Facebook login
+  // Dummy handlers for Google and Facebook login !!
   const handleGoogleLogin = () => {
     console.log("Google login pressed (dummy)");
   };
