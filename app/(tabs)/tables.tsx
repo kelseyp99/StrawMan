@@ -1,4 +1,4 @@
-import MainComponent from '@/components/Tables';
+import MainComponent from '../../src/components/Tables';
 import React from 'react';
 import { SafeAreaView, ScrollView, StyleSheet, Text } from 'react-native';
 

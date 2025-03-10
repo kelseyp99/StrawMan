@@ -24,7 +24,7 @@ const DiscussionTable = () => {
     const fetchDiscussions = async () => {
       try {
         const discussions = await getDiscussions();
-        setDiscussions(discussions);
+        setDiscussions(discussions.map(d => ({ ...d, id: Number(d.id), timestamp: new Date(d.timestamp), cleared: d.cleared ?? false })));
       } catch (error) {
         console.error('Error fetching discussions:', error);
       }

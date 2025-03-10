@@ -1,8 +1,10 @@
-//console.log("Environment Variables:", process.env);
+console.log("Environment Variables:", process.env);
 
 import React, { useState, useEffect } from "react";
-import { Text, View, ActivityIndicator } from "react-native";
-import { getAIResponse, getModelAPIkey, getParsedGPTResponses } from "../../services/databaseService"; // Adjust path
+import { Text, View, ActivityIndicator, TouchableOpacity } from "react-native";
+import { auth } from "../../src/firebaseConfig";
+import { signOut } from "firebase/auth";
+import { getAIResponse, getModelAPIkey, getParsedGPTResponses } from "../../src/services/databaseService";
 import { useRouter } from "expo-router";
 import {
   disperseQuestion,
@@ -20,13 +22,14 @@ import {
   fetchInitialDiscussion,
   renameFieldToCleared,
   clearDiscussion,
-} from "@/services/databaseService";
-import Header from "@/components/Header";
-import InputField from "@/components/InputField";
-import ActionButtons from "@/components/ActionButtons";
-import HistoryList from "@/components/HistoryList";
-import SettingsButton from "@/components/SettingsButton";
-import { analyzeActivity, ModelAPIkey } from "@/services/openaiAPI";
+} from "../../src/services/databaseService";
+import Header from "../../src/components/Header";
+import InputField from "../../src/components/InputField";
+import ActionButtons from "../../src/components/ActionButtons";
+import HistoryList from "../../src/components/HistoryList";
+import SettingsButton from "../../src/components/SettingsButton";
+import { analyzeActivity, ModelAPIkey } from "../../src/services/openaiAPI";
+import Icon from "react-native-vector-icons/MaterialIcons"; // Add icon library
 
 // ✅ Fetch API Key in a separate component before rendering AskJanet
 const IndexScreen = ({ onApiKeyLoaded }: { onApiKeyLoaded: (cachedApiKey: string | null) => void }) => {
@@ -34,9 +37,9 @@ const IndexScreen = ({ onApiKeyLoaded }: { onApiKeyLoaded: (cachedApiKey: string
 
   useEffect(() => {
     const fetchKey = async () => {
-      const key = await getModelAPIkey("LifeLog","OpenAI", "gpt-3.5-turbo");
-      const { aiModel, apiKey, endPointURL } = key as ModelAPIkey; // Cache the key
-      onApiKeyLoaded(apiKey); // Pass API key to parent
+      const key = await getModelAPIkey("LifeLog", "OpenAI", "gpt-3.5-turbo");
+      const { aiModel, apiKey, endPointURL } = key as ModelAPIkey;
+      onApiKeyLoaded(apiKey);
       setLoading(false);
     };
 
@@ -47,7 +50,7 @@ const IndexScreen = ({ onApiKeyLoaded }: { onApiKeyLoaded: (cachedApiKey: string
     return <ActivityIndicator size="large" color="#0000ff" />;
   }
 
-  return null; // No need to render anything, API key is passed up
+  return null;
 };
 
 export default function AskJanet() {
@@ -67,8 +70,18 @@ export default function AskJanet() {
   const router = useRouter();
   const [responses, setResponses] = useState<{ responseType: string; text: string }[]>([]);
   const [isAdMobInitialized, setIsAdMobInitialized] = useState(false);
+  const [userEmail, setUserEmail] = useState<string | null>(null);
 
-  // ✅ Fetch API key when the component mounts
+  // ✅ Fetch user email on mount
+  useEffect(() => {
+    const user = auth.currentUser;
+    if (user) {
+      setUserEmail(user.email);
+      console.log("Logged in as:", user.email);
+    }
+  }, []);
+
+  // ✅ Fetch initial discussion
   useEffect(() => {
     async function loadDiscussion() {
       const initialDiscussion = await fetchInitialDiscussion();
@@ -80,7 +93,17 @@ export default function AskJanet() {
     loadDiscussion();
   }, []);
 
-  
+  // ✅ Handle sign-out
+  const handleSignOut = async () => {
+    try {
+      await signOut(auth);
+      console.log("User signed out");
+      router.replace("/login");
+    } catch (err) {
+      console.error("Sign-out Error:", err.message);
+    }
+  };
+
   // ✅ Handle input change
   const handleInputChange = (text: string) => {
     setInput(text);
@@ -110,26 +133,18 @@ export default function AskJanet() {
 
         console.log("Processing Discussion:", discussionTyped.id);
 
-        // ✅ If it's a question
         if (discussionTyped.typeSay === "ask") {
-          // ✅ Add question to discussion table and parse into parts with best GPT to answer and categories
           const gptResponseId = await addQuestionDiscussion(input, discussionTyped.id);
-          //get answers to questions  
           const parsedResponses = await disperseQuestion(discussionTyped.id, gptResponseId);
-          if (await !clearDiscussion(discussionTyped.id)) {
+          if (!(await clearDiscussion(discussionTyped.id))) {
             break;
           }
-          //const responses = await getGPTResponses(discussionTyped.id);
-          //const parsedResponses = await getParsedGPTResponses(discussionTyped.id);
-          //setHistory(parsedResponses.map(response => ({ text: response, type: "gpt response" })));
           if (parsedResponses) {
-          //  setHistory(parsedResponses.map(response => ({ text: response.toString(), type: "gpt response" })));
             setHistory((prev) => [...prev, ...parsedResponses.map(response => ({ text: response.toString(), type: "answer" }))]);
           }
           setInputValue(responses.join(", ") || "");
           setResponses(responses);
         } else {
-          // ✅ If it's a fact (not a question)
           const distinctCategories = await getDistinctCategories();
           const description = await expandFromAbbreviation(discussionTyped.description);
           const activityAnalysis = await analyzeActivity({
@@ -154,28 +169,20 @@ export default function AskJanet() {
     try {
       const currentInput = input.trim();
       if (currentInput === "") return;
-  
-      // ✅ Create history entry
+
       const newEntry = { text: currentInput, type: isQuestion ? "question" : "fact" };
-  
-      // ✅ Add user input to history & discussion
       setHistory((prev) => [...prev, newEntry]);
-      // ✅ Add user input to discussion table, no ai calls to this point
       await addOrUpdateDiscussion(currentInput, isQuestion ? "ask" : "tell");
-  
+
       setInput("");
-  
-      // ✅ process all new facts and question with ai call and save
       fetchDiscussions();
-      // ✅ If the input is a question, get AI response
+
       if (isQuestion) {
         const aiResponse = responses
-          .filter(response => response.responseType === "gpt response") // ✅ Filter only AI responses
-          .map(response => response.text) // ✅ Extract the text
+          .filter(response => response.responseType === "gpt response")
+          .map(response => response.text)
           .join(", ") || "";
 
-  
-        // ✅ Update the existing question entry instead of adding a duplicate
         setHistory((prev) =>
           prev.map((item) =>
             item.text === currentInput && item.type === "question"
@@ -184,13 +191,10 @@ export default function AskJanet() {
           )
         );
       }
-  
     } catch (error) {
       console.error("Error in handleSubmit:", error);
     }
   };
-  
-  
 
   return (
     <View
@@ -213,10 +217,20 @@ export default function AskJanet() {
       <SettingsButton />
 
       {/* ✅ Display API Key */}
-      <Text>
-      Stored API Key:{" "}
-      {apiKey ? `${apiKey.trim().slice(0, 4)}...${apiKey.trim().slice(-4)}` : "No API key found"}
-      </Text>      
+      <Text style={{ marginBottom: 10 }}>
+        Stored API Key:{" "}
+        {apiKey ? `${apiKey.trim().slice(0, 4)}...${apiKey.trim().slice(-4)}` : "No API key found"}
+      </Text>
+
+      {/* ✅ Display Logged-in User and Sign-Out Icon */}
+      <View style={{ alignItems: "center" }}>
+        <Text style={{ fontSize: 14, color: "#333", marginBottom: 5 }}>
+          Logged in as: {userEmail || "Loading..."}
+        </Text>
+        <TouchableOpacity onPress={handleSignOut} style={{ padding: 5 }}>
+          <Icon name="logout" size={20} color="#333" />
+        </TouchableOpacity>
+      </View>
     </View>
   );
 }

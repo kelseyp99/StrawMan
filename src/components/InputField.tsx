@@ -2,7 +2,6 @@ import React from "react";
 import { TextInput, View, Alert, StyleSheet } from "react-native";
 import { Button } from "react-native-paper";
 
-
 interface InputFieldProps {
   input: string;
   onChange: (text: string) => void;
@@ -17,20 +16,24 @@ export default function InputField({ input, onChange }: InputFieldProps) {
         value={input}
         onChangeText={onChange}
       />
-
-      {/* Icons tightly grouped on the far right */}
+      {/* @ts-ignore */}
       <Button
         icon="paperclip"
         mode="text"
-        compact
         onPress={() => Alert.alert("Add Attachment", "Attachment functionality to be implemented...")}
-        style={styles.icon} children={undefined}      />
+        style={styles.iconButton}
+        contentStyle={styles.iconContent}
+        labelStyle={styles.iconLabel}
+      />
+      {/* @ts-ignore */}
       <Button
         icon="microphone"
         mode="text"
-        compact
         onPress={() => Alert.alert("Voice Input", "Processing voice input...")}
-        style={styles.icon} children={undefined}      />
+        style={styles.iconButton}
+        contentStyle={styles.iconContent}
+        labelStyle={styles.iconLabel}
+      />
     </View>
   );
 }
@@ -40,22 +43,30 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     height: 50,
-    width: "100%", // Full width to allow better spacing
+    width: "100%",
     borderColor: "#ccc",
     borderWidth: 1,
     borderRadius: 10,
     backgroundColor: "white",
     marginBottom: 10,
-    paddingHorizontal: 10,
-    justifyContent: "space-between", // Push input left, icons right
+    paddingHorizontal: 0, // Was 1
   },
   input: {
-    flex: 1, // Expands fully to push icons right
+    flex: 1,
     height: "100%",
+    paddingRight: 0, // Was 10
   },
-  icon: {
-    marginLeft: -10, // Moves icons even closer together
-    padding: 0, // Ensures icons don't take up extra space
-    minWidth: 0, // Removes any extra spacing constraints
+  iconButton: {
+    marginLeft: 0, // Was 5
+  },
+  iconContent: {
+    padding: 0,
+    width: 24,
+    height: 24,
+  },
+  iconLabel: {
+    fontSize: 20,
+    color: "#000",
+    margin: 0,
   },
 });

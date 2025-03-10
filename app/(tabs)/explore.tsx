@@ -1,6 +1,6 @@
 // explore.tsx
 import React from 'react';
-import HelpSection from '../../components/HelpSection';
+import HelpSection from '../../src/components/HelpSection';
 import { View } from 'react-native';
 
 const Explore: React.FC = () => {

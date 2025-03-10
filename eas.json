@@ -7,6 +7,7 @@
     "development": {
       "developmentClient": true,
       "distribution": "internal",
+      "channel": "development", // Optional: Links to OTA updates if you use them
       "android": {
         "buildType": "apk"
       },
@@ -16,6 +17,7 @@
     },
     "preview": {
       "distribution": "internal",
+      "channel": "preview", // Optional: For consistency
       "android": {
         "buildType": "apk"
       },
@@ -27,6 +29,7 @@
       "env": {
         "EXPO_PUBLIC_GIT_BRANCH": "main"
       },
+      "channel": "production", // Optional: For consistency
       "android": {
         "buildType": "app-bundle"
       },
