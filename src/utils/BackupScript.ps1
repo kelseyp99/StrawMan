@@ -1,4 +1,4 @@
-# Define paths
+# Define paths 
 $projectName = "LifeLog"
 $rootProjectsFolder = "C:\Users\philk\Projects"
 $srcFolder = Join-Path -Path $rootProjectsFolder -ChildPath ($projectName + "\src")
