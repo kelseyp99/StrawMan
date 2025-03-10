@@ -1,4 +1,5 @@
-import { Stack } from "expo-router";
+//app\_layout.tsx
+import { Stack } sfrom "expo-router";
 import React from "react";
 
 export default function RootLayout() {

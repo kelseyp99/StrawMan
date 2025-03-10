@@ -1,3 +1,4 @@
+//\app\(tabs)\_layout.tsx
 import { Tabs } from "expo-router";
 import { View, StyleSheet } from "react-native";
 import { HapticTab } from "../../src/components/HapticTab";
