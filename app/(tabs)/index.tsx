@@ -1,4 +1,4 @@
-//app\(tabs)\index.tsx 
+//app\(tabs)\index.tsx  
 console.log("Environment Variables:", process.env);
 
 import React, { useState, useEffect } from "react";
