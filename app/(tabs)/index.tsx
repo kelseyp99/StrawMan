@@ -27,7 +27,7 @@ import ActionButtons from "../../src/components/ActionButtons";
 import HistoryList from "../../src/components/HistoryList";
 import SettingsButton from "../../src/components/SettingsButton";
 import { analyzeActivity, ModelAPIkey } from "../../src/services/openaiAPI";
-import Icon from "react-native-vector-icons/MaterialIcons"; // Import MaterialIcons
+import Icon from "react-native-vector-icons/MaterialIcons";
 
 // ✅ Fetch API Key in a separate component before rendering AskJanet
 const IndexScreen: React.FC<{ onApiKeyLoaded: (cachedApiKey: string | null) => void }> = ({ onApiKeyLoaded }) => {
@@ -214,29 +214,25 @@ export default function AskJanet() {
         flex: 1,
         backgroundColor: "#f5f5f5",
         padding: 20,
-        justifyContent: "center",
-        alignItems: "center",
         width: "100%",
       }}
     >
       {/* ✅ Fetch API Key Before Rendering */}
       <IndexScreen onApiKeyLoaded={setApiKey} />
-
+  
       <Header />
       <InputField input={input} onChange={handleInputChange} />
       <ActionButtons isQuestion={isQuestion} onSubmit={handleSubmit} />
       <HistoryList history={history} />
-      <SettingsButton />
-
-      {/* ✅ Hamburger Menu (Far Left, Above Fake Ad) */}
-      <View style={styles.topContainer}>
+  
+      {/* ✅ Hamburger Menu and SettingsButton on the same level */}
+      <View style={styles.bottomContainer}>
         <Pressable onPress={toggleMenu} style={styles.hamburger}>
           <Icon name="menu" size={24} color="#333" />
         </Pressable>
+        <SettingsButton style={styles.settingsButton} />
       </View>
-
-    
-
+  
       {/* ✅ Menu Modal */}
       <Modal
         visible={menuVisible}
@@ -267,16 +263,23 @@ export default function AskJanet() {
     </View>
   );
 }
-
-// Add styles for the menu and fake ad
 const styles = StyleSheet.create({
-  topContainer: {
+  bottomContainer: {
     width: "100%",
-    alignItems: "flex-start", // Align hamburger to the far left
-    marginBottom: 10,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    padding: 10,
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    backgroundColor: '#f5f5f5', // Match the background color
   },
   hamburger: {
     padding: 10,
+  },
+  settingsButton: {
+    marginRight: 10,
   },
   modalOverlay: {
     flex: 1,
@@ -306,18 +309,5 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontSize: 16,
     fontWeight: "600",
-  },
-  fakeAd: {
-    width: "100%",
-    padding: 10,
-    backgroundColor: "#ffeb3b",
-    borderRadius: 5,
-    alignItems: "center",
-    marginBottom: 10,
-  },
-  fakeAdText: {
-    fontSize: 16,
-    fontWeight: "bold",
-    color: "#333",
   },
 });
