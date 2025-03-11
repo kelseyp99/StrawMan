@@ -1,4 +1,3 @@
-//app\login.tsx CHANGE!!!!
 import React, { useState, useEffect } from "react";
 import { View, Text, TextInput, TouchableOpacity, StyleSheet } from "react-native";
 import { auth } from "../src/firebaseConfig";
@@ -9,8 +8,11 @@ import {
   signOut,
 } from "firebase/auth";
 import { useRouter } from "expo-router";
-import Icon from "react-native-vector-icons/MaterialIcons"; // Already imported
+import Icon from "react-native-vector-icons/MaterialIcons";
 import Header from "../src/components/Header";
+import * as FileSystem from 'expo-file-system';
+
+const STORAGE_FILE = `${FileSystem.documentDirectory}userUID.txt`;
 
 export default function Login() {
   const [email, setEmail] = useState("");
@@ -18,26 +20,68 @@ export default function Login() {
   const [error, setError] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [userEmail, setUserEmail] = useState<string | null>(null);
+  const [userUID, setUserUID] = useState<string | null>(null);
   const router = useRouter();
 
-  // Check auth state on mount and fetch user email
   useEffect(() => {
+    const loadUID = async () => {
+      try {
+        const fileInfo = await FileSystem.getInfoAsync(STORAGE_FILE);
+        if (fileInfo.exists) {
+          const fileContent = await FileSystem.readAsStringAsync(STORAGE_FILE);
+          setUserUID(fileContent);
+          console.log("Loaded UID from file:", fileContent);
+        } else {
+          console.log("No UID file found");
+        }
+      } catch (error) {
+        console.error("Error loading UID or checking file:", error);
+      }
+    };
+    loadUID();
+
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       if (user) {
         console.log("User logged in:", user.uid);
         setUserEmail(user.email);
+        setUserUID(user.uid);
+        saveUID(user.uid);
         router.replace("/(tabs)");
       } else {
         setUserEmail(null);
+        setUserUID(null);
+        removeUID();
       }
     });
     return unsubscribe;
   }, []);
 
+  const saveUID = async (uid) => {
+    try {
+      await FileSystem.writeAsStringAsync(STORAGE_FILE, uid, { encoding: FileSystem.EncodingType.UTF8 }); // Fixed encoding
+      console.log("UID saved to file:", uid);
+      const fileInfo = await FileSystem.getInfoAsync(STORAGE_FILE);
+      console.log("File exists after save:", fileInfo.exists);
+    } catch (error) {
+      console.error("Error saving UID:", error);
+    }
+  };
+
+  const removeUID = async () => {
+    try {
+      await FileSystem.deleteAsync(STORAGE_FILE, { idempotent: true }).catch(() => {});
+      console.log("UID removed from file");
+    } catch (error) {
+      console.error("Error removing UID:", error);
+    }
+  };
+
   const handleSignIn = async () => {
     try {
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
       console.log("Signed in UID:", userCredential.user.uid);
+      setUserUID(userCredential.user.uid);
+      saveUID(userCredential.user.uid);
       router.replace("/(tabs)");
     } catch (err) {
       setError(err.message);
@@ -49,6 +93,8 @@ export default function Login() {
     try {
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       console.log("Signed up UID:", userCredential.user.uid);
+      setUserUID(userCredential.user.uid);
+      saveUID(userCredential.user.uid);
       router.replace("/(tabs)");
     } catch (err) {
       setError(err.message);
@@ -62,13 +108,15 @@ export default function Login() {
       console.log("User signed out");
       setEmail("");
       setPassword("");
+      setUserEmail(null);
+      setUserUID(null);
+      removeUID();
     } catch (err) {
       setError(err.message);
       console.error("Sign-out Error:", err.message);
     }
   };
 
-  // Dummy handlers for Google and Facebook login !!
   const handleGoogleLogin = () => {
     console.log("Google login pressed (dummy)");
   };
@@ -115,19 +163,14 @@ export default function Login() {
       <TouchableOpacity style={styles.button} onPress={handleSignUp}>
         <Text style={styles.buttonText}>Sign Up</Text>
       </TouchableOpacity>
-
-      {/* Google Login Button */}
       <TouchableOpacity style={styles.googleButton} onPress={handleGoogleLogin}>
         <Icon name="google" size={20} color="#444" style={styles.socialIcon} />
         <Text style={styles.googleButtonText}>Log in with Google</Text>
       </TouchableOpacity>
-
-      {/* Facebook Login Button */}
       <TouchableOpacity style={styles.facebookButton} onPress={handleFacebookLogin}>
         <Icon name="facebook" size={20} color="#fff" style={styles.socialIcon} />
         <Text style={styles.facebookButtonText}>Log in with Facebook</Text>
       </TouchableOpacity>
-
       {userEmail && (
         <View style={styles.logoutContainer}>
           <Text style={styles.loggedInText}>Logged in as: {userEmail}</Text>
@@ -135,6 +178,12 @@ export default function Login() {
             <Icon name="logout" size={20} color="#333" />
           </TouchableOpacity>
         </View>
+      )}
+      {userUID && (
+        <Text style={styles.loggedInText}>Persisted User UID: {userUID}</Text>
+      )}
+      {!userEmail && userUID && (
+        <Text style={styles.loggedInText}>Persisted from previous session: {userUID}</Text>
       )}
     </View>
   );
@@ -216,7 +265,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     width: "100%",
     padding: 15,
-    backgroundColor: "#4267B2", // Facebook blue
+    backgroundColor: "#4267B2",
     borderRadius: 8,
     alignItems: "center",
     justifyContent: "center",
