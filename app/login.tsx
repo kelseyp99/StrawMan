@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { View, Text, TextInput, TouchableOpacity, StyleSheet } from "react-native";
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, Image } from "react-native";
 import { auth } from "../src/firebaseConfig";
 import {
   signInWithEmailAndPassword,
@@ -10,7 +10,8 @@ import {
 import { useRouter } from "expo-router";
 import Icon from "react-native-vector-icons/MaterialIcons";
 import Header from "../src/components/Header";
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system'; // File system for persistence
+import { setUID, clearUID,  } from "../src/utils/uidManager"; // Import UID manager
 
 const STORAGE_FILE = `${FileSystem.documentDirectory}userUID.txt`;
 
@@ -20,9 +21,10 @@ export default function Login() {
   const [error, setError] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [userEmail, setUserEmail] = useState<string | null>(null);
-  const [userUID, setUserUID] = useState<string | null>(null);
+  const [userUID, setUserUID] = useState<string | null>(null); // State for UID
   const router = useRouter();
 
+  // Load UID from file on mount
   useEffect(() => {
     const loadUID = async () => {
       try {
@@ -44,21 +46,23 @@ export default function Login() {
       if (user) {
         console.log("User logged in:", user.uid);
         setUserEmail(user.email);
-        setUserUID(user.uid);
-        saveUID(user.uid);
+        setUserUID(user.uid); // Save UID in state
+        setUID(user.uid); // Update global UID
+        saveUID(user.uid); // Save to file
         router.replace("/(tabs)");
       } else {
         setUserEmail(null);
-        setUserUID(null);
-        removeUID();
+        setUserUID(null); // Clear UID in state
+        removeUID(); // Remove from file
       }
     });
     return unsubscribe;
   }, []);
 
+  // Save UID to file
   const saveUID = async (uid) => {
     try {
-      await FileSystem.writeAsStringAsync(STORAGE_FILE, uid, { encoding: FileSystem.EncodingType.UTF8 }); // Fixed encoding
+      await FileSystem.writeAsStringAsync(STORAGE_FILE, uid, { encoding: FileSystem.Encoding.UTF_8 });
       console.log("UID saved to file:", uid);
       const fileInfo = await FileSystem.getInfoAsync(STORAGE_FILE);
       console.log("File exists after save:", fileInfo.exists);
@@ -67,6 +71,7 @@ export default function Login() {
     }
   };
 
+  // Remove UID from file
   const removeUID = async () => {
     try {
       await FileSystem.deleteAsync(STORAGE_FILE, { idempotent: true }).catch(() => {});
@@ -81,6 +86,7 @@ export default function Login() {
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
       console.log("Signed in UID:", userCredential.user.uid);
       setUserUID(userCredential.user.uid);
+      setUID(userCredential.user.uid); // Update global UID
       saveUID(userCredential.user.uid);
       router.replace("/(tabs)");
     } catch (err) {
@@ -132,7 +138,7 @@ export default function Login() {
   return (
     <View style={styles.container}>
       <Header />
-      <Text style={styles.title}>LifeLog Login</Text>
+      <Text style={styles.title}>Login</Text>
       {error ? <Text style={styles.error}>{error}</Text> : null}
       <TextInput
         style={styles.input}
@@ -163,14 +169,26 @@ export default function Login() {
       <TouchableOpacity style={styles.button} onPress={handleSignUp}>
         <Text style={styles.buttonText}>Sign Up</Text>
       </TouchableOpacity>
+      <View style={{ height: 1, width: "100%", backgroundColor: "#ccc", marginVertical: 10 }} />
+
       <TouchableOpacity style={styles.googleButton} onPress={handleGoogleLogin}>
-        <Icon name="google" size={20} color="#444" style={styles.socialIcon} />
-        <Text style={styles.googleButtonText}>Log in with Google</Text>
+        <Image
+          source={require("../assets/images/android_light_sq.png")}
+          style={{ width: 200, height: 50, resizeMode: "contain" }}
+        />
       </TouchableOpacity>
+
       <TouchableOpacity style={styles.facebookButton} onPress={handleFacebookLogin}>
         <Icon name="facebook" size={20} color="#fff" style={styles.socialIcon} />
         <Text style={styles.facebookButtonText}>Log in with Facebook</Text>
       </TouchableOpacity>
+      
+     
+
+
+
+
+
       {userEmail && (
         <View style={styles.logoutContainer}>
           <Text style={styles.loggedInText}>Logged in as: {userEmail}</Text>
@@ -179,6 +197,7 @@ export default function Login() {
           </TouchableOpacity>
         </View>
       )}
+      {/* Show UID regardless of login state to check persistence */}
       {userUID && (
         <Text style={styles.loggedInText}>Persisted User UID: {userUID}</Text>
       )}

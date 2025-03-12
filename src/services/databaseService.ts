@@ -1,3 +1,4 @@
+// src/services/databaseService.ts
 import { 
   getFirestore, 
   collection,
@@ -25,19 +26,77 @@ import {
 import { db } from "@/firebaseConfig"; // Initialize Firestore
 import { ModelAPIkey, ParsedActivity, sendQuestion, sendQuestionForParsing } from "./openaiAPI";
 import { format } from "date-fns";
-// import { initializeApp } from "firebase/app";
-// import { resetAppState as resetAppStateAction } from '../store/reducers';
-// import { useDispatch } from 'react-redux';
-/* rules_version = '2';
+import { getUID } from "../utils/uidManager"; // Import UID manager
 
-service cloud.firestore {
-  match /databases/{database}/documents {
-    match /{document=**} {
-      allow read, write: if
-          request.time < timestamp.date(2025, 3, 2);
-    }
+export const createDocument = async (data: any) => {
+  const uid = getUID(); // Adding UID for user tracking
+  if (!uid) {
+    console.error("No UID available for create operation");
+    return;
   }
-} */
+  try {
+    const docRef = await addDoc(collection(db, "documents"), {
+      ...data,
+      uid: uid, // Associate the document with the current user
+      timestamp: new Date(),
+    });
+    console.log("Document created with ID:", docRef.id);
+    return docRef.id;
+  } catch (error) {
+    console.error("Error creating document:", error);
+    throw error;
+  }
+};
+
+export const readDocuments = async () => {
+  const uid = getUID(); // Adding UID for user tracking
+  if (!uid) {
+    console.error("No UID available for read operation");
+    return [];
+  }
+  try {
+    const q = query(collection(db, "documents"), where("uid", "==", uid));
+    const querySnapshot = await getDocs(q);
+    const documents = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    console.log("Documents retrieved:", documents);
+    return documents;
+  } catch (error) {
+    console.error("Error reading documents:", error);
+    throw error;
+  }
+};
+
+export const updateDocument = async (docId: string, data: any) => {
+  const uid = getUID(); // Adding UID for user tracking
+  if (!uid) {
+    console.error("No UID available for update operation");
+    return;
+  }
+  try {
+    const docRef = doc(db, "documents", docId);
+    await updateDoc(docRef, data);
+    console.log("Document updated with ID:", docId);
+  } catch (error) {
+    console.error("Error updating document:", error);
+    throw error;
+  }
+};
+
+export const deleteDocument = async (docId: string) => {
+  const uid = getUID(); // Adding UID for user tracking
+  if (!uid) {
+    console.error("No UID available for delete operation");
+    return;
+  }
+  try {
+    const docRef = doc(db, "documents", docId);
+    await deleteDoc(docRef);
+    console.log("Document deleted with ID:", docId);
+  } catch (error) {
+    console.error("Error deleting document:", error);
+    throw error;
+  }
+};
 
 //////////////////////////////////////////
 // Database functions for ActivityLog //
@@ -45,6 +104,7 @@ service cloud.firestore {
 
 export async function getDistinctCategories(): Promise<string[]> {
   console.log("Fetching distinct categories from Firestore...");
+  const uid = getUID(); // Adding UID for user tracking
   try {
     const snapshot = await getDocs(collection(db, "ActivityLog"));
     const categoriesSet = new Set<string>();
@@ -75,6 +135,7 @@ export async function getDistinctCategories(): Promise<string[]> {
 
 export async function insertJsonFile(jsonData: any): Promise<void> {
   try {
+    const uid = getUID(); // Adding UID for user tracking
     for (const item of jsonData) {
       const docRef = doc(collection(db, "ActivityLog"), String(Date.now()));
 
@@ -101,6 +162,7 @@ export async function insertJsonFile(jsonData: any): Promise<void> {
  */
 export async function queryAllFieldsByCategories(categories: string[]): Promise<any[]> {
   console.log("Querying Firestore for categories:", categories);
+  const uid = getUID(); // Adding UID for user tracking
   try {
     // Create a query that filters the ActivityLog collection based on the provided categories.
     const q = query(collection(db, "ActivityLog"), where("category", "in", categories));
@@ -129,12 +191,19 @@ export async function addOrUpdateDiscussion(
   typeSay: string = "tell",
   id?: string
 ): Promise<void> {
-  console.log(`Adding or updating discussion with description: ${description}`);
+  const uid = getUID(); // Adding UID for user tracking
+  console.log(`Adding or updating discussion with description: ${description}` ,"uid:", uid);
   try {
     const docRef = id 
       ? doc(db, "Discussion", String(id)) 
       : doc(collection(db, "Discussion"));
-    await setDoc(docRef, { description, typeSay, cleared: false, timestamp: new Date() }, { merge: true });
+      await setDoc(docRef, { 
+        description, 
+        typeSay, 
+        cleared: false, 
+        timestamp: new Date(),
+        uid // This will be the user identifier in the Firestore document
+      }, { merge: true });      
     console.log(`Discussion ${id ? "updated" : "added"} successfully.`);
   } catch (error) {
     console.error("Error adding/updating discussion:", error);
@@ -143,8 +212,10 @@ export async function addOrUpdateDiscussion(
 
 export async function getDiscussions(lastX?: number, discussionId?: string): Promise<any[]> {
   try {
+    const uid = getUID(); // Adding UID for user tracking  // Assuming getUID is a function that retrieves the current user's UID
     let discussionsQuery = query(
       collection(db, "Discussion"),
+      where("uid", "==", uid), // Filter discussions by the user's UID
       orderBy("timestamp", "desc") // Sort by newest first
     );
 
@@ -165,13 +236,15 @@ export async function getDiscussions(lastX?: number, discussionId?: string): Pro
       discussionsQuery = query(discussionsQuery, limit(lastX));
     }
 
+    // Get the documents from Firestore
     const discussionSnapshot = await getDocs(discussionsQuery);
     
+    // Format and return the discussions
     return discussionSnapshot.docs.map(doc => ({
       id: doc.id,
       ...doc.data(),
       timestamp: doc.data().timestamp
-        ? format(new Date(doc.data().timestamp.toDate()), "M/d/yy \n h:mm a")
+        ? format(new Date(doc.data().timestamp.toDate()), "M/d/yy \n h:mm a")  // Formatting the timestamp
         : "N/A"
     }));
 
@@ -183,8 +256,23 @@ export async function getDiscussions(lastX?: number, discussionId?: string): Pro
 
 export async function deleteDiscussion(id: string): Promise<void> {
   try {
-    await deleteDoc(doc(db, "Discussion", String(id)));
-    console.log(`Discussion with ID ${id} deleted.`);
+    const uid = getUID(); // Adding UID for user tracking  // Get the authenticated user's UID
+    const discussionRef = doc(db, "Discussion", id);
+    const discussionSnap = await getDoc(discussionRef);
+
+    if (discussionSnap.exists()) {
+      const discussionData = discussionSnap.data();
+
+      // Check if the discussion belongs to the authenticated user
+      if (discussionData.uid === uid) {
+        await deleteDoc(discussionRef);
+        console.log(`Discussion with ID ${id} deleted.`);
+      } else {
+        console.error(`You cannot delete a discussion that doesn't belong to you.`);
+      }
+    } else {
+      console.error(`Discussion with ID ${id} does not exist.`);
+    }
   } catch (error) {
     console.error(`Error deleting discussion with ID ${id}:`, error);
   }
@@ -193,73 +281,100 @@ export async function deleteDiscussion(id: string): Promise<void> {
 // ✅ Fetch Initial Discussion Data
 export const fetchInitialDiscussion = async () => {
   try {
-    const discussionSnapshot = await getDocs(collection(db, "Discussion"));
+    const uid = getUID(); // Adding UID for user tracking // Get the authenticated user's UID
+    console.log("Fetching initial discussion with UID:", uid);
+    
+    // Query the "Discussion" collection, filtered by the current user's UID
+    const discussionsQuery = query(
+      collection(db, "Discussion"),
+      where("uid", "==", uid)  // Filter discussions to include only those with the matching UID
+    );
+    
+    const discussionSnapshot = await getDocs(discussionsQuery);
+    
     if (!discussionSnapshot.empty) {
       const docSnapshot = discussionSnapshot.docs[0];
+      const data = docSnapshot.data();
+
       return {
         id: docSnapshot.id,
-        discussionId: docSnapshot.data().discussionId,
-        response: docSnapshot.data().response,
-        timestamp: docSnapshot.data().timestamp?.toDate() || new Date(),
-        cleared: docSnapshot.data().cleared,
+        discussionId: data.discussionId,
+        response: data.response,
+        timestamp: data.timestamp ? data.timestamp.toDate() : new Date(), // Handle timestamp properly
+        cleared: data.cleared,
       };
     }
-    return null;
+    
+    return null; // Return null if no discussions are found
+
   } catch (error) {
     console.error("🔥 Error fetching discussion:", error);
-    return null;
+    return null; // Return null on error
   }
 };
 
-// ✅ Fetch the next discussion and return both snapshot + hasMore flag
-export const getNextOpenDiscussion = async () => {
+// ✅ Fetch the next open discussion and return both snapshot + hasMore flag
+export const getNextOpenDiscussion = async (lastVisibleDoc?: any) => {
   try {
-    const q = query(
+    const uid = getUID(); // Adding UID for user tracking // Get the authenticated user's UID
+    
+    // Start a new query for discussions, filtered by cleared status (false)
+    let discussionsQuery = query(
       collection(db, "Discussion"),
-      where("cleared", "==", false),
-      limit(1)
+      where("cleared", "==", false), // Only fetch discussions that are not cleared
+      where("uid", "==", uid), // Filter by the current user's UID
+      limit(1) // Limit to one document
     );
 
-    console.log("Query:", q);
-    const snapshot = await getDocs(q);
+    // If a lastVisibleDoc is passed, use it for pagination
+    if (lastVisibleDoc) {
+      discussionsQuery = query(discussionsQuery, startAfter(lastVisibleDoc)); // Start after the last document
+    }
+
+    // Execute the query
+    const snapshot = await getDocs(discussionsQuery);
 
     // ✅ Return snapshot + hasMore (false if no documents)
     const hasMore = !snapshot.empty;
     console.log("Query Snapshot:", snapshot.docs.map(doc => doc.data()));
 
-    return { snapshot, hasMore };
+    // Return the snapshot and a flag indicating whether there are more discussions
+    return {
+      snapshot,
+      hasMore,
+      lastVisibleDoc: snapshot.docs[snapshot.docs.length - 1] || null, // The last visible document for pagination
+    };
   } catch (error) {
     console.error("🔥 Error fetching discussion:", error);
-    return { snapshot: null, hasMore: false }; // Ensures consistent return format
+    return { snapshot: null, hasMore: false, lastVisibleDoc: null }; // Ensures consistent return format
   }
 };
 
 
-
 export async function addQuestionDiscussion(question: string, discussionId: string): Promise<string> {
   try {
-    console.log(`Adding question: ${question}`);
-    addOrUpdateDiscussion(question, 'ask', discussionId);
-    console.log(`Added a question to discussion: ${question}`);
-    console.log(`discussionId: ${discussionId}`);
-    console.log(`Getting GPT names`);
-    // Get GPT names
+    const uid = getUID(); // Adding UID for user tracking
+    console.log(`Adding question: ${question} to discussionId: ${discussionId}`);
+
+    // Add or update the discussion
+    await addOrUpdateDiscussion(question, 'ask', discussionId);
+    
+    console.log(`Successfully added question to discussion`);
+
+    // Get GPT names (simulating this with a predefined list)
     const gpts_names_string = '["openAI", "Gemini", "ChatGPT", "Claude", "DeepSeek"]';
     const gpts_names = JSON.parse(gpts_names_string);
-
-    console.log(`gpts_names: ${gpts_names}`);
+    console.log(`GPT names:`, gpts_names);
 
     // Get the list of categories
-    console.log(`Getting categories`);
     const categories = await getDistinctCategories();
-    console.log(`categories: ${categories}`);
+    console.log(`Categories:`, categories);
 
-    // For demonstration, we're faking the response from sendQuestionForParsing:
+    // Send question for parsing (simulating response for now)
     const response = await sendQuestionForParsing({ categories, gpts_names, question, discussionId });
-   // console.log(`response: ${JSON.stringify(response)}`);
+    console.log(`Parsed response received:`, response);
 
-    // Save the response with responseType="parsed question"
-    //console.log(`Saving GPT response: ${JSON.stringify(response)}`);
+    // Save the GPT response to Firestore
     const docRef = await addDoc(collection(db, "GPTResponses"), {
       timestamp: new Date(),
       discussionId,
@@ -267,18 +382,20 @@ export async function addQuestionDiscussion(question: string, discussionId: stri
       response: JSON.stringify(response),
       responseType: "parsed question",
       cleared: false,
-    });    
+    });
 
-    //console.log(`Added GPT response: ${docRef.id}`);
-    return Promise.resolve(docRef.id);
+    console.log(`Successfully saved GPT response with ID: ${docRef.id}`);
+    return docRef.id; // Return the document ID of the saved GPT response
   } catch (error) {
     console.error('Error adding question discussion:', error);
-    return Promise.reject(error);
+    throw error; // Propagate the error so it can be handled higher up if needed
   }
 }
 
+
 export async function processUnclearedGPTResponses() {
   let hasMoreDocuments = true;
+  const uid = getUID(); // Adding UID for user tracking
 
   while (hasMoreDocuments) {
     // Query Firestore for ONE uncleared GPTResponse
@@ -364,6 +481,7 @@ export async function processUnclearedGPTResponses() {
 export const markDiscussionAsCleared = async (discussionId: string) => {
   console.log(`Attempting to mark discussion ${discussionId} as cleared...`);
   try {
+    const uid = getUID(); // Adding UID for user tracking
     const discussionRef = doc(db, "Discussion", discussionId);
     await updateDoc(discussionRef, { cleared: true });
     console.log(`✅ Discussion ${discussionId} marked as cleared.`);
@@ -374,6 +492,7 @@ export const markDiscussionAsCleared = async (discussionId: string) => {
 
 export async function clearDiscussion(discussionId: string) : Promise<boolean> {
   try {
+    const uid = getUID(); // Adding UID for user tracking
     const discussionRef = doc(db, "Discussion", discussionId);  
     console.log(`Attempting to clear discussion ${discussionId}...`);
     const docSnapshot = await getDoc(discussionRef);
@@ -399,6 +518,8 @@ export async function addOrUpdateActivityLog(): Promise<void> {
       category: string;
       parsedDescription: string;
     }
+    const uid = getUID(); // Adding UID for user tracking // Fetch UID of the current user
+
     // Query Firestore for GPTResponses that haven't been cleared and require a DB update
     const q = query(
       collection(db, "GPTResponses"),
@@ -417,19 +538,16 @@ export async function addOrUpdateActivityLog(): Promise<void> {
         response: docSnapshot.data().response,
         timestamp: docSnapshot.data().timestamp?.toDate() || new Date(), // Convert Firestore Timestamp to JS Date
         cleared: docSnapshot.data().cleared,
+        uid: uid, // Add the UID here to associate it with the user
       };
 
-      // Debug check: Log the raw response JSON
       console.log("Raw GPT response JSON:", gptResponseTyped.response);
 
       // Parse the raw JSON from the 'response' field
       const responseJson = JSON.parse(gptResponseTyped.response) as GPTResponseJSONData;
-
-      // Log the parsed output
       console.log("Parsed category:", responseJson.category);
       console.log("Parsed description:", responseJson.parsedDescription);
 
-      // Extract fields we need
       const category = responseJson.category;
       const parsedDescription = responseJson.parsedDescription;
       const discussionId = gptResponseTyped.discussionId;
@@ -441,32 +559,29 @@ export async function addOrUpdateActivityLog(): Promise<void> {
 
       const querySnapshot = await getDocs(qq);
       const activityLog = !querySnapshot.empty ? querySnapshot.docs[0].data() : null;
-      
-      // If found, update it
+
       if (activityLog) {
-       // console.log("Existing activity log:", activityLog);
         console.log("Updating existing response...");
 
         const existingActivityLogRef = doc(db, "ActivityLog", querySnapshot.docs[0].id);
-
         await updateDoc(existingActivityLogRef, {
           category: category,
           description: parsedDescription,
           responseType: "tell",
           cleared: true,
+          uid: uid, // Add the UID here too
         });
-
       } else {
-        // Otherwise, create a new record
         console.log("No existing activity log found. Creating new activity log...");
 
         await addDoc(collection(db, "ActivityLog"), {
-          id: new Date().getTime(), // Using timestamp as ID (optional, Firestore can generate an ID automatically)
+          id: new Date().getTime(),
           discussionId,
           category,
           description: parsedDescription,
-          timestamp: Timestamp.fromDate(timestamp), // Convert JS Date to Firestore Timestamp
+          timestamp: Timestamp.fromDate(timestamp),
           cleared: true,
+          uid: uid, // Add the UID when creating a new activity log
         });
 
         console.log("New response created.");
@@ -478,35 +593,32 @@ export async function addOrUpdateActivityLog(): Promise<void> {
         cleared: true,
       });
     });
-
   } catch (error) {
     console.error("Error adding or updating GPT response:", error);
   }
 }
 
+
 export const renameFieldToCleared = async () => {
   try {
-    // Reference to the Discussion collection
+    const uid = getUID(); // Adding UID for user tracking // Get UID
     const discussionCollection = collection(db, "Discussion");
 
-    // Fetch all documents in the collection
     const querySnapshot = await getDocs(discussionCollection);
 
-    // Loop through each document
     querySnapshot.forEach(async (document) => {
       const docRef = doc(db, "Discussion", document.id);
       const data = document.data();
 
-      // Check if the field exists (case-insensitive)
       const fieldName = Object.keys(data).find(
         (key) => key.toLowerCase() === "cleared"
       );
 
       if (fieldName && fieldName !== "cleared") {
-        // Rename the field to lowercase "cleared"
         await updateDoc(docRef, {
           cleared: data[fieldName], // Copy the value to the new field
           [fieldName]: deleteField(), // Remove the old field
+          uid: uid, // Add UID here if you need to track the user
         });
         console.log(`Updated document ${document.id}`);
       }
@@ -517,6 +629,8 @@ export const renameFieldToCleared = async () => {
     console.error("Error updating documents: ", error);
   }
 };
+
+
 
 // Call the function to rename the field
 renameFieldToCleared();
@@ -529,6 +643,7 @@ export async function getLastOpenDiscussion(): Promise<lastOpenDiscussion> {
   //console.log('Getting last open discussion...');
   const currentTime = new Date();
   try {
+    const uid = getUID(); // Adding UID for user tracking
     // Add a new document to the "Discussion" collection
  
 /* 
@@ -604,6 +719,7 @@ async function waitForDocument(ref: DocumentReference<unknown, DocumentData>, ti
 
 export async function disperseQuestion(discussionId: string, GPT_ResponseId: string): Promise<string[] | undefined> {
   try {
+    const uid = getUID(); // Adding UID for user tracking
     console.log("Attempting to disperse question and get answers...");
     const discussionRef = doc(collection(db, "Discussion"), discussionId);
     const discussionDoc = await getDoc(discussionRef);
@@ -658,6 +774,7 @@ export async function disperseQuestion(discussionId: string, GPT_ResponseId: str
 
 export async function disperseQuestionOLD(discussionId: string, GPT_ResponseId: string): Promise<String[] | undefined> {
   try {
+    const uid = getUID(); // Adding UID for user tracking
     // Fetch the discussion document by ID
     const discussionRef = doc(collection(db, 'Discussion'), discussionId.toString());
     const discussionDoc = await getDoc(discussionRef);
@@ -720,6 +837,7 @@ export async function addOrUpdateGPTResponse(
   cleared: boolean = false,
 ): Promise<void> {
   try {
+    const uid = getUID(); // Adding UID for user tracking
     const docRef = doc(collection(db, "GPTResponses"), String(Date.now()));
 
     await setDoc(docRef, {
@@ -738,6 +856,7 @@ export async function addOrUpdateGPTResponse(
 
 export async function getGPTResponses(discussionId: string): Promise<any[]> {
   try {
+    const uid = getUID(); // Adding UID for user tracking
     const q = query(collection(db, "GPTResponses"), where("discussionId", "==", discussionId));
     const snapshot = await getDocs(q);
     return snapshot.docs.map((doc: { data: () => any; }) => doc.data());
@@ -749,6 +868,7 @@ export async function getGPTResponses(discussionId: string): Promise<any[]> {
 
 export async function getParsedGPTResponses(discussionId: string): Promise<string[]> {
   try {
+    const uid = getUID(); // Adding UID for user tracking
     const parsedResponses: string[] = [];
     let lastVisible: any = null;
     const batchSize = 10; // Number of docs to fetch per batch
@@ -805,6 +925,7 @@ export const getAIResponse = async (question: string) => {
 
 export async function getModelAPIkey(owner: string , name: string, model: string): Promise<ModelAPIkey | null> {
   try {
+    const uid = getUID(); // Adding UID for user tracking
     const q = query(collection(db, "AI_Models"), where("owner", "==", owner), where("Name", "==", name), where("Model", "==", model));
     const snapshot = await getDocs(q);
     for (const doc of snapshot.docs) {
@@ -837,6 +958,7 @@ export async function syncToCloud(
 ): Promise<void> {
   const url = `http://localhost:5155/api/${tableName.toLowerCase()}`;
   try {
+    const uid = getUID(); // Adding UID for user tracking
     const config = { headers: { "Content-Type": "application/json" } };
     let response;
 
@@ -860,6 +982,7 @@ export async function syncToCloud(
 
 export async function getNextActiveAlert(): Promise<any | null> {
   try {
+    const uid = getUID(); // Adding UID for user tracking
     const q = query(collection(db, "Alert"), where("isActive", "==", true));
     const snapshot = await getDocs(q);
     return snapshot.docs.length ? snapshot.docs[0].data() : null;
@@ -871,6 +994,7 @@ export async function getNextActiveAlert(): Promise<any | null> {
 
 export async function addOrUpdateAlert(alertData: any): Promise<void> {
   try {
+    const uid = getUID(); // Adding UID for user tracking
     const docRef = alertData._id 
       ? doc(db, "Alert", alertData._id) 
       : doc(collection(db, "Alert"));
@@ -888,6 +1012,7 @@ export async function addOrUpdateAlert(alertData: any): Promise<void> {
 
 export async function getURLofGPT(gpt_name: string): Promise<{ url: string; apiKey: string } | null> {
   try {
+    const uid = getUID(); // Adding UID for user tracking
     const q = query(collection(db, "GPTSpecialties"), where("name", "==", gpt_name));
     const snapshot = await getDocs(q);
     return snapshot.docs.length ? snapshot.docs[0].data() as { url: string; apiKey: string } : null;
@@ -899,6 +1024,7 @@ export async function getURLofGPT(gpt_name: string): Promise<{ url: string; apiK
 
 export async function expandFromAbbreviation(discussion: string): Promise<string> {
   console.log(`Attempting to expand abbreviation '${discussion}'`);
+  const uid = getUID(); // Adding UID for user tracking
   const abbreviationMap = new Map<string, string>([
     ['1', 'i urinated'],
     ['11', 'i had a high volume of urination'],
@@ -961,6 +1087,7 @@ export async function expandFromAbbreviation(discussion: string): Promise<string
     
     // Function to restore data
     async function restoreLostData() {
+      const uid = getUID(); // Adding UID for user tracking
       const collectionRef = collection(db, "ActivityLog"); // Change to your collection name
     
       for (const entry of lostData) {

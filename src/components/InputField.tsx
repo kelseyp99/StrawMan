@@ -16,24 +16,31 @@ export default function InputField({ input, onChange }: InputFieldProps) {
         value={input}
         onChangeText={onChange}
       />
-      {/* @ts-ignore */}
-      <Button
-        icon="paperclip"
-        mode="text"
-        onPress={() => Alert.alert("Add Attachment", "Attachment functionality to be implemented...")}
-        style={styles.iconButton}
-        contentStyle={styles.iconContent}
-        labelStyle={styles.iconLabel}
-      />
-      {/* @ts-ignore */}
-      <Button
-        icon="microphone"
-        mode="text"
-        onPress={() => Alert.alert("Voice Input", "Processing voice input...")}
-        style={styles.iconButton}
-        contentStyle={styles.iconContent}
-        labelStyle={styles.iconLabel}
-      />
+
+
+<View style={{ flexDirection: "row", justifyContent: "center", alignItems: "center" }}>
+  {/* @ts-ignore */}
+  <Button
+    icon="paperclip"
+    mode="text"
+    onPress={() => Alert.alert("Add Attachment", "Attachment functionality to be implemented...")}
+    style={[styles.iconButton, { width: "auto", paddingHorizontal: 0, minWidth: 50, marginRight: -10 }]} // Reduce spacing
+    contentStyle={{ justifyContent: "center" }}
+    labelStyle={{ fontSize: 24 }} // Increased font size
+  />
+  {/* @ts-ignore */}
+  <Button
+    icon="microphone"
+    mode="text"
+    onPress={() => Alert.alert("Voice Input", "Processing voice input...")}
+    style={[styles.iconButton, { width: "auto", paddingHorizontal: 0, minWidth: 50, marginLeft: -10 }]} // Reduce spacing
+    contentStyle={{ justifyContent: "center" }}
+    labelStyle={{ fontSize: 24 }} // Increased font size
+  />
+</View>
+
+
+
     </View>
   );
 }

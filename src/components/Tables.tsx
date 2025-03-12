@@ -3,6 +3,7 @@ import { View, Text, TextInput, StyleSheet, TouchableOpacity, FlatList, Keyboard
 import { format } from "date-fns";
 import { db } from "../firebaseConfig";
 import { collection, getDocs } from "firebase/firestore";
+import { getUID } from "../utils/uidManager"; // Import UID manager
 
 interface SwipeableTablePropsType {
   name: string;
@@ -28,6 +29,7 @@ const MainComponent = () => {
         console.log("Fetching data from Firestore...");
         const activityLogSnapshot = await getDocs(collection(db, "ActivityLog"));
         const discussionSnapshot = await getDocs(collection(db, "Discussion"));
+        const uid = getUID(); // Assuming getUID() is a function that returns the user's UID
 
         setTables([
           {
@@ -35,36 +37,42 @@ const MainComponent = () => {
             columns: [
               { Header: "ID", accessor: "id", hidden: true },
               { Header: "Date", accessor: "timestamp" },
-              { Header: "Category", accessor: "category", style: styles.leftAlignCell  },
+              { Header: "Category", accessor: "category", style: styles.leftAlignCell },
               { Header: "Desc", accessor: "description", style: styles.leftAlignCell },
-              { Header: "Cleared", accessor: "cleared", hidden: true  },
+              { Header: "Cleared", accessor: "cleared", hidden: true },
             ],
-            data: activityLogSnapshot.docs.map((doc) => ({
-              id: doc.id,
-              ...doc.data(),
-              timestamp: doc.data().timestamp
-                ? format(new Date(doc.data().timestamp.toDate()), `M/d/yy \n h:mm a`)
-                : "N/A",
-              cleared: doc.data().cleared ? "✔️ Yes" : "❌ No",
-            })),
+            data: activityLogSnapshot.docs
+              .map((doc) => ({
+                id: doc.id,
+                ...doc.data(),
+                timestamp: doc.data().timestamp
+                  ? format(new Date(doc.data().timestamp.toDate()), `M/d/yy \n h:mm a`)
+                  : "N/A",
+                cleared: doc.data().cleared ? "✔️ Yes" : "❌ No",
+                uid: doc.data().uid, // Add the uid here
+              }))
+              .filter((doc) => doc.uid === uid), // Filter data based on uid
           },
           {
             name: "Discussion Data",
             columns: [
               { Header: "ID", accessor: "id", hidden: true },
               { Header: "Date", accessor: "timestamp" },
-              { Header: "Type", accessor: "typeSay" , style: styles.leftAlignCell },
+              { Header: "Type", accessor: "typeSay", style: styles.leftAlignCell },
               { Header: "Desc", accessor: "description", style: styles.leftAlignCell },
-              { Header: "Cleared", accessor: "cleared" , style: styles.leftAlignCell },
+              { Header: "Cleared", accessor: "cleared", style: styles.leftAlignCell },
             ],
-            data: discussionSnapshot.docs.map((doc) => ({
-              id: doc.id,
-              ...doc.data(),
-              timestamp: doc.data().timestamp
-                ? format(new Date(doc.data().timestamp.toDate()), "M/d/yy \n h:mm a")
-                : "N/A",
-              cleared: doc.data().cleared ? "✔️ Yes" : "❌ No",
-            })),
+            data: discussionSnapshot.docs
+              .map((doc) => ({
+                id: doc.id,
+                ...doc.data(),
+                timestamp: doc.data().timestamp
+                  ? format(new Date(doc.data().timestamp.toDate()), "M/d/yy \n h:mm a")
+                  : "N/A",
+                cleared: doc.data().cleared ? "✔️ Yes" : "❌ No",
+                uid: doc.data().uid, // Add the uid here
+              }))
+              .filter((doc) => doc.uid === uid), // Filter data based on uid
           },
         ]);
       } catch (error) {
@@ -130,10 +138,7 @@ const MainComponent = () => {
             {tables.map((table, index) => (
               <TouchableOpacity
                 key={index}
-                style={[
-                  styles.navButton,
-                  currentTableIndex === index && styles.navButtonActive,
-                ]}
+                style={[styles.navButton, currentTableIndex === index && styles.navButtonActive]}
                 onPress={() => setCurrentTableIndex(index)}
               >
                 <Text style={styles.navButtonText}>{table.name}</Text>
@@ -212,7 +217,7 @@ const styles = StyleSheet.create({
   headerCell: { flex: 1, fontWeight: "bold", textAlign: "center" },
   row: { flexDirection: "row", padding: 6 },
   cell: { flex: 1, textAlign: "center" },
-  leftAlignCell: {    textAlign: 'left',  },
+  leftAlignCell: { textAlign: 'left' },
 });
 
 export default MainComponent;
