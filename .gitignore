@@ -63,3 +63,10 @@ node_modules/
 *.jpg
 *.jpeg
 *.gif
+
+# Ignore all JavaScript files
+*.js
+
+# Explicitly include the necessary JavaScript files
+!metro.config.js
+!app.config.js
