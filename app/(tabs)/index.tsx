@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from "react";
 import { Text, View, ActivityIndicator, Pressable, Modal, StyleSheet } from "react-native";
-import { auth } from "../../src/firebaseConfig";
-import { signOut } from "firebase/auth";
-import { getAIResponse, getModelAPIkey, getParsedGPTResponses } from "../../src/services/databaseService";
+import { auth } from "../../src/firebaseConfig"; // Adjusted path
+import { signOut, onAuthStateChanged } from "firebase/auth";
+import { getModelAPIkey } from "../../src/services/databaseService";
 import { useRouter } from "expo-router";
 import {
   disperseQuestion,
@@ -10,15 +10,10 @@ import {
   addOrUpdateDiscussion,
   addOrUpdateGPTResponse,
   getDistinctCategories,
-  getGPTResponses,
-  getLastOpenDiscussion,
-  addOrUpdateActivityLog,
   expandFromAbbreviation,
   processUnclearedGPTResponses,
   getNextOpenDiscussion,
-  markDiscussionAsCleared,
   fetchInitialDiscussion,
-  renameFieldToCleared,
   clearDiscussion,
 } from "../../src/services/databaseService";
 import Header from "../../src/components/Header";
@@ -29,34 +24,22 @@ import SettingsButton from "../../src/components/SettingsButton";
 import { analyzeActivity, ModelAPIkey } from "../../src/services/openaiAPI";
 import Icon from "react-native-vector-icons/MaterialIcons";
 
-// ✅ Fetch API Key in a separate component before rendering AskJanet
 const IndexScreen: React.FC<{ onApiKeyLoaded: (cachedApiKey: string | null) => void }> = ({ onApiKeyLoaded }) => {
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    const fetchKey = async () => {
-      const key = await getModelAPIkey("LifeLog", "OpenAI", "gpt-3.5-turbo");
-      const { aiModel, apiKey, endPointURL } = key as ModelAPIkey;
-      onApiKeyLoaded(apiKey);
-      setLoading(false);
-    };
+  // useEffect(() => {
+  //   const fetchKey = async () => {
+  //     const key = await getModelAPIkey("LifeLog", "OpenAI", "gpt-3.5-turbo");
+  //     const { apiKey } = key as ModelAPIkey;
+  //     onApiKeyLoaded(apiKey);
+  //     setLoading(false);
+  //   };
+  //   fetchKey();
+  // }, []);
 
-    fetchKey();
-  }, []);
-
-  if (loading) {
-    return <ActivityIndicator size="large" color="#0000ff" />;
-  }
-
+  if (loading) return <ActivityIndicator size="large" color="#0000ff" />;
   return null;
 };
-
-// Fake Advertisement Component
-const FakeAd: React.FC = () => (
-  <View style={styles.fakeAd}>
-    <Text style={styles.fakeAdText}>🌟 Get Premium Features - Only $9.99/month! 🌟</Text>
-  </View>
-);
 
 export default function AskJanet() {
   const [apiKey, setApiKey] = useState<string | null>(null);
@@ -64,71 +47,64 @@ export default function AskJanet() {
   const [isQuestion, setIsQuestion] = useState(false);
   const [inDJ_Mode, setInDJ_Mode] = useState(false);
   const [history, setHistory] = useState<{ text: string; type: string; aiResponse?: string }[]>([]);
-  const [inputValue, setInputValue] = useState<string>("");
-  const [discussion, setDiscussion] = useState<{
-    id: string;
-    discussionId: any;
-    response: any;
-    timestamp: any;
-    cleared: any;
-  } | null>(null);
+  const [discussion, setDiscussion] = useState<any>(null);
   const router = useRouter();
   const [responses, setResponses] = useState<{ responseType: string; text: string }[]>([]);
-  const [isAdMobInitialized, setIsAdMobInitialized] = useState(false);
   const [userEmail, setUserEmail] = useState<string | null>(null);
-  const [menuVisible, setMenuVisible] = useState(false); // State for menu visibility
+  const [menuVisible, setMenuVisible] = useState(false);
+  const [loadingAuth, setLoadingAuth] = useState(true);
 
-  // ✅ Fetch user email on mount
   useEffect(() => {
-    const user = auth.currentUser;
-    if (user) {
-      setUserEmail(user.email);
-      console.log("Logged in as:", user.email);
-    }
-  }, []);
-
-  // ✅ Fetch initial discussion
-  useEffect(() => {
-    async function loadDiscussion() {
-      const initialDiscussion = await fetchInitialDiscussion();
-      if (initialDiscussion) {
-        console.log("✅ Fetched Initial Discussion:", initialDiscussion);
-        setDiscussion(initialDiscussion);
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (user) {
+        setUserEmail(user.email);
+        console.log("Logged in as:", user.email);
+      } else {
+        console.log("No user logged in, redirecting to login");
+        router.replace("/login");
       }
-    }
-    loadDiscussion();
-  }, []);
+      setLoadingAuth(false);
+    });
+    return () => unsubscribe();
+  }, [router]);
 
-  // ✅ Handle sign-out
-  const handleSignOut = async (): Promise<void> => {
+  useEffect(() => {
+    if (!loadingAuth && userEmail) {
+      async function loadDiscussion() {
+        const initialDiscussion = await fetchInitialDiscussion();
+        if (initialDiscussion) {
+          console.log("✅ Fetched Initial Discussion:", initialDiscussion);
+          setDiscussion(initialDiscussion);
+        }
+      }
+      loadDiscussion();
+    }
+  }, [loadingAuth, userEmail]);
+
+  const handleSignOut = async () => {
     try {
       await signOut(auth);
       console.log("User signed out");
-      setMenuVisible(false); // Close menu after sign-out
+      setMenuVisible(false);
       router.replace("/login");
     } catch (err: any) {
       console.error("Sign-out Error:", err.message);
     }
   };
 
-  // ✅ Handle input change
-  const handleInputChange = (text: string): void => {
+  const handleInputChange = (text: string) => {
     setInput(text);
     setIsQuestion(/\b(what|when|how|why|does|is|can)\b/i.test(text));
     setInDJ_Mode(/\b(DJ mode|dj mode|Dj mode|DJ|dj)\b/i.test(text));
   };
 
-  // ✅ Process uncleared discussions
-  async function fetchDiscussions(): Promise<void> {
+  async function fetchDiscussions() {
     let hasMoreDocuments = true;
-    renameFieldToCleared;
     while (hasMoreDocuments) {
       const { snapshot, hasMore } = await getNextOpenDiscussion();
       hasMoreDocuments = hasMore;
-
       if (snapshot && !snapshot.empty) {
         console.log("✅ Processing Snapshot:", snapshot.docs.map((doc) => doc.data()));
-
         const docSnapshot = snapshot.docs[0];
         const discussionTyped = {
           id: docSnapshot.id,
@@ -137,64 +113,43 @@ export default function AskJanet() {
           timestamp: docSnapshot.data().timestamp?.toDate() || new Date(),
           typeSay: docSnapshot.data().typeSay,
         };
-
         console.log("Processing Discussion:", discussionTyped.id);
-
         if (discussionTyped.typeSay === "ask") {
           const gptResponseId = await addQuestionDiscussion(input, discussionTyped.id);
           const parsedResponses = await disperseQuestion(discussionTyped.id, gptResponseId);
-          if (!(await clearDiscussion(discussionTyped.id))) {
-            break;
-          }
+          if (!(await clearDiscussion(discussionTyped.id))) break;
           if (parsedResponses) {
             setHistory((prev) => [...prev, ...parsedResponses.map((response) => ({ text: response.toString(), type: "answer" }))]);
           }
-          setInputValue(responses.join(", ") || "");
           setResponses(responses);
         } else {
           const distinctCategories = await getDistinctCategories();
           const description = await expandFromAbbreviation(discussionTyped.description);
-          const activityAnalysis = await analyzeActivity({
-            categories: distinctCategories,
-            description,
-          });
-
-          await addOrUpdateGPTResponse(
-            discussionTyped.id,
-            JSON.stringify(activityAnalysis),
-            "updateDB"
-          );
+          const activityAnalysis = await analyzeActivity({ categories: distinctCategories, description });
+          await addOrUpdateGPTResponse(discussionTyped.id, JSON.stringify(activityAnalysis), "updateDB");
         }
-
         await processUnclearedGPTResponses();
       }
     }
   }
 
-  // ✅ Handle submit
-  const handleSubmit = async (): Promise<void> => {
+  const handleSubmit = async () => {
     try {
       const currentInput = input.trim();
       if (currentInput === "") return;
-
       const newEntry = { text: currentInput, type: isQuestion ? "question" : "fact" };
       setHistory((prev) => [...prev, newEntry]);
       await addOrUpdateDiscussion(currentInput, isQuestion ? "ask" : "tell");
-
       setInput("");
       fetchDiscussions();
-
       if (isQuestion) {
         const aiResponse = responses
           .filter((response) => response.responseType === "gpt response")
           .map((response) => response.text)
           .join(", ") || "";
-
         setHistory((prev) =>
           prev.map((item) =>
-            item.text === currentInput && item.type === "question"
-              ? { ...item, aiResponse }
-              : item
+            item.text === currentInput && item.type === "question" ? { ...item, aiResponse } : item
           )
         );
       }
@@ -203,53 +158,29 @@ export default function AskJanet() {
     }
   };
 
-  // ✅ Toggle menu visibility
-  const toggleMenu = (): void => {
-    setMenuVisible(!menuVisible);
-  };
+  const toggleMenu = () => setMenuVisible(!menuVisible);
+
+  if (loadingAuth) return <ActivityIndicator size="large" color="#0000ff" />;
 
   return (
-    <View
-      style={{
-        flex: 1,
-        backgroundColor: "#f5f5f5",
-        padding: 20,
-        width: "100%",
-      }}
-    >
-      {/* ✅ Fetch API Key Before Rendering */}
+    <View style={{ flex: 1, backgroundColor: "#f5f5f5", padding: 20, width: "100%" }}>
       <IndexScreen onApiKeyLoaded={setApiKey} />
-  
       <Header />
       <InputField input={input} onChange={handleInputChange} />
       <ActionButtons isQuestion={isQuestion} onSubmit={handleSubmit} />
       <HistoryList history={history} />
-  
-      {/* ✅ Hamburger Menu and SettingsButton on the same level */}
       <View style={styles.bottomContainer}>
         <Pressable onPress={toggleMenu} style={styles.hamburger}>
           <Icon name="menu" size={24} color="#333" />
         </Pressable>
         <SettingsButton style={styles.settingsButton} />
       </View>
-  
-      {/* ✅ Menu Modal */}
-      <Modal
-        visible={menuVisible}
-        transparent={true}
-        animationType="slide"
-        onRequestClose={toggleMenu}
-      >
+      <Modal visible={menuVisible} transparent={true} animationType="slide" onRequestClose={toggleMenu}>
         <View style={styles.modalOverlay}>
           <View style={styles.menu}>
+            <Text style={styles.menuItem}>Logged in as: {userEmail || "Loading..."}</Text>
             <Text style={styles.menuItem}>
-              Logged in as: {userEmail || "Loading..."}
-            </Text>
-            <Text style={styles.menuItem}>
-              Stored API Key:{" "}
-              {apiKey
-                ? `${apiKey.trim().slice(0, 4)}...${apiKey.trim().slice(-4)}`
-                : "No API key found"}
+              Stored API Key: {apiKey ? `${apiKey.slice(0, 4)}...${apiKey.slice(-4)}` : "No API key found"}
             </Text>
             <Pressable onPress={handleSignOut} style={styles.menuButton}>
               <Text style={styles.menuButtonText}>Sign Out</Text>
@@ -263,6 +194,7 @@ export default function AskJanet() {
     </View>
   );
 }
+
 const styles = StyleSheet.create({
   bottomContainer: {
     width: "100%",
@@ -270,17 +202,13 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
     padding: 10,
-    position: 'absolute',
+    position: "absolute",
     bottom: 0,
     left: 0,
-    backgroundColor: '#f5f5f5', // Match the background color
+    backgroundColor: "#f5f5f5",
   },
-  hamburger: {
-    padding: 10,
-  },
-  settingsButton: {
-    marginRight: 10,
-  },
+  hamburger: { padding: 10 },
+  settingsButton: { marginRight: 10 },
   modalOverlay: {
     flex: 1,
     backgroundColor: "rgba(0, 0, 0, 0.5)",
@@ -293,11 +221,7 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 10,
     width: "100%",
   },
-  menuItem: {
-    fontSize: 16,
-    marginBottom: 10,
-    color: "#333",
-  },
+  menuItem: { fontSize: 16, marginBottom: 10, color: "#333" },
   menuButton: {
     paddingVertical: 10,
     backgroundColor: "#007AFF",
@@ -305,9 +229,5 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginTop: 10,
   },
-  menuButtonText: {
-    color: "#fff",
-    fontSize: 16,
-    fontWeight: "600",
-  },
+  menuButtonText: { color: "#fff", fontSize: 16, fontWeight: "600" },
 });

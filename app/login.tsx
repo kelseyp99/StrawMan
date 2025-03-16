@@ -48,7 +48,7 @@ export default function Login() {
         setUserEmail(user.email);
         setUserUID(user.uid); // Save UID in state
         setUID(user.uid); // Update global UID
-        saveUID(user.uid); // Save to file
+        //saveUID(user.uid); // Save to file
         router.replace("/(tabs)");
       } else {
         setUserEmail(null);
@@ -60,16 +60,16 @@ export default function Login() {
   }, []);
 
   // Save UID to file
-  const saveUID = async (uid) => {
-    try {
-      await FileSystem.writeAsStringAsync(STORAGE_FILE, uid, { encoding: FileSystem.Encoding.UTF_8 });
-      console.log("UID saved to file:", uid);
-      const fileInfo = await FileSystem.getInfoAsync(STORAGE_FILE);
-      console.log("File exists after save:", fileInfo.exists);
-    } catch (error) {
-      console.error("Error saving UID:", error);
-    }
-  };
+  // const saveUID = async (uid) => {
+  //   try {
+  //     await FileSystem.writeAsStringAsync(STORAGE_FILE, uid, { encoding: FileSystem.Encoding.UTF_8 });
+  //     console.log("UID saved to file:", uid);
+  //     const fileInfo = await FileSystem.getInfoAsync(STORAGE_FILE);
+  //     console.log("File exists after save:", fileInfo.exists);
+  //   } catch (error) {
+  //     console.error("Error saving UID:", error);
+  //   }
+  // };
 
   // Remove UID from file
   const removeUID = async () => {
@@ -87,7 +87,7 @@ export default function Login() {
       console.log("Signed in UID:", userCredential.user.uid);
       setUserUID(userCredential.user.uid);
       setUID(userCredential.user.uid); // Update global UID
-      saveUID(userCredential.user.uid);
+      //saveUID(userCredential.user.uid);
       router.replace("/(tabs)");
     } catch (err) {
       setError(err.message);
@@ -100,7 +100,7 @@ export default function Login() {
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       console.log("Signed up UID:", userCredential.user.uid);
       setUserUID(userCredential.user.uid);
-      saveUID(userCredential.user.uid);
+      //saveUID(userCredential.user.uid);
       router.replace("/(tabs)");
     } catch (err) {
       setError(err.message);
