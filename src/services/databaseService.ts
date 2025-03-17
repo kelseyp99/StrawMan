@@ -186,17 +186,34 @@ export async function queryAllFieldsByCategories(categories: string[]): Promise<
 // Database functions for Discussions //
 //////////////////////////////////////////
 
+/*************  ✨ Codeium Command 🌟  *************/
 export async function addOrUpdateDiscussion(
   description: string,
   typeSay: string = "tell",
   id?: string
 ): Promise<void> {
+  console.log("Entering addOrUpdateDiscussion");
   const uid = getUID(); // Adding UID for user tracking
   console.log(`Adding or updating discussion with description: ${description}` ,"uid:", uid);
   try {
+    console.log("Creating the document reference");
     const docRef = id 
       ? doc(db, "Discussion", String(id)) 
       : doc(collection(db, "Discussion"));
+    console.log("Setting the document with the following data:", { 
+      description, 
+      typeSay, 
+      cleared: false, 
+      timestamp: new Date(),
+      uid // This will be the user identifier in the Firestore document
+    });
+    await setDoc(docRef, { 
+      description, 
+      typeSay, 
+      cleared: false, 
+      timestamp: new Date(),
+      uid // This will be the user identifier in the Firestore document
+    }, { merge: true });
       await setDoc(docRef, { 
         description, 
         typeSay, 
@@ -209,6 +226,7 @@ export async function addOrUpdateDiscussion(
     console.error("Error adding/updating discussion:", error);
   }
 }
+/******  43cc367a-0a99-406d-b336-541795a49e7e  *******/
 
 export async function getDiscussions(lastX?: number, discussionId?: string): Promise<any[]> {
   try {

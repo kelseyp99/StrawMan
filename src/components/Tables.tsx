@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { View, Text, TextInput, StyleSheet, TouchableOpacity, FlatList, KeyboardAvoidingView, Platform } from "react-native";
 import { format } from "date-fns";
 import { db } from "../firebaseConfig";
-import { collection, getDocs } from "firebase/firestore";
+import { collection, doc, getDocs } from "firebase/firestore";
 import { getUID } from "../utils/uidManager"; // Import UID manager
 
 interface SwipeableTablePropsType {
@@ -29,7 +29,7 @@ const MainComponent = () => {
         console.log("Fetching data from Firestore...");
         const activityLogSnapshot = await getDocs(collection(db, "ActivityLog"));
         const discussionSnapshot = await getDocs(collection(db, "Discussion"));
-        const uid = getUID(); // Assuming getUID() is a function that returns the user's UID
+        const uid = getUID(); // Assuming getUID() returns the user's UID
 
         setTables([
           {
@@ -42,16 +42,21 @@ const MainComponent = () => {
               { Header: "Cleared", accessor: "cleared", hidden: true },
             ],
             data: activityLogSnapshot.docs
-              .map((doc) => ({
-                id: doc.id,
-                ...doc.data(),
-                timestamp: doc.data().timestamp
-                  ? format(new Date(doc.data().timestamp.toDate()), `M/d/yy \n h:mm a`)
-                  : "N/A",
-                cleared: doc.data().cleared ? "✔️ Yes" : "❌ No",
-                uid: doc.data().uid, // Add the uid here
-              }))
-              .filter((doc) => doc.uid === uid), // Filter data based on uid
+              .map((doc) => {
+                const data = doc.data();
+                return {
+                  id: doc.id,
+                  ...data,
+                  timestamp: data.timestamp
+                    ? format(new Date(data.timestamp.toDate()), "M/d/yy \n h:mm a")
+                    : "N/A",
+                  cleared: data.cleared ? "✔️ Yes" : "❌ No",
+                  uid: data.uid,
+                  rawTimestamp: data.timestamp ? data.timestamp.toDate() : new Date(0), // For sorting
+                };
+              })
+              .filter((doc) => doc.uid === uid)
+              .sort((a, b) => b.rawTimestamp - a.rawTimestamp), // Descending: newest first
           },
           {
             name: "Discussion Data",
@@ -63,16 +68,21 @@ const MainComponent = () => {
               { Header: "Cleared", accessor: "cleared", style: styles.leftAlignCell },
             ],
             data: discussionSnapshot.docs
-              .map((doc) => ({
-                id: doc.id,
-                ...doc.data(),
-                timestamp: doc.data().timestamp
-                  ? format(new Date(doc.data().timestamp.toDate()), "M/d/yy \n h:mm a")
-                  : "N/A",
-                cleared: doc.data().cleared ? "✔️ Yes" : "❌ No",
-                uid: doc.data().uid, // Add the uid here
-              }))
-              .filter((doc) => doc.uid === uid), // Filter data based on uid
+              .map((doc) => {
+                const data = doc.data();
+                return {
+                  id: doc.id,
+                  ...data,
+                  timestamp: data.timestamp
+                    ? format(new Date(data.timestamp.toDate()), "M/d/yy \n h:mm a")
+                    : "N/A",
+                  cleared: data.cleared ? "✔️ Yes" : "❌ No",
+                  uid: data.uid,
+                  rawTimestamp: data.timestamp ? data.timestamp.toDate() : new Date(0), // For sorting
+                };
+              })
+              .filter((doc) => doc.uid === uid)
+              .sort((a, b) => b.rawTimestamp - a.rawTimestamp), // Descending: newest first
           },
         ]);
       } catch (error) {
@@ -83,15 +93,15 @@ const MainComponent = () => {
     if (tables.length === 0) {
       fetchData();
     }
-  }, [tables.length]);
+}, [tables.length]);
 
-  useEffect(() => {
-    if (tables.length > 0) {
-      setInitialized(true);
-    }
-  }, [tables]);
+useEffect(() => {
+  if (tables.length > 0) {
+    setInitialized(true);
+  }
+}, [tables]);
 
-  // Sorting Function
+// Sorting Function
   const handleSort = (column: string) => {
     setSortBy((prev) => {
       const newOrder = prev?.column === column && prev.order === "asc" ? "desc" : "asc";
