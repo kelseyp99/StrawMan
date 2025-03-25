@@ -7,7 +7,7 @@ import {
   onAuthStateChanged,
   signOut,
 } from "firebase/auth";
-import { useRouter } from "expo-router";
+import { useRouter } from "expo-router/build/hooks";
 import Icon from "react-native-vector-icons/MaterialIcons";
 import Header from "../src/components/Header";
 import * as FileSystem from 'expo-file-system'; // File system for persistence
