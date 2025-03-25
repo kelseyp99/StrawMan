@@ -4,7 +4,7 @@ import { View, Image, StyleSheet } from "react-native";
 const FakeBanner = () => {
   return (
     <View style={styles.container}>
-      <Image source={require("../assets/images/WholeFoods.png")} style={styles.banner} />
+      <Image source={require("../../assets/images/WholeFoods.png")} style={styles.banner} />
     </View>
   );
 };
