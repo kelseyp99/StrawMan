@@ -171,12 +171,7 @@ export default function Login() {
       </TouchableOpacity>
       <View style={{ height: 1, width: "100%", backgroundColor: "#ccc", marginVertical: 10 }} />
 
-      <TouchableOpacity style={styles.googleButton} onPress={handleGoogleLogin}>
-        <Image
-          source={require("../assets/images/android_light_sq.png")}
-          style={{ width: 200, height: 50, resizeMode: "contain" }}
-        />
-      </TouchableOpacity>
+
 
       <TouchableOpacity style={styles.facebookButton} onPress={handleFacebookLogin}>
         <Icon name="facebook" size={20} color="#fff" style={styles.socialIcon} />
