@@ -58,11 +58,7 @@ crash_log.txt
 # Exclude node_modules
 node_modules/
 
-# Exclude any large image or binary files (check if needed)
-*.png
-*.jpg
-*.jpeg
-*.gif
+
 
 # Ignore all JavaScript files
 *.js
