@@ -7,7 +7,7 @@
     "development": {
       "developmentClient": false,
       "distribution": "internal",
-      "channel": "development", // Optional: Links to OTA updates if you use them
+      "channel": "development",
       "android": {
         "buildType": "apk"
       },
@@ -17,7 +17,7 @@
     },
     "preview": {
       "distribution": "internal",
-      "channel": "preview", // Optional: For consistency
+      "channel": "preview",
       "android": {
         "buildType": "apk"
       },
@@ -29,16 +29,28 @@
       "env": {
         "EXPO_PUBLIC_GIT_BRANCH": "main"
       },
-      "channel": "production", // Optional: For consistency
+      "channel": "production",
       "android": {
         "buildType": "app-bundle"
       },
       "ios": {
         "simulator": false
       }
+    },
+    "beta": {
+      "distribution": "store",
+      "channel": "beta",
+      "android": {
+        "buildType": "app-bundle"
+      }
     }
   },
   "submit": {
-    "production": {}
+    "production": {},
+    "beta": {
+      "android": {
+        "track": "beta"
+      }
+    }
   }
 }
