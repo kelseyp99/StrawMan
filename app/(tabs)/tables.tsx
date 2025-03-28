@@ -1,6 +1,7 @@
 import MainComponent from '../../src/components/Tables';
 import React from 'react';
 import { SafeAreaView, ScrollView, StyleSheet, Text } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 const TablesScreen = () => {
   return (
@@ -10,7 +11,9 @@ const TablesScreen = () => {
         style={styles.scroll}
         contentContainerStyle={styles.scrollContent}>
         {/* <Text style={styles.title}>Tables Screen</Text> */}
-        <MainComponent />
+        <GestureHandlerRootView style={{ flex: 1 }}>
+          <MainComponent />
+        </GestureHandlerRootView>
       </ScrollView>
     </SafeAreaView>
   );
