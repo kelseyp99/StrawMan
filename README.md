@@ -1,6 +1,11 @@
-# Welcome to your Expo app 👋
+GIT WSL token
+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
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+google service  key
+lifelog-f2904-b5d58f4dfdec.json
+
+# Welcome to your Expo app 👋
+ is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
 
 ## Get started
 
