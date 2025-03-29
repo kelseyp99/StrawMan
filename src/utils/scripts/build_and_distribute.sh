@@ -1,5 +1,5 @@
 #!/bin/bash
-
+# ./src/utils/scripts/build_and_distribute.sh --build-only
 # Variables
 PROJECT_DIR="/home/kelseyp99/projects/LifeLog"
 SOURCE_FILE="$PROJECT_DIR/build-1743087341496.aab"  # Adjust if the build name changes
@@ -18,6 +18,12 @@ set -e
 command_exists() {
     command -v "$1" >/dev/null 2>&1
 }
+
+BUILD_ONLY=false
+if [[ "$1" == "--build-only" ]]; then
+    BUILD_ONLY=true
+fi
+
 
 # Step 1: Set up Android environment and build the app
 echo "Setting up Android environment and building the app..."
@@ -54,7 +60,7 @@ fi
 
 # Add an exit condition
 echo "Build completed. Exiting script as requested."
-exit 0  # Exit with success status
+#exit 0  # Exit with success status
 
 # Step 3: Check if the source .aab file exists
 if [ ! -f "$SOURCE_FILE" ]; then
@@ -75,6 +81,12 @@ if [ -d "$WINDOWS_DEST" ]; then
 else
     echo "Warning: $WINDOWS_DEST not accessible. Skipping copy to Windows."
 fi
+
+if $BUILD_ONLY; then
+    echo "Build-only flag detected. Exiting after build and optional APK install."
+    exit 0
+fi
+
 
 # Step 5: Check and install Firebase CLI if not installed
 if ! command_exists firebase; then
