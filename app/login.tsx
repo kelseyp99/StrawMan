@@ -170,20 +170,17 @@ export default function Login() {
         <Text style={styles.buttonText}>Sign Up</Text>
       </TouchableOpacity>
       <View style={{ height: 1, width: "100%", backgroundColor: "#ccc", marginVertical: 10 }} />
-
-
-
+      {/* Google Login Button */}
+      <TouchableOpacity style={styles.googleButton} onPress={handleGoogleLogin}>
+        <Image
+          source={require("../assets/images/google/signin-assets/Android/svg/light/android_light_sq_SI.png")}
+          style={{ width: 200, height: 50, resizeMode: "corntain" }}
+        />
+      </TouchableOpacity>
       <TouchableOpacity style={styles.facebookButton} onPress={handleFacebookLogin}>
         <Icon name="facebook" size={20} color="#fff" style={styles.socialIcon} />
         <Text style={styles.facebookButtonText}>Log in with Facebook</Text>
       </TouchableOpacity>
-      
-     
-
-
-
-
-
       {userEmail && (
         <View style={styles.logoutContainer}>
           <Text style={styles.loggedInText}>Logged in as: {userEmail}</Text>

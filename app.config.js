@@ -23,7 +23,7 @@ export default ({ config }) => {
         buildProperties: {
           enableHermes: true
         },
-        package: "com.anonymous.lifelog"
+        package: "com.anonymous.lifelog2"
       },
       plugins: ["expo-router"],
       web: {
