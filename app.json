@@ -1,7 +1,7 @@
 {
     "expo": {
       "name": "LifeLog",
-      "slug": "LifeLog",
+      "slug": "LifeLog", // Changed from "lifelog"
       "version": "1.0.0",
       "android": {
         "package": "com.anonymous.lifelog2",
