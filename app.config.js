@@ -1,6 +1,7 @@
-import 'dotenv/config';
+// app.config.js
+const { config } = require('dotenv').config();
 
-export default ({ config }) => {
+module.exports = ({ config }) => {
   return {
     ...config,
     expo: {
@@ -25,17 +26,20 @@ export default ({ config }) => {
         },
         package: "com.anonymous.lifelog2"
       },
+      extra: {
+        "react-native-google-mobile-ads": {
+          "android_app_id": "ca-app-pub-1315319831980259~1158662288"
+        },
+        EXPO_PUBLIC_IS_EXPO_GO: process.env.EXPO_PUBLIC_IS_EXPO_GO || "true",
+        eas: {
+          projectId: "a27bcb78-af2a-4ef8-adeb-7fae3e17731d"
+        }
+      },
       plugins: ["expo-router"],
       web: {
         bundler: "metro",
         output: "static",
         favicon: "./assets/images/favicon.png"
-      },
-      extra: {        
-        EXPO_PUBLIC_IS_EXPO_GO: process.env.EXPO_PUBLIC_IS_EXPO_GO ?? "true",
-        eas: {
-          projectId: "a27bcb78-af2a-4ef8-adeb-7fae3e17731d"
-        }
       },
       owner: "kelseyp99"
     }
