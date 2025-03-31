@@ -1,0 +1,11 @@
+{
+    "expo": {
+      "name": "LifeLog",
+      "slug": "LifeLog",
+      "version": "1.0.0",
+      "android": {
+        "package": "com.anonymous.lifelog2",
+        "googleMobileAdsAppId": "ca-app-pub-1315319831980259~1158662288"
+      }
+    }
+  }
