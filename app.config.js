@@ -31,7 +31,8 @@ export default ({ config }) => {
         output: "static",
         favicon: "./assets/images/favicon.png"
       },
-      extra: {
+      extra: {        
+        EXPO_PUBLIC_IS_EXPO_GO: process.env.EXPO_PUBLIC_IS_EXPO_GO ?? "true",
         eas: {
           projectId: "a27bcb78-af2a-4ef8-adeb-7fae3e17731d"
         }
