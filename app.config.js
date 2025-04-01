@@ -10,7 +10,7 @@ module.exports = ({ config }) => {
       slug: expoConfig.slug || "LifeLog",
       android: {
         ...(expoConfig.android || {}),
-        package: expoConfig.android && expoConfig.android.package ? expoConfig.android.package : "com.anonymous.lifelog2"
+        package: expoConfig.android && expoConfig.android.package ? expoConfig.android.package : "com.anonymous.lifelog"
       },
       extra: {
         ...(expoConfig.extra || {}),

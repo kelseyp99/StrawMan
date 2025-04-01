@@ -16,7 +16,7 @@
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "package": "com.anonymous.lifelog2"
+      "package": "com.anonymous.lifelog"
     },
     "plugins": ["expo-router"],
     "web": {
