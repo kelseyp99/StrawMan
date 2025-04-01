@@ -1,11 +1,37 @@
 {
-    "expo": {
-      "name": "LifeLog",
-      "slug": "LifeLog", // Changed from "lifelog"
-      "version": "1.0.0",
-      "android": {
-        "package": "com.anonymous.lifelog2",
-        "googleMobileAdsAppId": "ca-app-pub-1315319831980259~1158662288"
+  "expo": {
+    "name": "LifeLog",
+    "slug": "LifeLog",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "src/assets/images/ask-janet-icon.png",
+    "scheme": "lifelog",
+    "userInterfaceStyle": "automatic",
+    "ios": {
+      "supportsTablet": true,
+      "usesAppTrackingTransparency": true
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/adaptive-icon.png",
+        "backgroundColor": "#ffffff"
+      },
+      "package": "com.anonymous.lifelog2"
+    },
+    "plugins": ["expo-router"],
+    "web": {
+      "bundler": "metro",
+      "output": "static",
+      "favicon": "./assets/images/favicon.png"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "a27bcb78-af2a-4ef8-adeb-7fae3e17731d"
       }
-    }
+    },
+    "owner": "kelseyp99"
+  },
+  "react-native-google-mobile-ads": {
+    "android_app_id": "ca-app-pub-1315319831980259~1158662288"
   }
+}
