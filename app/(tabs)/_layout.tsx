@@ -1,4 +1,3 @@
-//\app\(tabs)\_layout.tsx 
 import { Tabs } from "expo-router";
 import { View, StyleSheet } from "react-native";
 import { HapticTab } from "../../src/components/HapticTab";
@@ -8,7 +7,11 @@ import { Colors } from "../../constants/Colors";
 import { useColorScheme } from "../../hooks/useColorScheme";
 import MaterialCommunityIcons from "react-native-vector-icons/MaterialCommunityIcons";
 import FakeAdMobBanner from "../../src/components/FakeAdMobBanner";
+import InlineAd from "../../src/components/InlineAd";
+import Constants from 'expo-constants';
 import React from "react";
+
+const isExpoGo = Constants.expoConfig?.extra?.EXPO_PUBLIC_IS_EXPO_GO === "true";
 
 export default function TabLayout() {
   const colorScheme = useColorScheme();
@@ -48,12 +51,11 @@ export default function TabLayout() {
           }}
         />
       </Tabs>
-      <FakeAdMobBanner />
+      {isExpoGo ? <FakeAdMobBanner /> : <InlineAd />}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  adBanner: { position: "absolute", bottom: 0, width: "100%" },
 });
