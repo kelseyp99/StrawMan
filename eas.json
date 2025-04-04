@@ -5,7 +5,7 @@
   },
   "build": {
     "development": {
-      "developmentClient": false,
+      "developmentClient": true,  // Changed to true
       "distribution": "internal",
       "channel": "development",
       "android": {
