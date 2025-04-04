@@ -110,3 +110,6 @@ yarn-error.*
 
 # @end expo-clibuild-*.aab
 lifelog-f2904-b5d58f4dfdec.json
+
+*.tflite
+*.bin
