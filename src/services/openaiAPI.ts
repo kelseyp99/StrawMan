@@ -12,7 +12,7 @@ export interface ModelAPIkey {
   endPointURL: string;
 }
 
-interface ActivityInput {
+export interface ActivityInput {
   categories: string[]; // List of categories
   description: string;  // Activity descriptionf
 }

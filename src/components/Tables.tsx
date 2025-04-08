@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from "react";
-import { View, Text, TextInput, StyleSheet, TouchableOpacity, FlatList, KeyboardAvoidingView, Platform, Modal } from "react-native";
+import { View, Text, TextInput, StyleSheet, TouchableOpacity, FlatList, KeyboardAvoidingView, Platform, Modal, Alert } from "react-native";
 import { format } from "date-fns";
 import { db } from "../firebaseConfig";
-import { collection, doc, getDocs, deleteDoc, updateDoc } from "firebase/firestore";
+import { collection, doc, getDocs, deleteDoc, updateDoc, DocumentData, QuerySnapshot } from "firebase/firestore";
 import { getUID } from "../utils/uidManager";
 import Swipeable from "react-native-gesture-handler/Swipeable";
+import { addOrUpdateActivityLog, addOrUpdateGPTResponse, getDistinctCategories } from "@/services/databaseService";
+import { processPhrase } from "@/services/phraseProcessor";
 
 interface SwipeableTablePropsType {
   name: string;
@@ -27,15 +29,19 @@ const MainComponent = () => {
   const [editDesc, setEditDesc] = useState("");
   const [editTableName, setEditTableName] = useState("");
   const [editItemId, setEditItemId] = useState("");
+  const [discussionSnapshot, setDiscussionSnapshot] = useState<QuerySnapshot<DocumentData, DocumentData> | null>(null);
 
+  // Fetch initial data and store discussionSnapshot
   useEffect(() => {
     const fetchData = async () => {
       try {
         console.log("Fetching data from Firestore...");
         const activityLogSnapshot = await getDocs(collection(db, "ActivityLog"));
-        const discussionSnapshot = await getDocs(collection(db, "Discussion"));
+        const discussionSnap = await getDocs(collection(db, "Discussion")); // Store this
+        setDiscussionSnapshot(discussionSnap); // Save for later use
         const uid = getUID();
-
+        
+        console.log("fetching table data");
         setTables([
           {
             name: "Activity Log Data",
@@ -72,7 +78,7 @@ const MainComponent = () => {
               { Header: "Desc", accessor: "description", style: styles.leftAlignCell },
               { Header: "Cleared", accessor: "cleared", style: styles.leftAlignCell },
             ],
-            data: discussionSnapshot.docs
+            data: discussionSnap.docs
               .map((doc) => {
                 const data = doc.data();
                 return {
@@ -99,6 +105,13 @@ const MainComponent = () => {
       fetchData();
     }
   }, [tables.length]);
+
+  // Trigger prompt2UpdateActivityLog when switching to Activity Log Data
+  useEffect(() => {
+    if (initialized && currentTableIndex === 0 && discussionSnapshot) {
+      prompt2UpdateActivityLog(discussionSnapshot);
+    }
+  }, [currentTableIndex, initialized, discussionSnapshot]);
 
   useEffect(() => {
     if (tables.length > 0) {
@@ -161,8 +174,8 @@ const MainComponent = () => {
   const handleEdit = (tableName: string, itemId: string, currentDesc: string) => {
     setEditTableName(tableName);
     setEditItemId(itemId);
-    setEditDesc(currentDesc || ""); // Pre-fill with current description
-    setEditModalVisible(true); // Show modal
+    setEditDesc(currentDesc || "");
+    setEditModalVisible(true);
   };
 
   // Save Edit Function
@@ -185,14 +198,88 @@ const MainComponent = () => {
           )
         );
         console.log(`Updated description for item ${editItemId} in ${collectionName}`);
-        setEditModalVisible(false); // Hide modal
+        setEditModalVisible(false);
       } catch (error) {
         console.error("Error updating description:", error);
       }
     }
   };
 
-  // Render Right Swipe Action (Delete)
+  function prompt2UpdateActivityLog(discussionSnapshot: QuerySnapshot<DocumentData, DocumentData>): void {
+    console.log("inside prompt2UpdateActivityLog");
+    if (!discussionSnapshot || discussionSnapshot.empty) {
+      console.log('No documents in snapshot to process.');
+      return;
+    }
+
+    const unclearedDocs = discussionSnapshot.docs.filter(
+      (doc) => doc.data().cleared === false
+    );
+
+    if (unclearedDocs.length === 0) {
+      console.log('No uncleared documents to process.');
+      return;
+    }
+
+    const discussionList = unclearedDocs
+      .map((doc) => `"${doc.data().description}"`)
+      .join(', ');
+    
+    Alert.alert(
+      'Update Activity Log',
+      `Do you want to update the Activity Log with these discussions: ${discussionList}?`,
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+        {
+          text: 'Yes',
+          onPress: async () => {
+            try {
+              const distinctCategories = await getDistinctCategories();
+
+              for (const docSnapshot of unclearedDocs) {
+                const discussionTyped = {
+                  id: docSnapshot.id,
+                  discussionId: docSnapshot.data().id,
+                  description: docSnapshot.data().description,
+                  timestamp: docSnapshot.data().timestamp?.toDate() || new Date(),
+                  typeSay: docSnapshot.data().typeSay,
+                  cleared: docSnapshot.data().cleared,
+                };
+
+                if (!discussionTyped.cleared) { 
+                  console.log('Processing Discussion:', discussionTyped.id);                 
+                  const activityAnalysis = await processPhrase({
+                    categories: distinctCategories,
+                    description: discussionTyped.description,
+                  });
+    
+                  await addOrUpdateGPTResponse(
+                    discussionTyped.id,
+                    JSON.stringify(activityAnalysis),
+                    'updateDB'
+                  );
+                }
+                const docRef = doc(db, 'Discussion', discussionTyped.id); // Match case with fetch
+                await updateDoc(docRef, { cleared: true }); // Match field case
+              }
+              // Note: addOrUpdateActivityLog is called but not awaited here—ensure it’s intentional
+              addOrUpdateActivityLog();
+
+              Alert.alert('Success', `${unclearedDocs.length} Activity Log entries updated successfully!`);
+            } catch (error) {
+              console.error('Error updating Activity Log:', error);
+              Alert.alert('Error', 'Failed to update Activity Log.');
+            }
+          },
+        },
+      ],
+      { cancelable: true }
+    );
+  }
+
   const renderRightActions = (tableName: string, itemId: string) => (
     <TouchableOpacity
       style={styles.deleteButton}
@@ -202,7 +289,6 @@ const MainComponent = () => {
     </TouchableOpacity>
   );
 
-  // Render Left Swipe Action (Edit)
   const renderLeftActions = (tableName: string, itemId: string, currentDesc: string) => (
     <TouchableOpacity
       style={styles.editButton}
@@ -219,7 +305,6 @@ const MainComponent = () => {
     >
       {initialized && (
         <>
-          {/* Navigation Between Tables */}
           <View style={styles.navigation}>
             {tables.map((table, index) => (
               <TouchableOpacity
@@ -234,7 +319,6 @@ const MainComponent = () => {
 
           <Text style={styles.tableHeader}>{tables[currentTableIndex].name}</Text>
 
-          {/* Filters per Column */}
           <View style={styles.filterRow}>
             {tables[currentTableIndex].columns.map((col) =>
               !col.hidden ? (
@@ -251,7 +335,6 @@ const MainComponent = () => {
             )}
           </View>
 
-          {/* Table Headers */}
           <View style={styles.headerRow}>
             {tables[currentTableIndex].columns.map((col) =>
               !col.hidden ? (
@@ -268,7 +351,6 @@ const MainComponent = () => {
             )}
           </View>
 
-          {/* FlatList with Swipeable */}
           <FlatList
             data={filteredData()}
             keyExtractor={(item) => item.id}
@@ -290,7 +372,6 @@ const MainComponent = () => {
             )}
           />
 
-          {/* Edit Modal */}
           <Modal
             animationType="slide"
             transparent={true}
@@ -330,6 +411,7 @@ const MainComponent = () => {
   );
 };
 
+// Styles remain unchanged
 const styles = StyleSheet.create({
   container: { flex: 1, padding: 10, backgroundColor: "#f9f9f9" },
   navigation: { flexDirection: "row", justifyContent: "center", marginBottom: 10 },

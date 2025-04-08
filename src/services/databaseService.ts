@@ -1125,6 +1125,26 @@ export async function expandFromAbbreviation(discussion: string): Promise<string
     
       console.log("Data restoration completed!");
     }
+
+
+    export async function getRules() {
+      try {
+        const rulesRef = collection(db, "Rules"); 
+        
+        // Query rules, ordering by isRegex (descending, so true comes first) then priority
+        const q = query(rulesRef, 
+          orderBy('isRegex', 'desc'),
+          orderBy('priority', 'asc')
+        );
+        const snapshot = await getDocs(q);
+    
+        const rules = snapshot.docs.map(doc => doc.data());
+        return rules;
+      } catch (error) {
+        console.error('Error fetching rules:', error);
+        throw error;
+      }
+    }
     
     // Run the function
 //    restoreLostData();

@@ -142,6 +142,7 @@ export default function AskJanet() {
       await addOrUpdateDiscussion(currentInput, isQuestion ? "ask" : "tell");
       setInput("");
       fetchDiscussions();
+      console.log("made it here")
       if (isQuestion) {
         const aiResponse = responses
           .filter((response) => response.responseType === "gpt response")
