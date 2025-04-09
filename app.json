@@ -18,7 +18,10 @@
       },
       "package": "com.anonymous.lifelog"
     },
-    "plugins": ["expo-router"],
+    "plugins": [
+      "expo-router",
+      "expo-dev-client" // Added this
+    ],
     "web": {
       "bundler": "metro",
       "output": "static",
@@ -29,7 +32,8 @@
         "projectId": "a27bcb78-af2a-4ef8-adeb-7fae3e17731d"
       }
     },
-    "owner": "kelseyp99"
+    "owner": "kelseyp99",
+    "jsEngine": "hermes" // Explicitly added for clarity
   },
   "react-native-google-mobile-ads": {
     "android_app_id": "ca-app-pub-1315319831980259~1158662288"
