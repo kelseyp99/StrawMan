@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { View, Text, TextInput, StyleSheet, TouchableOpacity, FlatList, KeyboardAvoidingView, Platform, Modal, Alert } from "react-native";
+import { View, Text, TextInput, StyleSheet, TouchableOpacity, FlatList, KeyboardAvoidingView, Platform, Modal, Alert, Switch } from "react-native";
 import { format } from "date-fns";
 import { db } from "../firebaseConfig";
 import { collection, doc, getDocs, deleteDoc, updateDoc, DocumentData, QuerySnapshot } from "firebase/firestore";
@@ -19,7 +19,7 @@ interface SwipeableTablePropsType {
   }[];
 }
 
-const MainComponent = () => {
+const MainComponent: React.FC = () => {
   const [tables, setTables] = useState<SwipeableTablePropsType[]>([]);
   const [sortBy, setSortBy] = useState<{ column: string; order: "asc" | "desc" } | null>(null);
   const [currentTableIndex, setCurrentTableIndex] = useState(0);
@@ -27,18 +27,18 @@ const MainComponent = () => {
   const [initialized, setInitialized] = useState(false);
   const [editModalVisible, setEditModalVisible] = useState(false);
   const [editDesc, setEditDesc] = useState("");
+  const [editCleared, setEditCleared] = useState(false);
   const [editTableName, setEditTableName] = useState("");
   const [editItemId, setEditItemId] = useState("");
   const [discussionSnapshot, setDiscussionSnapshot] = useState<QuerySnapshot<DocumentData, DocumentData> | null>(null);
 
-  // Fetch initial data and store discussionSnapshot
   useEffect(() => {
     const fetchData = async () => {
       try {
         console.log("Fetching data from Firestore...");
         const activityLogSnapshot = await getDocs(collection(db, "ActivityLog"));
-        const discussionSnap = await getDocs(collection(db, "Discussion")); // Store this
-        setDiscussionSnapshot(discussionSnap); // Save for later use
+        const discussionSnap = await getDocs(collection(db, "Discussion"));
+        setDiscussionSnapshot(discussionSnap);
         const uid = getUID();
         
         console.log("fetching table data");
@@ -50,7 +50,7 @@ const MainComponent = () => {
               { Header: "Date", accessor: "timestamp" },
               { Header: "Category", accessor: "category", style: styles.leftAlignCell },
               { Header: "Desc", accessor: "description", style: styles.leftAlignCell },
-              { Header: "Cleared", accessor: "cleared", hidden: true },
+              { Header: "Cleared", accessor: "cleared", style: styles.leftAlignCell }, // Visible now
             ],
             data: activityLogSnapshot.docs
               .map((doc) => {
@@ -106,7 +106,6 @@ const MainComponent = () => {
     }
   }, [tables.length]);
 
-  // Trigger prompt2UpdateActivityLog when switching to Activity Log Data
   useEffect(() => {
     if (initialized && currentTableIndex === 0 && discussionSnapshot) {
       prompt2UpdateActivityLog(discussionSnapshot);
@@ -119,7 +118,6 @@ const MainComponent = () => {
     }
   }, [tables]);
 
-  // Sorting Function
   const handleSort = (column: string) => {
     setSortBy((prev) => {
       const newOrder = prev?.column === column && prev.order === "asc" ? "desc" : "asc";
@@ -127,7 +125,6 @@ const MainComponent = () => {
     });
   };
 
-  // Filtering Function (per column)
   const filteredData = () => {
     if (tables.length === 0) return sortedData();
     return sortedData().filter((row) =>
@@ -137,10 +134,8 @@ const MainComponent = () => {
     );
   };
 
-  // Sorting Function
   const sortedData = () => {
     if (!sortBy || tables.length === 0) return tables[currentTableIndex].data;
-
     const { column, order } = sortBy;
     return [...tables[currentTableIndex].data].sort((a, b) => {
       const valueA = a[column] || "";
@@ -152,7 +147,6 @@ const MainComponent = () => {
     });
   };
 
-  // Delete Function
   const handleDelete = async (tableName: string, itemId: string) => {
     try {
       const collectionName = tableName === "Activity Log Data" ? "ActivityLog" : "Discussion";
@@ -170,37 +164,45 @@ const MainComponent = () => {
     }
   };
 
-  // Edit Function with Modal
-  const handleEdit = (tableName: string, itemId: string, currentDesc: string) => {
+  const handleEdit = (tableName: string, itemId: string, currentDesc: string, currentCleared: string) => {
     setEditTableName(tableName);
     setEditItemId(itemId);
     setEditDesc(currentDesc || "");
+    setEditCleared(currentCleared === "✔️ Yes");
     setEditModalVisible(true);
   };
 
-  // Save Edit Function
   const saveEdit = async () => {
     if (editDesc && editDesc.trim()) {
       try {
         const collectionName = editTableName === "Activity Log Data" ? "ActivityLog" : "Discussion";
         const docRef = doc(db, collectionName, editItemId);
-        await updateDoc(docRef, { description: editDesc.trim() });
+        await updateDoc(docRef, { 
+          description: editDesc.trim(),
+          cleared: editCleared,
+        });
         setTables((prevTables) =>
           prevTables.map((table) =>
             table.name === editTableName
               ? {
                   ...table,
                   data: table.data.map((item) =>
-                    item.id === editItemId ? { ...item, description: editDesc.trim() } : item
+                    item.id === editItemId 
+                      ? { 
+                          ...item, 
+                          description: editDesc.trim(),
+                          cleared: editCleared ? "✔️ Yes" : "❌ No"
+                        } 
+                      : item
                   ),
                 }
               : table
           )
         );
-        console.log(`Updated description for item ${editItemId} in ${collectionName}`);
+        console.log(`Updated item ${editItemId} in ${collectionName}`);
         setEditModalVisible(false);
       } catch (error) {
-        console.error("Error updating description:", error);
+        console.error("Error updating item:", error);
       }
     }
   };
@@ -229,16 +231,12 @@ const MainComponent = () => {
       'Update Activity Log',
       `Do you want to update the Activity Log with these discussions: ${discussionList}?`,
       [
-        {
-          text: 'Cancel',
-          style: 'cancel',
-        },
+        { text: 'Cancel', style: 'cancel' },
         {
           text: 'Yes',
           onPress: async () => {
             try {
               const distinctCategories = await getDistinctCategories();
-
               for (const docSnapshot of unclearedDocs) {
                 const discussionTyped = {
                   id: docSnapshot.id,
@@ -248,26 +246,22 @@ const MainComponent = () => {
                   typeSay: docSnapshot.data().typeSay,
                   cleared: docSnapshot.data().cleared,
                 };
-
-                if (!discussionTyped.cleared) { 
-                  console.log('Processing Discussion:', discussionTyped.id);                 
+                if (!discussionTyped.cleared) {
+                  console.log('Processing Discussion:', discussionTyped.id);
                   const activityAnalysis = await processPhrase({
                     categories: distinctCategories,
                     description: discussionTyped.description,
                   });
-    
                   await addOrUpdateGPTResponse(
                     discussionTyped.id,
                     JSON.stringify(activityAnalysis),
                     'updateDB'
                   );
                 }
-                const docRef = doc(db, 'Discussion', discussionTyped.id); // Match case with fetch
-                await updateDoc(docRef, { cleared: true }); // Match field case
+                const docRef = doc(db, 'Discussion', discussionTyped.id);
+                await updateDoc(docRef, { cleared: true });
               }
-              // Note: addOrUpdateActivityLog is called but not awaited here—ensure it’s intentional
               addOrUpdateActivityLog();
-
               Alert.alert('Success', `${unclearedDocs.length} Activity Log entries updated successfully!`);
             } catch (error) {
               console.error('Error updating Activity Log:', error);
@@ -289,20 +283,17 @@ const MainComponent = () => {
     </TouchableOpacity>
   );
 
-  const renderLeftActions = (tableName: string, itemId: string, currentDesc: string) => (
+  const renderLeftActions = (tableName: string, itemId: string, currentDesc: string, currentCleared: string) => (
     <TouchableOpacity
       style={styles.editButton}
-      onPress={() => handleEdit(tableName, itemId, currentDesc)}
+      onPress={() => handleEdit(tableName, itemId, currentDesc, currentCleared)}
     >
       <Text style={styles.editButtonText}>Edit</Text>
     </TouchableOpacity>
   );
 
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
-      style={styles.container}
-    >
+    <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={styles.container}>
       {initialized && (
         <>
           <View style={styles.navigation}>
@@ -327,9 +318,7 @@ const MainComponent = () => {
                   style={styles.filterInput}
                   placeholder={`Filter ${col.Header}`}
                   value={filters[col.accessor] || ""}
-                  onChangeText={(text) =>
-                    setFilters((prev) => ({ ...prev, [col.accessor]: text }))
-                  }
+                  onChangeText={(text) => setFilters((prev) => ({ ...prev, [col.accessor]: text }))}
                 />
               ) : null
             )}
@@ -338,11 +327,7 @@ const MainComponent = () => {
           <View style={styles.headerRow}>
             {tables[currentTableIndex].columns.map((col) =>
               !col.hidden ? (
-                <TouchableOpacity
-                  key={col.accessor}
-                  onPress={() => handleSort(col.accessor)}
-                  style={styles.headerCell}
-                >
+                <TouchableOpacity key={col.accessor} onPress={() => handleSort(col.accessor)} style={styles.headerCell}>
                   <Text>
                     {col.Header} {sortBy?.column === col.accessor ? (sortBy.order === "asc" ? "↑" : "↓") : ""}
                   </Text>
@@ -357,7 +342,7 @@ const MainComponent = () => {
             renderItem={({ item }) => (
               <Swipeable
                 renderRightActions={() => renderRightActions(tables[currentTableIndex].name, item.id)}
-                renderLeftActions={() => renderLeftActions(tables[currentTableIndex].name, item.id, item.description)}
+                renderLeftActions={() => renderLeftActions(tables[currentTableIndex].name, item.id, item.description, item.cleared)}
               >
                 <View style={styles.row}>
                   {tables[currentTableIndex].columns.map((col) =>
@@ -380,7 +365,7 @@ const MainComponent = () => {
           >
             <View style={styles.modalOverlay}>
               <View style={styles.modalContainer}>
-                <Text style={styles.modalTitle}>Edit Description</Text>
+                <Text style={styles.modalTitle}>Edit Entry</Text>
                 <TextInput
                   style={styles.modalInput}
                   value={editDesc}
@@ -388,17 +373,15 @@ const MainComponent = () => {
                   multiline
                   placeholder="Enter new description"
                 />
+                <View style={styles.switchContainer}>
+                  <Text style={styles.modalLabel}>Cleared:</Text>
+                  <Switch value={editCleared} onValueChange={setEditCleared} />
+                </View>
                 <View style={styles.modalButtons}>
-                  <TouchableOpacity
-                    style={styles.modalButton}
-                    onPress={() => setEditModalVisible(false)}
-                  >
+                  <TouchableOpacity style={styles.modalButton} onPress={() => setEditModalVisible(false)}>
                     <Text style={styles.modalButtonText}>Cancel</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.modalButton, styles.saveButton]}
-                    onPress={saveEdit}
-                  >
+                  <TouchableOpacity style={[styles.modalButton, styles.saveButton]} onPress={saveEdit}>
                     <Text style={styles.modalButtonText}>Save</Text>
                   </TouchableOpacity>
                 </View>
@@ -411,7 +394,6 @@ const MainComponent = () => {
   );
 };
 
-// Styles remain unchanged
 const styles = StyleSheet.create({
   container: { flex: 1, padding: 10, backgroundColor: "#f9f9f9" },
   navigation: { flexDirection: "row", justifyContent: "center", marginBottom: 10 },
@@ -426,68 +408,20 @@ const styles = StyleSheet.create({
   row: { flexDirection: "row", padding: 6, backgroundColor: "#fff" },
   cell: { flex: 1, textAlign: "center" },
   leftAlignCell: { textAlign: "left" },
-  deleteButton: { 
-    backgroundColor: "#ff4444", 
-    justifyContent: "center", 
-    alignItems: "center", 
-    width: 80, 
-    height: "100%" 
-  },
+  deleteButton: { backgroundColor: "#ff4444", justifyContent: "center", alignItems: "center", width: 80, height: "100%" },
   deleteButtonText: { color: "#fff", fontWeight: "bold" },
-  editButton: { 
-    backgroundColor: "#007bff", 
-    justifyContent: "center", 
-    alignItems: "center", 
-    width: 80, 
-    height: "100%" 
-  },
+  editButton: { backgroundColor: "#007bff", justifyContent: "center", alignItems: "center", width: 80, height: "100%" },
   editButtonText: { color: "#fff", fontWeight: "bold" },
-  modalOverlay: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: "rgba(0, 0, 0, 0.5)",
-  },
-  modalContainer: {
-    width: "80%",
-    backgroundColor: "#fff",
-    padding: 20,
-    borderRadius: 10,
-    alignItems: "center",
-  },
-  modalTitle: {
-    fontSize: 18,
-    fontWeight: "bold",
-    marginBottom: 10,
-  },
-  modalInput: {
-    width: "100%",
-    borderWidth: 1,
-    borderColor: "#ccc",
-    borderRadius: 5,
-    padding: 10,
-    marginBottom: 20,
-    minHeight: 60,
-  },
-  modalButtons: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    width: "100%",
-  },
-  modalButton: {
-    padding: 10,
-    borderRadius: 5,
-    backgroundColor: "#ddd",
-    width: "45%",
-    alignItems: "center",
-  },
-  saveButton: {
-    backgroundColor: "#007bff",
-  },
-  modalButtonText: {
-    color: "#fff",
-    fontWeight: "bold",
-  },
+  modalOverlay: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "rgba(0, 0, 0, 0.5)" },
+  modalContainer: { width: "80%", backgroundColor: "#fff", padding: 20, borderRadius: 10, alignItems: "center" },
+  modalTitle: { fontSize: 18, fontWeight: "bold", marginBottom: 10 },
+  modalInput: { width: "100%", borderWidth: 1, borderColor: "#ccc", borderRadius: 5, padding: 10, marginBottom: 20, minHeight: 60 },
+  switchContainer: { flexDirection: "row", alignItems: "center", marginBottom: 20 },
+  modalLabel: { fontSize: 16, marginRight: 10 },
+  modalButtons: { flexDirection: "row", justifyContent: "space-between", width: "100%" },
+  modalButton: { padding: 10, borderRadius: 5, backgroundColor: "#ddd", width: "45%", alignItems: "center" },
+  saveButton: { backgroundColor: "#007bff" },
+  modalButtonText: { color: "#fff", fontWeight: "bold" },
 });
 
 export default MainComponent;

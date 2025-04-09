@@ -78,7 +78,7 @@ export async function applyRules(discussion: string): Promise<ParsedActivity> {
 
   // 2. Fetch all rules from Firebase
   const rules = await getRules();
-console.log("Fetched rules:", rules);
+  //console.log("Fetched rules:", rules);
   // 3. Normalize input
   const normalizedInput = discussion.replace(/^I /i, '').trim();
 

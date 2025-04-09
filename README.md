@@ -5,34 +5,40 @@ google service  key
 lifelog-f2904-b5d58f4dfdec.json
 
 
-To run emulator
-
+**************************
+#To run emulator
 #kill and restart the adb server if needed
 adb kill-server
 adb start-server
-
 #view the available devices
 adb devices
-
 db -s emulator-5554 reverse tcp:8081 tcp:8081
-
 #run expo and metro
 npx expo start -c
 npx expo start --port 8081 --dev-client --tunnel
-
 #install an apk on device - mhst be development build (check eas.json "developmentClient": true,  ) 
 adb -s emulator-5556 install "C:\Users\philk\Downloads\build-1743806235439.apk"
-
 #metro/expo Press "a" to load android JS project 
 #select "Open JS Debugger" if prompted
-
 #if not already, place emulator into dev mode.  try ctrl M in emulator
 emulator-5554 shell input keyevent 82
 #select "Open JS Debugger"
-
 #install react dev client in vscode is needed
 #press J in metro/expo
 #select emulaor at top
+
+#to GIT commit and push
+git branch
+git checkout develop  (or "git checkout -b develop" If develop Doesn’t Exist)
+git status
+git add . #Stage it
+git status #verifiy
+git commit -m "a useful message"  #commit
+git push origin develop  #Push to Remote
+If you created develop locally (new branch)
+git push --set-upstream origin 
+#Verify
+git log --oneline
 
 
 # Welcome to your Expo app 👋
