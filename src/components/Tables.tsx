@@ -28,6 +28,7 @@ const MainComponent: React.FC = () => {
   const [editModalVisible, setEditModalVisible] = useState(false);
   const [editDesc, setEditDesc] = useState("");
   const [editCleared, setEditCleared] = useState(false);
+  const [editTypeSay, setEditTypeSay] = useState<"tell" | "ask">("tell"); // New state for type toggle
   const [editTableName, setEditTableName] = useState("");
   const [editItemId, setEditItemId] = useState("");
   const [discussionSnapshot, setDiscussionSnapshot] = useState<QuerySnapshot<DocumentData, DocumentData> | null>(null);
@@ -50,7 +51,7 @@ const MainComponent: React.FC = () => {
               { Header: "Date", accessor: "timestamp" },
               { Header: "Category", accessor: "category", style: styles.leftAlignCell },
               { Header: "Desc", accessor: "description", style: styles.leftAlignCell },
-              { Header: "Cleared", accessor: "cleared", style: styles.leftAlignCell }, // Visible now
+              { Header: "Cleared", accessor: "cleared", hidden: true, style: styles.leftAlignCell },
             ],
             data: activityLogSnapshot.docs
               .map((doc) => {
@@ -164,11 +165,12 @@ const MainComponent: React.FC = () => {
     }
   };
 
-  const handleEdit = (tableName: string, itemId: string, currentDesc: string, currentCleared: string) => {
+  const handleEdit = (tableName: string, itemId: string, currentDesc: string, currentCleared: string, currentTypeSay: string) => {
     setEditTableName(tableName);
     setEditItemId(itemId);
     setEditDesc(currentDesc || "");
     setEditCleared(currentCleared === "✔️ Yes");
+    setEditTypeSay(currentTypeSay === "ask" ? "ask" : "tell"); // Set initial type
     setEditModalVisible(true);
   };
 
@@ -177,10 +179,10 @@ const MainComponent: React.FC = () => {
       try {
         const collectionName = editTableName === "Activity Log Data" ? "ActivityLog" : "Discussion";
         const docRef = doc(db, collectionName, editItemId);
-        await updateDoc(docRef, { 
-          description: editDesc.trim(),
-          cleared: editCleared,
-        });
+        const updateData = editTableName === "Discussion Data" 
+          ? { description: editDesc.trim(), cleared: editCleared, typeSay: editTypeSay }
+          : { description: editDesc.trim(), cleared: editCleared };
+        await updateDoc(docRef, updateData);
         setTables((prevTables) =>
           prevTables.map((table) =>
             table.name === editTableName
@@ -191,7 +193,8 @@ const MainComponent: React.FC = () => {
                       ? { 
                           ...item, 
                           description: editDesc.trim(),
-                          cleared: editCleared ? "✔️ Yes" : "❌ No"
+                          cleared: editCleared ? "✔️ Yes" : "❌ No",
+                          ...(editTableName === "Discussion Data" && { typeSay: editTypeSay })
                         } 
                       : item
                   ),
@@ -283,10 +286,10 @@ const MainComponent: React.FC = () => {
     </TouchableOpacity>
   );
 
-  const renderLeftActions = (tableName: string, itemId: string, currentDesc: string, currentCleared: string) => (
+  const renderLeftActions = (tableName: string, itemId: string, currentDesc: string, currentCleared: string, currentTypeSay: string) => (
     <TouchableOpacity
       style={styles.editButton}
-      onPress={() => handleEdit(tableName, itemId, currentDesc, currentCleared)}
+      onPress={() => handleEdit(tableName, itemId, currentDesc, currentCleared, currentTypeSay)}
     >
       <Text style={styles.editButtonText}>Edit</Text>
     </TouchableOpacity>
@@ -342,7 +345,7 @@ const MainComponent: React.FC = () => {
             renderItem={({ item }) => (
               <Swipeable
                 renderRightActions={() => renderRightActions(tables[currentTableIndex].name, item.id)}
-                renderLeftActions={() => renderLeftActions(tables[currentTableIndex].name, item.id, item.description, item.cleared)}
+                renderLeftActions={() => renderLeftActions(tables[currentTableIndex].name, item.id, item.description, item.cleared, item.typeSay)}
               >
                 <View style={styles.row}>
                   {tables[currentTableIndex].columns.map((col) =>
@@ -377,6 +380,16 @@ const MainComponent: React.FC = () => {
                   <Text style={styles.modalLabel}>Cleared:</Text>
                   <Switch value={editCleared} onValueChange={setEditCleared} />
                 </View>
+                {editTableName === "Discussion Data" && (
+                  <View style={styles.switchContainer}>
+                    <Text style={styles.modalLabel}>Type (Tell/Ask):</Text>
+                    <Switch 
+                      value={editTypeSay === "ask"} 
+                      onValueChange={(value) => setEditTypeSay(value ? "ask" : "tell")} 
+                    />
+                    <Text>{editTypeSay}</Text>
+                  </View>
+                )}
                 <View style={styles.modalButtons}>
                   <TouchableOpacity style={styles.modalButton} onPress={() => setEditModalVisible(false)}>
                     <Text style={styles.modalButtonText}>Cancel</Text>
