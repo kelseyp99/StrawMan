@@ -1,5 +1,7 @@
 #!/bin/bash
 # ./src/utils/scripts/build_and_distribute.sh --build-only
+# cd C:\Users\philk\Downloads
+# adb -s emulator-5554 install build-1744246199106.apk
 
 # Variables
 PROJECT_DIR="/home/kelseyp99/projects/LifeLog"
