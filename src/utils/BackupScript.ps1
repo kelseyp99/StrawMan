@@ -1,6 +1,6 @@
 # Define paths  
 $projectName = "LifeLog"
-$rootProjectsFolder = "C:\Users\philk\Projects"
+$rootProjectsFolder = "C:\Users\philk\Projects2"
 $srcFolder = Join-Path -Path $rootProjectsFolder -ChildPath ($projectName + "\src")
 $rootFolder = Join-Path -Path $rootProjectsFolder -ChildPath $projectName
 $destinationRoot = "C:\Users\philk\Dropbox\smartCity\backups"
@@ -15,6 +15,7 @@ $appDestination = Join-Path -Path $destination -ChildPath "app"
 $rootFilesToInclude = @(
     ".gitignore",
     "BackupScript.ps1",
+    "build_and_distribute.sh",
     "App.tsx",
     "App.css",
     "package.json",
