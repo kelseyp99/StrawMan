@@ -18,18 +18,18 @@ export PATH=$PATH:$ANDROID_HOME/platform-tools
 rm -rf ~/.gradle/caches ~/.eas/build
 
 echo "Running EAS build for Android..."
-EXPO_PUBLIC_IS_EXPO_GO=false eas build --platform android --local --profile development --clear-cache
+stdbuf -oL EXPO_PUBLIC_IS_EXPO_GO=false eas build --platform android --local --profile development --clear-cache
 
 echo "Locating latest build artifacts..."
-LATEST_APK=$(find "$PROJECT_DIR" -maxdepth 1 -name "*.apk" -printf "%T@ %p\n" | sort -nr | head -n1 | cut -d' ' -f2-)
-LATEST_AAB=$(find "$PROJECT_DIR" -maxdepth 1 -name "*.aab" -printf "%T@ %p\n" | sort -nr | head -n1 | cut -d' ' -f2-)
+LATEST_APK=$(stdbuf -oL find "$PROJECT_DIR" -maxdepth 1 -name "*.apk" -printf "%T@ %p\n" | sort -nr | head -n1 | cut -d' ' -f2-)
+LATEST_AAB=$(stdbuf -oL find "$PROJECT_DIR" -maxdepth 1 -name "*.aab" -printf "%T@ %p\n" | sort -nr | head -n1 | cut -d' ' -f2-)
 
 echo "Latest APK: $LATEST_APK"
 echo "Latest AAB: $LATEST_AAB"
 
 if [ -d "$WINDOWS_DEST" ]; then
     if [ -n "$LATEST_APK" ]; then
-        mv "$LATEST_APK" "$WINDOWS_DEST"
+        stdbuf -oL mv "$LATEST_APK" "$WINDOWS_DEST"
         if [ $? -eq 0 ]; then
             echo "Successfully moved $LATEST_APK to $WINDOWS_DEST"
         else
@@ -38,7 +38,7 @@ if [ -d "$WINDOWS_DEST" ]; then
         fi
     fi
     if [ -n "$LATEST_AAB" ]; then
-        mv "$LATEST_AAB" "$WINDOWS_DEST"
+        stdbuf -oL mv "$LATEST_AAB" "$WINDOWS_DEST"
         if [ $? -eq 0 ]; then
             echo "Successfully moved $LATEST_AAB to $WINDOWS_DEST"
         else
@@ -52,8 +52,8 @@ else
 fi
 
 echo "Force pushing changes from WSL..."
-git add .
-git commit -m "Automated commit from WSL: Build artifacts" || echo "Nothing to commit in WSL"
-git push origin develop --force -v || { echo "Error: Failed to force push from WSL" >&2; exit 1; }
+stdbuf -oL git add .
+stdbuf -oL git commit -m "Automated commit from WSL: Build artifacts" || echo "Nothing to commit in WSL"
+stdbuf -oL git push origin develop --force -v || { echo "Error: Failed to force push from WSL" >&2; exit 1; }
 
 echo "Script completed successfully!"
