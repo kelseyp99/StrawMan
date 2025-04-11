@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { View, Text, TextInput, StyleSheet, TouchableOpacity, FlatList, KeyboardAvoidingView, Platform, Modal, Alert, Switch } from "react-native";
-import DateTimePicker from "@react-native-community/datetimepicker"; // New import
+import DateTimePicker from "@react-native-community/datetimepicker";
 import { format } from "date-fns";
 import { db } from "../firebaseConfig";
 import { collection, doc, getDocs, deleteDoc, updateDoc, DocumentData, QuerySnapshot } from "firebase/firestore";
@@ -29,9 +29,9 @@ const MainComponent: React.FC = () => {
   const [editModalVisible, setEditModalVisible] = useState(false);
   const [editDesc, setEditDesc] = useState("");
   const [editCleared, setEditCleared] = useState(false);
-  const [editTypeSay, setEditTypeSay] = useState<"tell" | "ask">("tell");
-  const [editTimestamp, setEditTimestamp] = useState<Date | null>(null); // New state for date
-  const [showDatePicker, setShowDatePicker] = useState(false); // Control picker visibility
+  const [editTimestamp, setEditTimestamp] = useState<Date>(new Date());
+  const [showDatePicker, setShowDatePicker] = useState(false); // For Android
+  const [showTimePicker, setShowTimePicker] = useState(false); // For Android
   const [editTableName, setEditTableName] = useState("");
   const [editItemId, setEditItemId] = useState("");
   const [discussionSnapshot, setDiscussionSnapshot] = useState<QuerySnapshot<DocumentData, DocumentData> | null>(null);
@@ -67,7 +67,7 @@ const MainComponent: React.FC = () => {
                     : "N/A",
                   cleared: data.cleared ? "✔️ Yes" : "❌ No",
                   uid: data.uid,
-                  rawTimestamp: data.timestamp ? data.timestamp.toDate() : new Date(0),
+                  rawTimestamp: data.timestamp ? data.timestamp.toDate() : new Date(),
                 };
               })
               .filter((doc) => doc.uid === uid)
@@ -93,7 +93,7 @@ const MainComponent: React.FC = () => {
                     : "N/A",
                   cleared: data.cleared ? "✔️ Yes" : "❌ No",
                   uid: data.uid,
-                  rawTimestamp: data.timestamp ? data.timestamp.toDate() : new Date(0),
+                  rawTimestamp: data.timestamp ? data.timestamp.toDate() : new Date(),
                 };
               })
               .filter((doc) => doc.uid === uid)
@@ -168,25 +168,27 @@ const MainComponent: React.FC = () => {
     }
   };
 
-  const handleEdit = (tableName: string, itemId: string, currentDesc: string, currentCleared: string, currentTypeSay: string, currentTimestamp: string) => {
+  const handleEdit = (tableName: string, itemId: string, currentDesc: string, currentCleared: string) => {
     setEditTableName(tableName);
     setEditItemId(itemId);
     setEditDesc(currentDesc || "");
     setEditCleared(currentCleared === "✔️ Yes");
-    setEditTypeSay(currentTypeSay === "ask" ? "ask" : "tell");
-    setEditTimestamp(currentTimestamp ? new Date(currentTimestamp.split("\n")[0] + " " + currentTimestamp.split("\n")[1]) : new Date()); // Parse timestamp
+    const table = tables.find((t) => t.name === tableName);
+    const item = table?.data.find((i) => i.id === itemId);
+    setEditTimestamp(item?.rawTimestamp || new Date());
     setEditModalVisible(true);
   };
 
   const saveEdit = async () => {
-    if (editDesc && editDesc.trim() && editTimestamp) {
+    if (editDesc && editDesc.trim()) {
       try {
         const collectionName = editTableName === "Activity Log Data" ? "ActivityLog" : "Discussion";
         const docRef = doc(db, collectionName, editItemId);
-        const updateData = editTableName === "Discussion Data" 
-          ? { description: editDesc.trim(), cleared: editCleared, typeSay: editTypeSay, timestamp: editTimestamp }
-          : { description: editDesc.trim(), cleared: editCleared, timestamp: editTimestamp };
-        await updateDoc(docRef, updateData);
+        await updateDoc(docRef, { 
+          description: editDesc.trim(),
+          cleared: editCleared,
+          timestamp: editTimestamp,
+        });
         setTables((prevTables) =>
           prevTables.map((table) =>
             table.name === editTableName
@@ -198,9 +200,10 @@ const MainComponent: React.FC = () => {
                           ...item, 
                           description: editDesc.trim(),
                           cleared: editCleared ? "✔️ Yes" : "❌ No",
-                          timestamp: format(editTimestamp, "M/d/yy \n h:mm a"),
-                          rawTimestamp: editTimestamp,
-                          ...(editTableName === "Discussion Data" && { typeSay: editTypeSay })
+                          timestamp: editTimestamp
+                            ? format(new Date(editTimestamp), "M/d/yy \n h:mm a")
+                            : "N/A",
+                          rawTimestamp: editTimestamp || new Date(),
                         } 
                       : item
                   ),
@@ -210,6 +213,8 @@ const MainComponent: React.FC = () => {
         );
         console.log(`Updated item ${editItemId} in ${collectionName}`);
         setEditModalVisible(false);
+        setShowDatePicker(false);
+        setShowTimePicker(false);
       } catch (error) {
         console.error("Error updating item:", error);
       }
@@ -292,10 +297,10 @@ const MainComponent: React.FC = () => {
     </TouchableOpacity>
   );
 
-  const renderLeftActions = (tableName: string, itemId: string, currentDesc: string, currentCleared: string, currentTypeSay: string, currentTimestamp: string) => (
+  const renderLeftActions = (tableName: string, itemId: string, currentDesc: string, currentCleared: string) => (
     <TouchableOpacity
       style={styles.editButton}
-      onPress={() => handleEdit(tableName, itemId, currentDesc, currentCleared, currentTypeSay, currentTimestamp)}
+      onPress={() => handleEdit(tableName, itemId, currentDesc, currentCleared)}
     >
       <Text style={styles.editButtonText}>Edit</Text>
     </TouchableOpacity>
@@ -351,7 +356,7 @@ const MainComponent: React.FC = () => {
             renderItem={({ item }) => (
               <Swipeable
                 renderRightActions={() => renderRightActions(tables[currentTableIndex].name, item.id)}
-                renderLeftActions={() => renderLeftActions(tables[currentTableIndex].name, item.id, item.description, item.cleared, item.typeSay, item.timestamp)}
+                renderLeftActions={() => renderLeftActions(tables[currentTableIndex].name, item.id, item.description, item.cleared)}
               >
                 <View style={styles.row}>
                   {tables[currentTableIndex].columns.map((col) =>
@@ -370,7 +375,11 @@ const MainComponent: React.FC = () => {
             animationType="slide"
             transparent={true}
             visible={editModalVisible}
-            onRequestClose={() => setEditModalVisible(false)}
+            onRequestClose={() => {
+              setEditModalVisible(false);
+              setShowDatePicker(false);
+              setShowTimePicker(false);
+            }}
           >
             <View style={styles.modalOverlay}>
               <View style={styles.modalContainer}>
@@ -382,38 +391,54 @@ const MainComponent: React.FC = () => {
                   multiline
                   placeholder="Enter new description"
                 />
-                <TouchableOpacity onPress={() => setShowDatePicker(true)}>
-                  <Text style={styles.modalLabel}>
-                    Date: {editTimestamp ? format(editTimestamp, "M/d/yy h:mm a") : "Select Date"}
-                  </Text>
-                </TouchableOpacity>
-                {showDatePicker && (
-                  <DateTimePicker
-                    value={editTimestamp || new Date()}
-                    mode="datetime"
-                    display="default"
-                    onChange={(event, date) => {
-                      setShowDatePicker(false);
-                      if (date) setEditTimestamp(date);
-                    }}
-                  />
-                )}
                 <View style={styles.switchContainer}>
                   <Text style={styles.modalLabel}>Cleared:</Text>
                   <Switch value={editCleared} onValueChange={setEditCleared} />
                 </View>
-                {editTableName === "Discussion Data" && (
-                  <View style={styles.switchContainer}>
-                    <Text style={styles.modalLabel}>Type (Tell/Ask):</Text>
-                    <Switch 
-                      value={editTypeSay === "ask"} 
-                      onValueChange={(value) => setEditTypeSay(value ? "ask" : "tell")} 
-                    />
-                    <Text>{editTypeSay}</Text>
-                  </View>
+                <View style={styles.switchContainer}>
+                  <Text style={styles.modalLabel}>Date:</Text>
+                  <TouchableOpacity onPress={() => setShowDatePicker(true)}>
+                    <Text>{editTimestamp ? format(editTimestamp, "M/d/yy") : "Select Date"}</Text>
+                  </TouchableOpacity>
+                </View>
+                {showDatePicker && (
+                  <DateTimePicker
+                    value={editTimestamp}
+                    mode="date"
+                    display="default"
+                    onChange={(event, selectedDate) => {
+                      setShowDatePicker(Platform.OS === "ios"); // Keep open on iOS, close on Android
+                      if (selectedDate) {
+                        setEditTimestamp(selectedDate);
+                      }
+                    }}
+                  />
+                )}
+                <View style={styles.switchContainer}>
+                  <Text style={styles.modalLabel}>Time:</Text>
+                  <TouchableOpacity onPress={() => setShowTimePicker(true)}>
+                    <Text>{editTimestamp ? format(editTimestamp, "h:mm a") : "Select Time"}</Text>
+                  </TouchableOpacity>
+                </View>
+                {showTimePicker && (
+                  <DateTimePicker
+                    value={editTimestamp}
+                    mode="time"
+                    display="default"
+                    onChange={(event, selectedDate) => {
+                      setShowTimePicker(Platform.OS === "ios"); // Keep open on iOS, close on Android
+                      if (selectedDate) {
+                        setEditTimestamp(selectedDate);
+                      }
+                    }}
+                  />
                 )}
                 <View style={styles.modalButtons}>
-                  <TouchableOpacity style={styles.modalButton} onPress={() => setEditModalVisible(false)}>
+                  <TouchableOpacity style={styles.modalButton} onPress={() => {
+                    setEditModalVisible(false);
+                    setShowDatePicker(false);
+                    setShowTimePicker(false);
+                  }}>
                     <Text style={styles.modalButtonText}>Cancel</Text>
                   </TouchableOpacity>
                   <TouchableOpacity style={[styles.modalButton, styles.saveButton]} onPress={saveEdit}>

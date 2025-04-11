@@ -21,6 +21,13 @@ export ANDROID_HOME=/home/kelseyp99/Android/Sdk
 export PATH=$PATH:$ANDROID_HOME/platform-tools
 
 rm -rf ~/.gradle/caches ~/.eas/build
+npx expo-doctor --fix all
+if ($LASTEXITCODE -eq 0) {
+    Write-Host "Expo doctor completed successfully!"
+} else {
+    Write-Host "Error: Expo doctor failed!" -ForegroundColor Red
+    exit 1
+}
 
 echo "Running EAS build for Android..."
 EXPO_PUBLIC_IS_EXPO_GO=false eas build --platform android --local --profile development --clear-cache
