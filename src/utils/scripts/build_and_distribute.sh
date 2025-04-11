@@ -23,7 +23,7 @@ export PATH=$PATH:$ANDROID_HOME/platform-tools
 rm -rf ~/.gradle/caches ~/.eas/build
 
 echo "Running expo-doctor to check and fix dependencies..."
-npx expo-doctor --fix all
+npx expo-doctor --fix
 if [ $? -eq 0 ]; then
     echo "Expo doctor completed successfully!"
 else
