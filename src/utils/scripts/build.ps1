@@ -16,6 +16,9 @@ $testers = "email1@example.com,email2@example.com"  # Replace with real emails
 
 Set-Location -Path $projectDir
 
+# Debug: Show parameter values
+Write-Host "Parameters: Local=$Local, Firebase=$Firebase, CloudMain=$CloudMain"
+
 Write-Host "Committing and pushing changes from PowerShell..."
 git add .
 git commit -m $commitMessage
