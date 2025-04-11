@@ -1,7 +1,6 @@
 #!/bin/bash
 # ./src/utils/scripts/build_and_distribute.sh --build-only
-# cd C:\Users\philk\Downloads
-# adb -s emulator-5554 install build-1744246199106.apk
+
 PROJECT_DIR="/home/kelseyp99/projects/LifeLog"
 WINDOWS_DEST="/mnt/c/Users/philk/Downloads/"
 
@@ -21,13 +20,15 @@ export ANDROID_HOME=/home/kelseyp99/Android/Sdk
 export PATH=$PATH:$ANDROID_HOME/platform-tools
 
 rm -rf ~/.gradle/caches ~/.eas/build
+
+echo "Running expo-doctor to check and fix dependencies..."
 npx expo-doctor --fix all
-if ($LASTEXITCODE -eq 0) {
-    Write-Host "Expo doctor completed successfully!"
-} else {
-    Write-Host "Error: Expo doctor failed!" -ForegroundColor Red
+if [ $? -eq 0 ]; then
+    echo "Expo doctor completed successfully!"
+else
+    echo "Error: Expo doctor failed!" >&2
     exit 1
-}
+fi
 
 echo "Running EAS build for Android..."
 EXPO_PUBLIC_IS_EXPO_GO=false eas build --platform android --local --profile development --clear-cache
@@ -45,7 +46,7 @@ if [ -d "$WINDOWS_DEST" ]; then
         if [ $? -eq 0 ]; then
             echo "Successfully moved $LATEST_APK to $WINDOWS_DEST"
         else
-            echo "Error: Failed to move $LATEST_APK to $WINDOWS_DEST"
+            echo "Error: Failed to move $LATEST_APK to $WINDOWS_DEST" >&2
             exit 1
         fi
     fi
@@ -54,18 +55,18 @@ if [ -d "$WINDOWS_DEST" ]; then
         if [ $? -eq 0 ]; then
             echo "Successfully moved $LATEST_AAB to $WINDOWS_DEST"
         else
-            echo "Error: Failed to move $LATEST_AAB to $WINDOWS_DEST"
+            echo "Error: Failed to move $LATEST_AAB to $WINDOWS_DEST" >&2
             exit 1
         fi
     fi
 else
-    echo "Error: $WINDOWS_DEST not accessible."
+    echo "Error: $WINDOWS_DEST not accessible." >&2
     exit 1
 fi
 
 echo "Committing and pushing changes from WSL..."
 git add .
 git commit -m "Automated commit from WSL: Build artifacts" || echo "Nothing to commit in WSL"
-git push origin develop || { echo "Error: Failed to push from WSL"; exit 1; }
+git push origin develop || { echo "Error: Failed to push from WSL" >&2; exit 1; }
 
 echo "Script completed successfully!"
