@@ -10,7 +10,7 @@
     "web": "expo start --web",
     "test": "jest --watchAll",
     "lint": "expo lint",
-    "build": "powershell -ExecutionPolicy Bypass -File src\\utils\\scripts\\build.ps1 @PSBoundParameters"
+    "build": "powershell -ExecutionPolicy Bypass -File src\\utils\\scripts\\build.ps1 -Local:$Local -Firebase:$Firebase -CloudMain:$CloudMain"
   },
   "jest": {
     "preset": "jest-expo"
