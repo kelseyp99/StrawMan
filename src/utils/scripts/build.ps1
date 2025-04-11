@@ -31,16 +31,41 @@ if ($LASTEXITCODE -eq 0) {
 # Build locally in WSL if -Local is specified
 if ($Local) {
     Write-Host "Opening WSL and running build script..."
-    try {
-        $wslOutput = wsl -d Ubuntu -e bash -c "cd $wslProjectDir && ./src/utils/scripts/build_and_distribute.sh --build-only" 2>&1
-        Write-Host "WSL Output: $wslOutput"
-        if ($LASTEXITCODE -ne 0) {
-            Write-Host "Error: WSL build script failed!" -ForegroundColor Red
-            exit 1
+    $maxAttempts = 2
+    $attempt = 1
+    $success = $false
+
+    while ($attempt -le $maxAttempts -and -not $success) {
+        Write-Host "Attempt $attempt of $maxAttempts..."
+        try {
+            $wslOutput = wsl -d Ubuntu -e bash -c "cd $wslProjectDir && ./src/utils/scripts/build_and_distribute.sh --build-only" 2>&1
+            Write-Host "WSL Output: $wslOutput"
+            if ($LASTEXITCODE -eq 0) {
+                $success = $true
+            } else {
+                Write-Host "WSL attempt $attempt failed with exit code $LASTEXITCODE" -ForegroundColor Yellow
+                if ($wslOutput -match "divergent branches" -or $wslOutput -match "Failed to pull from Git") {
+                    Write-Host "Detected Git pull error, retrying..." -ForegroundColor Yellow
+                } else {
+                    Write-Host "Error: WSL build script failed!" -ForegroundColor Red
+                    exit 1
+                }
+            }
+        } catch {
+            Write-Host "Error: Failed to execute WSL command on attempt $attempt!" -ForegroundColor Red
+            Write-Host $_.Exception.Message -ForegroundColor Red
+            if ($attempt -eq $maxAttempts) {
+                exit 1
+            }
         }
-    } catch {
-        Write-Host "Error: Failed to execute WSL command!" -ForegroundColor Red
-        Write-Host $_.Exception.Message -ForegroundColor Red
+        $attempt++
+        if (-not $success -and $attempt -le $maxAttempts) {
+            Start-Sleep -Seconds 5  # Wait before retrying
+        }
+    }
+
+    if (-not $success) {
+        Write-Host "Error: WSL build failed after $maxAttempts attempts!" -ForegroundColor Red
         exit 1
     }
 
