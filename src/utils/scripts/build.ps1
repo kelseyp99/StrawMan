@@ -67,8 +67,14 @@ if ($Local -or $Firebase) {
     }
 }
 
-# Install APK locally if built
+# Handle emulator and APK install if local build
 if ($Local -and $latestApk) {
+    Write-Host "Restarting emulator-5554..."
+    adb -s emulator-5554 emu kill 2>$null
+    Start-Sleep -Seconds 2  # Wait for emulator to shut down
+    Start-Process -NoNewWindow -FilePath "emulator" -ArgumentList "-avd emulator-5554" -RedirectStandardOutput "$env:TEMP\emulator.log"
+    Start-Sleep -Seconds 30  # Wait for emulator to boot
+
     Write-Host "Installing APK on emulator-5554..."
     adb -s emulator-5554 install $apkPath
     if ($LASTEXITCODE -eq 0) {

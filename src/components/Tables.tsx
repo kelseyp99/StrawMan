@@ -29,9 +29,10 @@ const MainComponent: React.FC = () => {
   const [editModalVisible, setEditModalVisible] = useState(false);
   const [editDesc, setEditDesc] = useState("");
   const [editCleared, setEditCleared] = useState(false);
+  const [editTypeSay, setEditTypeSay] = useState<"ask" | "tell">("tell"); // New state for typeSay
   const [editTimestamp, setEditTimestamp] = useState<Date>(new Date());
-  const [showDatePicker, setShowDatePicker] = useState(false); // For Android
-  const [showTimePicker, setShowTimePicker] = useState(false); // For Android
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [showTimePicker, setShowTimePicker] = useState(false);
   const [editTableName, setEditTableName] = useState("");
   const [editItemId, setEditItemId] = useState("");
   const [discussionSnapshot, setDiscussionSnapshot] = useState<QuerySnapshot<DocumentData, DocumentData> | null>(null);
@@ -92,6 +93,7 @@ const MainComponent: React.FC = () => {
                     ? format(new Date(data.timestamp.toDate()), "M/d/yy \n h:mm a")
                     : "N/A",
                   cleared: data.cleared ? "✔️ Yes" : "❌ No",
+                  typeSay: data.typeSay || "tell", // Ensure typeSay is present
                   uid: data.uid,
                   rawTimestamp: data.timestamp ? data.timestamp.toDate() : new Date(),
                 };
@@ -168,11 +170,12 @@ const MainComponent: React.FC = () => {
     }
   };
 
-  const handleEdit = (tableName: string, itemId: string, currentDesc: string, currentCleared: string) => {
+  const handleEdit = (tableName: string, itemId: string, currentDesc: string, currentCleared: string, currentTypeSay: string) => {
     setEditTableName(tableName);
     setEditItemId(itemId);
     setEditDesc(currentDesc || "");
     setEditCleared(currentCleared === "✔️ Yes");
+    setEditTypeSay(currentTypeSay === "ask" ? "ask" : "tell"); // Initialize typeSay
     const table = tables.find((t) => t.name === tableName);
     const item = table?.data.find((i) => i.id === itemId);
     setEditTimestamp(item?.rawTimestamp || new Date());
@@ -187,6 +190,7 @@ const MainComponent: React.FC = () => {
         await updateDoc(docRef, { 
           description: editDesc.trim(),
           cleared: editCleared,
+          typeSay: editTypeSay, // Save typeSay
           timestamp: editTimestamp,
         });
         setTables((prevTables) =>
@@ -200,6 +204,7 @@ const MainComponent: React.FC = () => {
                           ...item, 
                           description: editDesc.trim(),
                           cleared: editCleared ? "✔️ Yes" : "❌ No",
+                          typeSay: editTypeSay, // Update typeSay in table data
                           timestamp: editTimestamp
                             ? format(new Date(editTimestamp), "M/d/yy \n h:mm a")
                             : "N/A",
@@ -297,10 +302,10 @@ const MainComponent: React.FC = () => {
     </TouchableOpacity>
   );
 
-  const renderLeftActions = (tableName: string, itemId: string, currentDesc: string, currentCleared: string) => (
+  const renderLeftActions = (tableName: string, itemId: string, currentDesc: string, currentCleared: string, currentTypeSay: string) => (
     <TouchableOpacity
       style={styles.editButton}
-      onPress={() => handleEdit(tableName, itemId, currentDesc, currentCleared)}
+      onPress={() => handleEdit(tableName, itemId, currentDesc, currentCleared, currentTypeSay)}
     >
       <Text style={styles.editButtonText}>Edit</Text>
     </TouchableOpacity>
@@ -356,7 +361,7 @@ const MainComponent: React.FC = () => {
             renderItem={({ item }) => (
               <Swipeable
                 renderRightActions={() => renderRightActions(tables[currentTableIndex].name, item.id)}
-                renderLeftActions={() => renderLeftActions(tables[currentTableIndex].name, item.id, item.description, item.cleared)}
+                renderLeftActions={() => renderLeftActions(tables[currentTableIndex].name, item.id, item.description, item.cleared, item.typeSay)}
               >
                 <View style={styles.row}>
                   {tables[currentTableIndex].columns.map((col) =>
@@ -395,6 +400,15 @@ const MainComponent: React.FC = () => {
                   <Text style={styles.modalLabel}>Cleared:</Text>
                   <Switch value={editCleared} onValueChange={setEditCleared} />
                 </View>
+                {editTableName === "Discussion Data" && (
+                  <View style={styles.switchContainer}>
+                    <Text style={styles.modalLabel}>Type: {editTypeSay === "ask" ? "Ask" : "Tell"}</Text>
+                    <Switch
+                      value={editTypeSay === "ask"}
+                      onValueChange={(value) => setEditTypeSay(value ? "ask" : "tell")}
+                    />
+                  </View>
+                )}
                 <View style={styles.switchContainer}>
                   <Text style={styles.modalLabel}>Date:</Text>
                   <TouchableOpacity onPress={() => setShowDatePicker(true)}>
@@ -407,7 +421,7 @@ const MainComponent: React.FC = () => {
                     mode="date"
                     display="default"
                     onChange={(event, selectedDate) => {
-                      setShowDatePicker(Platform.OS === "ios"); // Keep open on iOS, close on Android
+                      setShowDatePicker(Platform.OS === "ios");
                       if (selectedDate) {
                         setEditTimestamp(selectedDate);
                       }
@@ -426,7 +440,7 @@ const MainComponent: React.FC = () => {
                     mode="time"
                     display="default"
                     onChange={(event, selectedDate) => {
-                      setShowTimePicker(Platform.OS === "ios"); // Keep open on iOS, close on Android
+                      setShowTimePicker(Platform.OS === "ios");
                       if (selectedDate) {
                         setEditTimestamp(selectedDate);
                       }
