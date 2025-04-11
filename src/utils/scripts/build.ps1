@@ -34,20 +34,34 @@ if ($Local) {
     $maxAttempts = 2
     $attempt = 1
     $success = $false
+    $timeoutSeconds = 300  # 5 minutes timeout per attempt
 
     while ($attempt -le $maxAttempts -and -not $success) {
         Write-Host "Attempt $attempt of $maxAttempts..."
         try {
-            $wslOutput = wsl -d Ubuntu -e bash -c "cd $wslProjectDir && ./src/utils/scripts/build_and_distribute.sh --build-only" 2>&1
+            # Run WSL command with timeout
+            $job = Start-Job -ScriptBlock {
+                param($wslDir)
+                wsl -d Ubuntu -e bash -c "cd $wslDir && ./src/utils/scripts/build_and_distribute.sh --build-only" 2>&1
+            } -ArgumentList $wslProjectDir
+
+            $wslOutput = Wait-Job -Job $job -Timeout $timeoutSeconds | Receive-Job
+            if ($job.State -eq "Completed") {
+                $exitCode = 0
+            } else {
+                $exitCode = 1
+            }
+            Remove-Job -Job $job -Force
+
             Write-Host "WSL Output: $wslOutput"
-            if ($LASTEXITCODE -eq 0) {
+            if ($exitCode -eq 0) {
                 $success = $true
             } else {
-                Write-Host "WSL attempt $attempt failed with exit code $LASTEXITCODE" -ForegroundColor Yellow
-                if ($wslOutput -match "divergent branches" -or $wslOutput -match "Failed to pull from Git") {
-                    Write-Host "Detected Git pull error, retrying..." -ForegroundColor Yellow
+                Write-Host "WSL attempt $attempt failed with exit code $exitCode" -ForegroundColor Yellow
+                if ($attempt -lt $maxAttempts) {
+                    Write-Host "Retrying due to failure..." -ForegroundColor Yellow
                 } else {
-                    Write-Host "Error: WSL build script failed!" -ForegroundColor Red
+                    Write-Host "Error: WSL build script failed after $maxAttempts attempts!" -ForegroundColor Red
                     exit 1
                 }
             }
@@ -62,11 +76,6 @@ if ($Local) {
         if (-not $success -and $attempt -le $maxAttempts) {
             Start-Sleep -Seconds 5  # Wait before retrying
         }
-    }
-
-    if (-not $success) {
-        Write-Host "Error: WSL build failed after $maxAttempts attempts!" -ForegroundColor Red
-        exit 1
     }
 
     Write-Host "Pulling latest changes from WSL build..."
