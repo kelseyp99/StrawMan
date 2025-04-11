@@ -39,19 +39,7 @@ if ($Local) {
     }
 }
 
-Write-Host "Backing up project files to Dropbox..."
-if (Test-Path "src\utils\BackupScript.ps1") {
-    & "src\utils\BackupScript.ps1"
-    if ($LASTEXITCODE -eq 0) {
-        Write-Host "BackupScript.ps1 executed successfully!"
-    } else {
-        Write-Host "Error: BackupScript.ps1 failed!" -ForegroundColor Red
-        exit 1
-    }
-} else {
-    Write-Host "Error: BackupScript.ps1 not found in src\utils\!" -ForegroundColor Red
-    exit 1
-}
+
 
 # Find latest APK if building locally or uploading to Firebase
 $latestApk = $null
