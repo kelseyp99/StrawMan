@@ -130,8 +130,8 @@ if ($CloudMain) {
 
 # Backup after all operations
 Write-Host "Backing up project files to Dropbox..."
-if (Test-Path "BackupScript.ps1") {
-    & ".\BackupScript.ps1"
+if (Test-Path "src\utils\BackupScript.ps1") {
+    & "src\utils\BackupScript.ps1"
     if ($LASTEXITCODE -eq 0) {
         Write-Host "BackupScript.ps1 executed successfully!"
     } else {
@@ -139,8 +139,7 @@ if (Test-Path "BackupScript.ps1") {
         exit 1
     }
 } else {
-    Write-Host "Error: BackupScript.ps1 not found in root!" -ForegroundColor Red
-    exit 1
+    Write-Host "Warning: BackupScript.ps1 not found in src\utils\, skipping backup..." -ForegroundColor Yellow
 }
 
 Write-Host "Script completed!"
