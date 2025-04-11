@@ -13,7 +13,7 @@ $wslProjectDir = "/home/kelseyp99/projects/LifeLog"
 $firebaseAppId = "1:341732508688:android:4a8c275e1199f4e1c0e8b4"
 $releaseNotes = "New build uploaded on $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
 $testers = "email1@example.com,email2@example.com"  # Replace with real emails
-$emulatorPath = "C:\Users\philk\AppData\Local\Android\Sdk\emulator\emulator.exe"  # Adjust this path to your Android SDK
+$emulatorPath = "C:\Users\philk\AppData\Local\Android\Sdk\emulator\emulator.exe"  # Adjust this path
 
 Set-Location -Path $projectDir
 
@@ -31,52 +31,32 @@ if ($LASTEXITCODE -eq 0) {
 
 # Build locally in WSL if -Local is specified
 if ($Local) {
-    Write-Host "Opening WSL and running build script..."
-    $maxAttempts = 2
-    $attempt = 1
-    $success = $false
-    $timeoutSeconds = 300  # 5 minutes timeout per attempt
-
-    while ($attempt -le $maxAttempts -and -not $success) {
-        Write-Host "Attempt $attempt of $maxAttempts..."
-        try {
-            # Run WSL command with timeout
-            $job = Start-Job -ScriptBlock {
-                param($wslDir)
-                wsl -d Ubuntu -e bash -c "cd $wslDir && ./src/utils/scripts/build_and_distribute.sh --build-only" 2>&1
-            } -ArgumentList $wslProjectDir
-
-            $wslOutput = Wait-Job -Job $job -Timeout $timeoutSeconds | Receive-Job
-            if ($job.State -eq "Completed") {
-                $exitCode = 0
-            } else {
-                $exitCode = 1
-            }
-            Remove-Job -Job $job -Force
-
-            Write-Host "WSL Output: $wslOutput"
-            if ($exitCode -eq 0) {
-                $success = $true
-            } else {
-                Write-Host "WSL attempt $attempt failed with exit code $exitCode" -ForegroundColor Yellow
-                if ($attempt -lt $maxAttempts) {
-                    Write-Host "Retrying due to failure..." -ForegroundColor Yellow
-                } else {
-                    Write-Host "Error: WSL build script failed after $maxAttempts attempts!" -ForegroundColor Red
-                    exit 1
-                }
-            }
-        } catch {
-            Write-Host "Error: Failed to execute WSL command on attempt $attempt!" -ForegroundColor Red
-            Write-Host $_.Exception.Message -ForegroundColor Red
-            if ($attempt -eq $maxAttempts) {
-                exit 1
-            }
+    Write-Host "Running WSL pull and doctor script..."
+    try {
+        $pullOutput = wsl -d Ubuntu -e bash -c "cd $wslProjectDir && ./src/utils/scripts/pull_and_doctor.sh" 2>&1
+        Write-Host "WSL Pull Output: $pullOutput"
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host "Error: WSL pull and doctor script failed!" -ForegroundColor Red
+            exit 1
         }
-        $attempt++
-        if (-not $success -and $attempt -le $maxAttempts) {
-            Start-Sleep -Seconds 5  # Wait before retrying
+    } catch {
+        Write-Host "Error: Failed to execute WSL pull command!" -ForegroundColor Red
+        Write-Host $_.Exception.Message -ForegroundColor Red
+        exit 1
+    }
+
+    Write-Host "Running WSL build script..."
+    try {
+        $buildOutput = wsl -d Ubuntu -e bash -c "cd $wslProjectDir && ./src/utils/scripts/build_and_distribute.sh --build-only" 2>&1
+        Write-Host "WSL Build Output: $buildOutput"
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host "Error: WSL build script failed!" -ForegroundColor Red
+            exit 1
         }
+    } catch {
+        Write-Host "Error: Failed to execute WSL build command!" -ForegroundColor Red
+        Write-Host $_.Exception.Message -ForegroundColor Red
+        exit 1
     }
 
     Write-Host "Pulling latest changes from WSL build..."

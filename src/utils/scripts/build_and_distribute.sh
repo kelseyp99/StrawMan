@@ -11,27 +11,14 @@ if [[ "$1" == "--build-only" ]]; then
     BUILD_ONLY=true
 fi
 
-echo "Force pulling latest changes from origin/develop..."
-cd "$PROJECT_DIR"
-stdbuf -oL git fetch origin -v
-stdbuf -oL git reset --hard origin/develop || { echo "Error: Failed to force pull from Git"; exit 1; }
-
 echo "Setting up Android environment and building the app..."
 export ANDROID_HOME=/home/kelseyp99/Android/Sdk
 export PATH=$PATH:$ANDROID_HOME/platform-tools
 
 rm -rf ~/.gradle/caches ~/.eas/build
 
-echo "Running expo-doctor to check dependencies (informational only)..."
-stdbuf -oL npx expo-doctor
-if [ $? -eq 0 ]; then
-    echo "Expo doctor completed successfully!"
-else
-    echo "Warning: Expo doctor reported issues, proceeding anyway..." >&2
-fi
-
 echo "Running EAS build for Android..."
-EXPO_PUBLIC_IS_EXPO_GO=false stdbuf -oL eas build --platform android --local --profile development --clear-cache -v
+EXPO_PUBLIC_IS_EXPO_GO=false eas build --platform android --local --profile development --clear-cache
 
 echo "Locating latest build artifacts..."
 LATEST_APK=$(find "$PROJECT_DIR" -maxdepth 1 -name "*.apk" -printf "%T@ %p\n" | sort -nr | head -n1 | cut -d' ' -f2-)
@@ -65,8 +52,8 @@ else
 fi
 
 echo "Force pushing changes from WSL..."
-stdbuf -oL git add .
-stdbuf -oL git commit -m "Automated commit from WSL: Build artifacts" || echo "Nothing to commit in WSL"
-stdbuf -oL git push origin develop --force -v || { echo "Error: Failed to force push from WSL" >&2; exit 1; }
+git add .
+git commit -m "Automated commit from WSL: Build artifacts" || echo "Nothing to commit in WSL"
+git push origin develop --force -v || { echo "Error: Failed to force push from WSL" >&2; exit 1; }
 
 echo "Script completed successfully!"
