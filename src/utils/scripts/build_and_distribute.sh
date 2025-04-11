@@ -14,11 +14,12 @@ fi
 echo "Setting up Android environment and building the app..."
 export ANDROID_HOME=/home/kelseyp99/Android/Sdk
 export PATH=$PATH:$ANDROID_HOME/platform-tools
+export EXPO_PUBLIC_IS_EXPO_GO=false  # Set environment variable here
 
 rm -rf ~/.gradle/caches ~/.eas/build
 
 echo "Running EAS build for Android..."
-stdbuf -oL EXPO_PUBLIC_IS_EXPO_GO=false eas build --platform android --local --profile development --clear-cache
+stdbuf -oL eas build --platform android --local --profile development --clear-cache  # Only the command under stdbuf
 
 echo "Locating latest build artifacts..."
 LATEST_APK=$(stdbuf -oL find "$PROJECT_DIR" -maxdepth 1 -name "*.apk" -printf "%T@ %p\n" | sort -nr | head -n1 | cut -d' ' -f2-)
