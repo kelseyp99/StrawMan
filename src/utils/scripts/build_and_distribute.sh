@@ -11,9 +11,10 @@ if [[ "$1" == "--build-only" ]]; then
     BUILD_ONLY=true
 fi
 
-echo "Pulling latest changes from origin/develop..."
+echo "Force pulling latest changes from origin/develop..."
 cd "$PROJECT_DIR"
-git pull origin develop || { echo "Error: Failed to pull from Git"; exit 1; }
+git fetch origin
+git reset --hard origin/develop || { echo "Error: Failed to force pull from Git"; exit 1; }
 
 echo "Setting up Android environment and building the app..."
 export ANDROID_HOME=/home/kelseyp99/Android/Sdk
@@ -64,9 +65,9 @@ else
     exit 1
 fi
 
-echo "Committing and pushing changes from WSL..."
+echo "Force pushing changes from WSL..."
 git add .
 git commit -m "Automated commit from WSL: Build artifacts" || echo "Nothing to commit in WSL"
-git push origin develop || { echo "Error: Failed to push from WSL" >&2; exit 1; }
+git push origin develop --force || { echo "Error: Failed to force push from WSL" >&2; exit 1; }
 
 echo "Script completed successfully!"
