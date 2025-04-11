@@ -13,6 +13,7 @@ $wslProjectDir = "/home/kelseyp99/projects/LifeLog"
 $firebaseAppId = "1:341732508688:android:4a8c275e1199f4e1c0e8b4"
 $releaseNotes = "New build uploaded on $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
 $testers = "email1@example.com,email2@example.com"  # Replace with real emails
+$emulatorPath = "C:\Users\philk\AppData\Local\Android\Sdk\emulator\emulator.exe"  # Adjust this path to your Android SDK
 
 Set-Location -Path $projectDir
 
@@ -80,7 +81,7 @@ if ($Local) {
 
     Write-Host "Pulling latest changes from WSL build..."
     try {
-        git pull origin develop --ff-only -ErrorAction Stop
+        git pull origin develop --ff-only
     } catch {
         Write-Host "Error: Pull failed, merge required!" -ForegroundColor Red
         exit 1
@@ -95,7 +96,12 @@ if ($Local) {
         Write-Host "Restarting emulator-5554..."
         adb -s emulator-5554 emu kill 2>$null
         Start-Sleep -Seconds 2
-        Start-Process -NoNewWindow -FilePath "emulator" -ArgumentList "-avd emulator-5554" -RedirectStandardOutput "$env:TEMP\emulator.log"
+        if (Test-Path $emulatorPath) {
+            Start-Process -NoNewWindow -FilePath $emulatorPath -ArgumentList "-avd emulator-5554" -RedirectStandardOutput "$env:TEMP\emulator.log"
+        } else {
+            Write-Host "Error: Emulator executable not found at $emulatorPath!" -ForegroundColor Red
+            exit 1
+        }
         Start-Sleep -Seconds 30
 
         Write-Host "Installing APK on emulator-5554..."
