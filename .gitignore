@@ -59,6 +59,21 @@ crash_log.txt
 # Exclude node_modules
 node_modules/
 
+<<<<<<< Updated upstream
+
+=======
+# Ignore all image files
+*.png
+*.jpg
+*.jpeg
+*.gif
+>>>>>>> Stashed changes
+
+# Allow images inside the /images directory
+!/images/**/*.png
+!/images/**/*.jpg
+!/images/**/*.jpeg
+!/images/**/*.gif
 
 
 # Ignore all JavaScript files

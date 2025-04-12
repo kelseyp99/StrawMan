@@ -23,7 +23,7 @@ import HistoryList from "../../src/components/HistoryList";
 import SettingsButton from "../../src/components/SettingsButton";
 import { analyzeActivity, ModelAPIkey } from "../../src/services/openaiAPI";
 import Icon from "react-native-vector-icons/MaterialIcons";
-
+console.log("LifeLog loaded:", new Date());
 const IndexScreen: React.FC<{ onApiKeyLoaded: (cachedApiKey: string | null) => void }> = ({ onApiKeyLoaded }) => {
   const [loading, setLoading] = useState(true);
 

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { View, Text, TextInput, StyleSheet, TouchableOpacity, FlatList, KeyboardAvoidingView, Platform, Modal, Alert, Switch } from "react-native";
+import { View, Text, TextInput, StyleSheet, TouchableOpacity, FlatList, KeyboardAvoidingView, Platform, Modal, Alert, Switch, ScrollView } from "react-native";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { format } from "date-fns";
 import { db } from "../firebaseConfig";
@@ -29,13 +29,19 @@ const MainComponent: React.FC = () => {
   const [editModalVisible, setEditModalVisible] = useState(false);
   const [editDesc, setEditDesc] = useState("");
   const [editCleared, setEditCleared] = useState(false);
-  const [editTypeSay, setEditTypeSay] = useState<"ask" | "tell">("tell"); // New state for typeSay
+  const [editTypeSay, setEditTypeSay] = useState<"ask" | "tell">("tell");
   const [editTimestamp, setEditTimestamp] = useState<Date>(new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [editTableName, setEditTableName] = useState("");
   const [editItemId, setEditItemId] = useState("");
   const [discussionSnapshot, setDiscussionSnapshot] = useState<QuerySnapshot<DocumentData, DocumentData> | null>(null);
+  const [relatedActivityLogs, setRelatedActivityLogs] = useState<{ id: string; description: string; category: string }[]>([]);
+  const [activityLogDescriptions, setActivityLogDescriptions] = useState<{ [key: string]: string }>({});
+  const [categoryModalVisible, setCategoryModalVisible] = useState(false);
+  const [selectedActivityLogId, setSelectedActivityLogId] = useState<string | null>(null);
+  const [allCategories, setAllCategories] = useState<string[]>([]);
+  const [newCategory, setNewCategory] = useState("");
 
   useEffect(() => {
     const fetchData = async () => {
@@ -45,6 +51,10 @@ const MainComponent: React.FC = () => {
         const discussionSnap = await getDocs(collection(db, "Discussion"));
         setDiscussionSnapshot(discussionSnap);
         const uid = getUID();
+        
+        // Fetch distinct categories
+        const categories = await getDistinctCategories();
+        setAllCategories(categories);
         
         console.log("fetching table data");
         setTables([
@@ -93,7 +103,7 @@ const MainComponent: React.FC = () => {
                     ? format(new Date(data.timestamp.toDate()), "M/d/yy \n h:mm a")
                     : "N/A",
                   cleared: data.cleared ? "✔️ Yes" : "❌ No",
-                  typeSay: data.typeSay || "tell", // Ensure typeSay is present
+                  typeSay: data.typeSay || "tell",
                   uid: data.uid,
                   rawTimestamp: data.timestamp ? data.timestamp.toDate() : new Date(),
                 };
@@ -170,16 +180,67 @@ const MainComponent: React.FC = () => {
     }
   };
 
-  const handleEdit = (tableName: string, itemId: string, currentDesc: string, currentCleared: string, currentTypeSay: string) => {
+  const handleEdit = async (tableName: string, itemId: string, currentDesc: string, currentCleared: string, currentTypeSay: string) => {
     setEditTableName(tableName);
     setEditItemId(itemId);
     setEditDesc(currentDesc || "");
     setEditCleared(currentCleared === "✔️ Yes");
-    setEditTypeSay(currentTypeSay === "ask" ? "ask" : "tell"); // Initialize typeSay
+    setEditTypeSay(currentTypeSay === "ask" ? "ask" : "tell");
     const table = tables.find((t) => t.name === tableName);
     const item = table?.data.find((i) => i.id === itemId);
     setEditTimestamp(item?.rawTimestamp || new Date());
+
+    // Fetch related ActivityLog entries
+    if (tableName === "Discussion Data") {
+      try {
+        const activityLogSnapshot = await getDocs(collection(db, "ActivityLog"));
+        const relatedLogs = activityLogSnapshot.docs
+          .map((doc) => ({ id: doc.id, ...doc.data() }))
+          .filter((log: any) => log.discussionId === itemId) as { id: string; description?: string; category?: string }[];
+        console.log(`Found ${relatedLogs.length} related ActivityLog entries for discussionId ${itemId}`, relatedLogs);
+        setRelatedActivityLogs(relatedLogs.map((log) => ({ id: log.id, description: log.description || "", category: log.category || "Unknown" })));
+        const descriptions = relatedLogs.reduce((acc, log) => {
+          acc[log.id] = log.description || "";
+          return acc;
+        }, {} as { [key: string]: string });
+        setActivityLogDescriptions(descriptions);
+      } catch (error) {
+        console.error("Error fetching related ActivityLog entries:", error);
+        setRelatedActivityLogs([]);
+        setActivityLogDescriptions({});
+      }
+    } else {
+      setRelatedActivityLogs([]);
+      setActivityLogDescriptions({});
+    }
+
     setEditModalVisible(true);
+  };
+
+  const handleCategorySelect = async (category: string) => {
+    if (!selectedActivityLogId) return;
+
+    // Update the relatedActivityLogs state
+    setRelatedActivityLogs((prev) =>
+      prev.map((log) =>
+        log.id === selectedActivityLogId ? { ...log, category } : log
+      )
+    );
+
+    // Update allCategories if this is a new category
+    if (!allCategories.includes(category)) {
+      setAllCategories((prev) => [...prev, category]);
+    }
+
+    setCategoryModalVisible(false);
+    setNewCategory("");
+    setSelectedActivityLogId(null);
+  };
+
+  const handleAddNewCategory = () => {
+    if (newCategory.trim()) {
+      handleCategorySelect(newCategory.trim());
+    }
   };
 
   const saveEdit = async () => {
@@ -190,9 +251,37 @@ const MainComponent: React.FC = () => {
         await updateDoc(docRef, { 
           description: editDesc.trim(),
           cleared: editCleared,
-          typeSay: editTypeSay, // Save typeSay
+          typeSay: editTypeSay,
           timestamp: editTimestamp,
         });
+
+        // Update related ActivityLog and GPTResponses entries
+        if (editTableName === "Discussion Data") {
+          // Update ActivityLog entries
+          if (relatedActivityLogs.length > 0) {
+            for (const log of relatedActivityLogs) {
+              const newDescription = activityLogDescriptions[log.id]?.trim();
+              const updates: { description?: string; timestamp: Date; category?: string } = { timestamp: editTimestamp };
+              if (newDescription && newDescription !== log.description) {
+                updates.description = newDescription;
+              }
+              updates.category = log.category; // Update category
+              const logRef = doc(db, "ActivityLog", log.id);
+              await updateDoc(logRef, updates);
+              console.log(`Updated ActivityLog ${log.id} timestamp to ${editTimestamp}, category to ${log.category}`);
+            }
+          }
+
+          // Update GPTResponses entry
+          const gptSnapshot = await getDocs(collection(db, "GPTResponses"));
+          const relatedGPT = gptSnapshot.docs.find((doc) => doc.id === editItemId);
+          if (relatedGPT) {
+            const gptRef = doc(db, "GPTResponses", editItemId);
+            await updateDoc(gptRef, { timestamp: editTimestamp });
+            console.log(`Updated GPTResponses ${editItemId} timestamp to ${editTimestamp}`);
+          }
+        }
+
         setTables((prevTables) =>
           prevTables.map((table) =>
             table.name === editTableName
@@ -204,7 +293,7 @@ const MainComponent: React.FC = () => {
                           ...item, 
                           description: editDesc.trim(),
                           cleared: editCleared ? "✔️ Yes" : "❌ No",
-                          typeSay: editTypeSay, // Update typeSay in table data
+                          typeSay: editTypeSay,
                           timestamp: editTimestamp
                             ? format(new Date(editTimestamp), "M/d/yy \n h:mm a")
                             : "N/A",
@@ -216,10 +305,44 @@ const MainComponent: React.FC = () => {
               : table
           )
         );
+
+        // Refresh related ActivityLog entries in Activity Log Data table
+        if (editTableName === "Discussion Data") {
+          const activityLogSnapshot = await getDocs(collection(db, "ActivityLog"));
+          const uid = getUID();
+          setTables((prevTables) =>
+            prevTables.map((table) =>
+              table.name === "Activity Log Data"
+                ? {
+                    ...table,
+                    data: activityLogSnapshot.docs
+                      .map((doc) => {
+                        const data = doc.data();
+                        return {
+                          id: doc.id,
+                          ...data,
+                          timestamp: data.timestamp
+                            ? format(new Date(data.timestamp.toDate()), "M/d/yy \n h:mm a")
+                            : "N/A",
+                          cleared: data.cleared ? "✔️ Yes" : "❌ No",
+                          uid: data.uid,
+                          rawTimestamp: data.timestamp ? data.timestamp.toDate() : new Date(),
+                        };
+                      })
+                      .filter((doc) => doc.uid === uid)
+                      .sort((a, b) => b.rawTimestamp - a.rawTimestamp),
+                  }
+                : table
+            )
+          );
+        }
+
         console.log(`Updated item ${editItemId} in ${collectionName}`);
         setEditModalVisible(false);
         setShowDatePicker(false);
         setShowTimePicker(false);
+        setRelatedActivityLogs([]);
+        setActivityLogDescriptions({});
       } catch (error) {
         console.error("Error updating item:", error);
       }
@@ -262,7 +385,7 @@ const MainComponent: React.FC = () => {
                   discussionId: docSnapshot.data().id,
                   description: docSnapshot.data().description,
                   timestamp: docSnapshot.data().timestamp?.toDate() || new Date(),
-                  typeSay: docSnapshot.data().typeSay,
+                  typeSay: docSnapshot.data().typeSay || "tell",
                   cleared: docSnapshot.data().cleared,
                 };
                 if (!discussionTyped.cleared) {
@@ -276,11 +399,14 @@ const MainComponent: React.FC = () => {
                     JSON.stringify(activityAnalysis),
                     'updateDB'
                   );
+                  // First, create/update ActivityLog entries
+                  await addOrUpdateActivityLog(discussionTyped.id);
+                  console.log(`Created/updated ActivityLog entries for discussionId ${discussionTyped.id}`);
                 }
                 const docRef = doc(db, 'Discussion', discussionTyped.id);
                 await updateDoc(docRef, { cleared: true });
+                console.log(`Marked Discussion ${discussionTyped.id} as cleared`);
               }
-              addOrUpdateActivityLog();
               Alert.alert('Success', `${unclearedDocs.length} Activity Log entries updated successfully!`);
             } catch (error) {
               console.error('Error updating Activity Log:', error);
@@ -387,8 +513,8 @@ const MainComponent: React.FC = () => {
             }}
           >
             <View style={styles.modalOverlay}>
-              <View style={styles.modalContainer}>
-                <Text style={styles.modalTitle}>Edit Entry</Text>
+              <ScrollView contentContainerStyle={styles.modalContainer}>
+                <Text style={styles.modalTitle}>Edit Discussion Entry</Text>
                 <TextInput
                   style={styles.modalInput}
                   value={editDesc}
@@ -447,16 +573,93 @@ const MainComponent: React.FC = () => {
                     }}
                   />
                 )}
+                {editTableName === "Discussion Data" && relatedActivityLogs.length > 0 && (
+                  <View style={styles.relatedLogsContainer}>
+                    <Text style={styles.modalTitle}>Related Activity Log Entries</Text>
+                    {relatedActivityLogs.map((log) => (
+                      <View key={log.id} style={styles.relatedLogEntry}>
+                        <Text style={styles.modalLabel}>Activity Log ID: {log.id}</Text>
+                        <TouchableOpacity
+                          onPress={() => {
+                            setSelectedActivityLogId(log.id);
+                            setCategoryModalVisible(true);
+                          }}
+                        >
+                          <Text style={styles.modalLabel}>Category: {log.category}</Text>
+                        </TouchableOpacity>
+                        <TextInput
+                          style={styles.modalInput}
+                          value={activityLogDescriptions[log.id] || ""}
+                          onChangeText={(text) => setActivityLogDescriptions((prev) => ({ ...prev, [log.id]: text }))}
+                          multiline
+                          placeholder="Edit Activity Log description"
+                        />
+                      </View>
+                    ))}
+                  </View>
+                )}
                 <View style={styles.modalButtons}>
                   <TouchableOpacity style={styles.modalButton} onPress={() => {
                     setEditModalVisible(false);
                     setShowDatePicker(false);
                     setShowTimePicker(false);
+                    setRelatedActivityLogs([]);
+                    setActivityLogDescriptions({});
                   }}>
                     <Text style={styles.modalButtonText}>Cancel</Text>
                   </TouchableOpacity>
                   <TouchableOpacity style={[styles.modalButton, styles.saveButton]} onPress={saveEdit}>
                     <Text style={styles.modalButtonText}>Save</Text>
+                  </TouchableOpacity>
+                </View>
+              </ScrollView>
+            </View>
+          </Modal>
+
+          {/* Category Selection Modal */}
+          <Modal
+            animationType="slide"
+            transparent={true}
+            visible={categoryModalVisible}
+            onRequestClose={() => setCategoryModalVisible(false)}
+          >
+            <View style={styles.modalOverlay}>
+              <View style={styles.categoryModalContainer}>
+                <Text style={styles.modalTitle}>Select Category</Text>
+                <FlatList
+                  data={allCategories}
+                  keyExtractor={(item) => item}
+                  renderItem={({ item }) => (
+                    <TouchableOpacity
+                      style={styles.categoryItem}
+                      onPress={() => handleCategorySelect(item)}
+                    >
+                      <Text style={styles.categoryText}>{item}</Text>
+                    </TouchableOpacity>
+                  )}
+                />
+                <TextInput
+                  style={styles.modalInput}
+                  value={newCategory}
+                  onChangeText={setNewCategory}
+                  placeholder="Add new category"
+                />
+                <View style={styles.modalButtons}>
+                  <TouchableOpacity
+                    style={styles.modalButton}
+                    onPress={() => {
+                      setCategoryModalVisible(false);
+                      setNewCategory("");
+                      setSelectedActivityLogId(null);
+                    }}
+                  >
+                    <Text style={styles.modalButtonText}>Cancel</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.modalButton, styles.saveButton]}
+                    onPress={handleAddNewCategory}
+                  >
+                    <Text style={styles.modalButtonText}>Add New</Text>
                   </TouchableOpacity>
                 </View>
               </View>
@@ -488,14 +691,19 @@ const styles = StyleSheet.create({
   editButtonText: { color: "#fff", fontWeight: "bold" },
   modalOverlay: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "rgba(0, 0, 0, 0.5)" },
   modalContainer: { width: "80%", backgroundColor: "#fff", padding: 20, borderRadius: 10, alignItems: "center" },
+  categoryModalContainer: { width: "80%", backgroundColor: "#fff", padding: 20, borderRadius: 10, maxHeight: "60%" },
   modalTitle: { fontSize: 18, fontWeight: "bold", marginBottom: 10 },
   modalInput: { width: "100%", borderWidth: 1, borderColor: "#ccc", borderRadius: 5, padding: 10, marginBottom: 20, minHeight: 60 },
   switchContainer: { flexDirection: "row", alignItems: "center", marginBottom: 20 },
   modalLabel: { fontSize: 16, marginRight: 10 },
-  modalButtons: { flexDirection: "row", justifyContent: "space-between", width: "100%" },
+  modalButtons: { flexDirection: "row", justifyContent: "space-between", width: "100%", marginTop: 20 },
   modalButton: { padding: 10, borderRadius: 5, backgroundColor: "#ddd", width: "45%", alignItems: "center" },
   saveButton: { backgroundColor: "#007bff" },
   modalButtonText: { color: "#fff", fontWeight: "bold" },
+  relatedLogsContainer: { width: "100%", marginVertical: 10 },
+  relatedLogEntry: { marginBottom: 15 },
+  categoryItem: { padding: 10, borderBottomWidth: 1, borderBottomColor: "#ccc" },
+  categoryText: { fontSize: 16 },
 });
 
 export default MainComponent;
