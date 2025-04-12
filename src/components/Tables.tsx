@@ -3,7 +3,7 @@ import { View, Text, TextInput, StyleSheet, TouchableOpacity, FlatList, Keyboard
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { format } from "date-fns";
 import { db } from "../firebaseConfig";
-import { collection, doc, getDocs, deleteDoc, updateDoc, DocumentData, QuerySnapshot } from "firebase/firestore";
+import { collection, doc, getDocs, deleteDoc, updateDoc, addDoc, DocumentData, QuerySnapshot } from "firebase/firestore";
 import { getUID } from "../utils/uidManager";
 import Swipeable from "react-native-gesture-handler/Swipeable";
 import { addOrUpdateActivityLog, addOrUpdateGPTResponse, getDistinctCategories } from "@/services/databaseService";
@@ -28,6 +28,7 @@ const MainComponent: React.FC = () => {
   const [initialized, setInitialized] = useState(false);
   const [editModalVisible, setEditModalVisible] = useState(false);
   const [editDesc, setEditDesc] = useState("");
+  const [originalDesc, setOriginalDesc] = useState(""); // Track original description to detect changes
   const [editCleared, setEditCleared] = useState(false);
   const [editTypeSay, setEditTypeSay] = useState<"ask" | "tell">("tell");
   const [editTimestamp, setEditTimestamp] = useState<Date>(new Date());
@@ -36,7 +37,7 @@ const MainComponent: React.FC = () => {
   const [editTableName, setEditTableName] = useState("");
   const [editItemId, setEditItemId] = useState("");
   const [discussionSnapshot, setDiscussionSnapshot] = useState<QuerySnapshot<DocumentData, DocumentData> | null>(null);
-  const [relatedActivityLogs, setRelatedActivityLogs] = useState<{ id: string; description: string; category: string }[]>([]);
+  const [relatedActivityLogs, setRelatedActivityLogs] = useState<{ id: string; description: string; category: string; lockedCategory?: boolean; lockedDescription?: boolean }[]>([]);
   const [activityLogDescriptions, setActivityLogDescriptions] = useState<{ [key: string]: string }>({});
   const [categoryModalVisible, setCategoryModalVisible] = useState(false);
   const [selectedActivityLogId, setSelectedActivityLogId] = useState<string | null>(null);
@@ -184,6 +185,7 @@ const MainComponent: React.FC = () => {
     setEditTableName(tableName);
     setEditItemId(itemId);
     setEditDesc(currentDesc || "");
+    setOriginalDesc(currentDesc || ""); // Store original description
     setEditCleared(currentCleared === "✔️ Yes");
     setEditTypeSay(currentTypeSay === "ask" ? "ask" : "tell");
     const table = tables.find((t) => t.name === tableName);
@@ -196,9 +198,15 @@ const MainComponent: React.FC = () => {
         const activityLogSnapshot = await getDocs(collection(db, "ActivityLog"));
         const relatedLogs = activityLogSnapshot.docs
           .map((doc) => ({ id: doc.id, ...doc.data() }))
-          .filter((log: any) => log.discussionId === itemId) as { id: string; description?: string; category?: string }[];
+          .filter((log: any) => log.discussionId === itemId) as { id: string; description?: string; category?: string; lockedCategory?: boolean; lockedDescription?: boolean }[];
         console.log(`Found ${relatedLogs.length} related ActivityLog entries for discussionId ${itemId}`, relatedLogs);
-        setRelatedActivityLogs(relatedLogs.map((log) => ({ id: log.id, description: log.description || "", category: log.category || "Unknown" })));
+        setRelatedActivityLogs(relatedLogs.map((log) => ({
+          id: log.id,
+          description: log.description || "",
+          category: log.category || "Unknown",
+          lockedCategory: log.lockedCategory || false,
+          lockedDescription: log.lockedDescription || false,
+        })));
         const descriptions = relatedLogs.reduce((acc, log) => {
           acc[log.id] = log.description || "";
           return acc;
@@ -223,7 +231,7 @@ const MainComponent: React.FC = () => {
     // Update the relatedActivityLogs state
     setRelatedActivityLogs((prev) =>
       prev.map((log) =>
-        log.id === selectedActivityLogId ? { ...log, category } : log
+        log.id === selectedActivityLogId ? { ...log, category, lockedCategory: true } : log
       )
     );
 
@@ -231,6 +239,18 @@ const MainComponent: React.FC = () => {
     if (!allCategories.includes(category)) {
       setAllCategories((prev) => [...prev, category]);
     }
+
+    // Save to RuleCandidates
+    await addDoc(collection(db, "RuleCandidates"), {
+      discussionId: editItemId,
+      category,
+      description: relatedActivityLogs.find((log) => log.id === selectedActivityLogId)?.description || "",
+    });
+
+    // Mark Discussion as cleared
+    const discussionRef = doc(db, "Discussion", editItemId);
+    await updateDoc(discussionRef, { cleared: true });
+    setEditCleared(true);
 
     setCategoryModalVisible(false);
     setNewCategory("");
@@ -255,24 +275,78 @@ const MainComponent: React.FC = () => {
           timestamp: editTimestamp,
         });
 
-        // Update related ActivityLog and GPTResponses entries
-        if (editTableName === "Discussion Data") {
-          // Update ActivityLog entries
+        // If Discussion.description changed, call processPhrase and update ActivityLog entries
+        if (editTableName === "Discussion Data" && editDesc !== originalDesc) {
+          const activityAnalysis = await processPhrase({
+            categories: allCategories,
+            description: editDesc,
+          });
+
+          // Update or create ActivityLog entries
           if (relatedActivityLogs.length > 0) {
             for (const log of relatedActivityLogs) {
-              const newDescription = activityLogDescriptions[log.id]?.trim();
-              const updates: { description?: string; timestamp: Date; category?: string } = { timestamp: editTimestamp };
-              if (newDescription && newDescription !== log.description) {
-                updates.description = newDescription;
+              const updates: { description?: string; category?: string; timestamp: Date; lockedCategory?: boolean; lockedDescription?: boolean } = { timestamp: editTimestamp };
+              if (!log.lockedCategory) {
+                updates.category = activityAnalysis.category;
               }
-              updates.category = log.category; // Update category
+              if (!log.lockedDescription) {
+                updates.description = activityAnalysis.parsedDescription;
+              }
+              updates.lockedCategory = log.lockedCategory || false;
+              updates.lockedDescription = log.lockedDescription || false;
               const logRef = doc(db, "ActivityLog", log.id);
               await updateDoc(logRef, updates);
-              console.log(`Updated ActivityLog ${log.id} timestamp to ${editTimestamp}, category to ${log.category}`);
+              console.log(`Updated ActivityLog ${log.id} based on new Discussion description`);
             }
+          } else {
+            // Create a new ActivityLog entry if none exist
+            await addDoc(collection(db, "ActivityLog"), {
+              discussionId: editItemId,
+              category: activityAnalysis.category,
+              description: activityAnalysis.parsedDescription,
+              timestamp: editTimestamp,
+              cleared: false,
+              uid: getUID(),
+              lockedCategory: false,
+              lockedDescription: false,
+            });
+            console.log(`Created new ActivityLog entry for discussionId ${editItemId}`);
           }
 
-          // Update GPTResponses entry
+          // Mark Discussion as cleared
+          await updateDoc(docRef, { cleared: true });
+          setEditCleared(true);
+        }
+
+        // Update related ActivityLog entries with manual changes
+        if (editTableName === "Discussion Data" && relatedActivityLogs.length > 0) {
+          for (const log of relatedActivityLogs) {
+            const newDescription = activityLogDescriptions[log.id]?.trim();
+            const updates: { description?: string; timestamp: Date; category?: string; lockedCategory?: boolean; lockedDescription?: boolean } = { timestamp: editTimestamp };
+            if (newDescription && newDescription !== log.description) {
+              updates.description = newDescription;
+              updates.lockedDescription = true;
+              // Save to RuleCandidates
+              await addDoc(collection(db, "RuleCandidates"), {
+                discussionId: editItemId,
+                category: log.category,
+                description: newDescription,
+              });
+              // Mark Discussion as cleared
+              await updateDoc(doc(db, "Discussion", editItemId), { cleared: true });
+              setEditCleared(true);
+            }
+            updates.category = log.category;
+            updates.lockedCategory = log.lockedCategory || false;
+            updates.lockedDescription = log.lockedDescription || false;
+            const logRef = doc(db, "ActivityLog", log.id);
+            await updateDoc(logRef, updates);
+            console.log(`Updated ActivityLog ${log.id} timestamp to ${editTimestamp}, category to ${log.category}`);
+          }
+        }
+
+        // Update GPTResponses entry
+        if (editTableName === "Discussion Data") {
           const gptSnapshot = await getDocs(collection(db, "GPTResponses"));
           const relatedGPT = gptSnapshot.docs.find((doc) => doc.id === editItemId);
           if (relatedGPT) {
@@ -399,8 +473,17 @@ const MainComponent: React.FC = () => {
                     JSON.stringify(activityAnalysis),
                     'updateDB'
                   );
-                  // First, create/update ActivityLog entries
-                  await addOrUpdateActivityLog(discussionTyped.id);
+                  // First, create/update ActivityLog entries with Discussion timestamp
+                  await addDoc(collection(db, "ActivityLog"), {
+                    discussionId: discussionTyped.id,
+                    category: activityAnalysis.category,
+                    description: activityAnalysis.parsedDescription,
+                    timestamp: discussionTyped.timestamp,
+                    cleared: false,
+                    uid: getUID(),
+                    lockedCategory: false,
+                    lockedDescription: false,
+                  });
                   console.log(`Created/updated ActivityLog entries for discussionId ${discussionTyped.id}`);
                 }
                 const docRef = doc(db, 'Discussion', discussionTyped.id);
@@ -590,7 +673,24 @@ const MainComponent: React.FC = () => {
                         <TextInput
                           style={styles.modalInput}
                           value={activityLogDescriptions[log.id] || ""}
-                          onChangeText={(text) => setActivityLogDescriptions((prev) => ({ ...prev, [log.id]: text }))}
+                          onChangeText={(text) => {
+                            setActivityLogDescriptions((prev) => ({ ...prev, [log.id]: text }));
+                            // Update lockedDescription in state
+                            setRelatedActivityLogs((prev) =>
+                              prev.map((l) =>
+                                l.id === log.id ? { ...l, lockedDescription: true } : l
+                              )
+                            );
+                            // Save to RuleCandidates
+                            addDoc(collection(db, "RuleCandidates"), {
+                              discussionId: editItemId,
+                              category: log.category,
+                              description: text,
+                            });
+                            // Mark Discussion as cleared
+                            updateDoc(doc(db, "Discussion", editItemId), { cleared: true });
+                            setEditCleared(true);
+                          }}
                           multiline
                           placeholder="Edit Activity Log description"
                         />

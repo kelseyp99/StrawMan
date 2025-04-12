@@ -6,6 +6,53 @@ import { addOrUpdateGPTResponse, clearDiscussion, getURLofGPT, queryAllFieldsByC
 const API_URL = Config.API_URL;
 // Load environment variables from .env
 
+
+/**
+ * shareTextAndFile
+ *
+ * This async function creates a text file with the content provided,
+ * then opens the share dialog with the file attached and a custom message.
+ *
+ * It uses:
+ * - react-native-fs to write the file to the device’s document directory.
+ * - react-native-share to open the share sheet.
+ *
+ * Note: Actual support for pre-populating text and attaching the file depends on the target app.
+ */
+export async function shareTextAndFile(): Promise<void> {
+  // Define the content for the file and the text message.
+  const fileContent: string = 'This is the content of the file.\nIt can contain any text you want.';
+  const textMessage: string = "Hello, this is the message that accompanies the file.";
+  
+  // Define a file name and create a full file path in the Document directory
+  const fileName: string = 'example.txt';
+  const filePath: string = `${RNFS.DocumentDirectoryPath}/${fileName}`;
+
+  try {
+    // Write the content to the file in UTF-8 encoding.
+    await RNFS.writeFile(filePath, fileContent, 'utf8');
+    console.log(`File written successfully at: ${filePath}`);
+
+    // Prepare the share options.
+    // The 'url' field attaches the file. The file path needs to have the file:// prefix.
+    // The 'message' field provides text that might be pre-filled in the receiving app, if supported.
+    const shareOptions = {
+      title: 'Share File and Text',
+      message: textMessage,
+      url: 'file://' + filePath, // note the file:// prefix
+      type: 'text/plain',
+      subject: 'Shared Text File', // Some platforms may use this as the email subject, etc.
+    };
+
+    // Open the share dialog
+    await Share.open(shareOptions);
+    console.log('Content shared successfully.');
+  } catch (error) {
+    console.error('Error sharing content: ', error);
+  }
+}
+
+
 export interface ModelAPIkey {
   aiModel: string;
   apiKey: string;
