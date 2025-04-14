@@ -1,5 +1,3 @@
-// phraseProcessor.ts
-//import * as tf from '@tensorflow/tfjs-react-native'; // Use React Native version
 import axios from 'axios';
 import { ActivityInput, analyzeActivity, ParsedActivity } from './openaiAPI';
 import { getRules } from './databaseService';
@@ -15,7 +13,7 @@ const dummyTokenizer = (text: string): number[] => {
     .map((word) => word.length % 10); // Dummy tokenization
 };
 
-// Example dummy TensorFlow model logic
+// Example dummy TensorFlow model logic (restored as commented-out code)
 /* async function loadModel(): Promise<tf.LayersModel> {
   // For React Native, load model from assets or remote URL
   // Example: Assuming model is bundled in app assets
@@ -26,7 +24,7 @@ async function classifyWithTensorFlow(phrase: string): Promise<ParsedActivity> {
   const model = await loadModel();
 
   const tokens = dummyTokenizer(phrase);
- // const input = tf.tensor2d([tokens], [1, tokens.length]);
+  // const input = tf.tensor2d([tokens], [1, tokens.length]);
   const prediction = model.predict(input) as tf.Tensor;
 
   const predictionData = await prediction.data();
@@ -37,6 +35,27 @@ async function classifyWithTensorFlow(phrase: string): Promise<ParsedActivity> {
 
   return { category, parsedDescription: summary };
 } */
+
+// New function to transform user input
+export function transformInput(input: string): string {
+  let transformedInput = input;
+
+  // Handle transformations for inputs starting with "8", "8a", or "88"
+  if (transformedInput.startsWith("8")) {
+    if (transformedInput === "8") {
+      transformedInput = "Ate " + transformedInput.slice(1);
+    } else if (transformedInput.startsWith("8a") || transformedInput.startsWith("88")) {
+      transformedInput = "Ate a" + transformedInput.slice(2);
+    } else if (transformedInput.toUpperCase().startsWith("DRINK") ) {
+      transformedInput = "Drank " + transformedInput.slice(5);
+    }
+  }
+
+  // Trim and replace double spaces with single spaces
+  transformedInput = transformedInput.trim().replace(/\s\s+/g, " ");
+
+  return transformedInput;
+}
 
 // Main switch function
 export const processPhrase = async (input: ActivityInput): Promise<ParsedActivity> => {
@@ -50,7 +69,7 @@ export const processPhrase = async (input: ActivityInput): Promise<ParsedActivit
     if (callOpenAI) {
       activityAnalysis = await analyzeActivity({ categories: distinctCategories, description });
     } else {
-     // activityAnalysis = await classifyWithTensorFlow(input.description);
+      // activityAnalysis = await classifyWithTensorFlow(input.description);
     }
   }
 
@@ -78,7 +97,7 @@ export async function applyRules(discussion: string): Promise<ParsedActivity> {
 
   // 2. Fetch all rules from Firebase
   const rules = await getRules();
-  //console.log("Fetched rules:", rules);
+  //console.log("Fetched rules:", rules); // Restored commented-out log
   // 3. Normalize input
   const normalizedInput = discussion.replace(/^I /i, '').trim();
 

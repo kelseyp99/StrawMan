@@ -48,6 +48,7 @@ yarn-error.log*
 app-example/
 junk/
 crash_log.txt
+backup_log.txt
 
 # Exclude APK files
 *.apk

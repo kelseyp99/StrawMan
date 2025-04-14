@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Text, View, ActivityIndicator, Pressable, Modal, StyleSheet } from "react-native";
-import { auth } from "../../src/firebaseConfig"; // Adjusted path
+import { auth } from "../../src/firebaseConfig";
 import { signOut, onAuthStateChanged } from "firebase/auth";
 import { getModelAPIkey } from "../../src/services/databaseService";
 import { useRouter } from "expo-router";
@@ -16,6 +16,7 @@ import {
   fetchInitialDiscussion,
   clearDiscussion,
 } from "../../src/services/databaseService";
+import { transformInput } from "../../src/services/phraseProcessor"; // Import the new function
 import Header from "../../src/components/Header";
 import InputField from "../../src/components/InputField";
 import ActionButtons from "../../src/components/ActionButtons";
@@ -24,18 +25,9 @@ import SettingsButton from "../../src/components/SettingsButton";
 import { analyzeActivity, ModelAPIkey } from "../../src/services/openaiAPI";
 import Icon from "react-native-vector-icons/MaterialIcons";
 console.log("LifeLog loaded:", new Date());
+
 const IndexScreen: React.FC<{ onApiKeyLoaded: (cachedApiKey: string | null) => void }> = ({ onApiKeyLoaded }) => {
   const [loading, setLoading] = useState(true);
-
-  // useEffect(() => {
-  //   const fetchKey = async () => {
-  //     const key = await getModelAPIkey("LifeLog", "OpenAI", "gpt-3.5-turbo");
-  //     const { apiKey } = key as ModelAPIkey;
-  //     onApiKeyLoaded(apiKey);
-  //     setLoading(false);
-  //   };
-  //   fetchKey();
-  // }, []);
 
   if (loading) return <ActivityIndicator size="large" color="#0000ff" />;
   return null;
@@ -53,6 +45,16 @@ export default function AskJanet() {
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [menuVisible, setMenuVisible] = useState(false);
   const [loadingAuth, setLoadingAuth] = useState(true);
+
+// useEffect(() => {
+//   const fetchKey = async () => {
+//     const key = await getModelAPIkey("LifeLog", "OpenAI", "gpt-3.5-turbo");
+//     const { apiKey } = key as ModelAPIkey;
+//     onApiKeyLoaded(apiKey);
+//     setLoading(false);
+//   };
+//   fetchKey();
+// }, []);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
@@ -137,12 +139,19 @@ export default function AskJanet() {
     try {
       const currentInput = input.trim();
       if (currentInput === "") return;
-      const newEntry = { text: currentInput, type: isQuestion ? "question" : "fact" };
+
+      // Transform the input using the new function
+      const transformedInput = transformInput(currentInput);
+
+      // Use the transformed input for both the UI and backend
+      const newEntry = { text: transformedInput, type: isQuestion ? "question" : "fact" };
       setHistory((prev) => [...prev, newEntry]);
-      await addOrUpdateDiscussion(currentInput, isQuestion ? "ask" : "tell");
+
+      await addOrUpdateDiscussion(transformedInput, isQuestion ? "ask" : "tell");
       setInput("");
       fetchDiscussions();
-      console.log("made it here")
+      console.log("made it here");
+
       if (isQuestion) {
         const aiResponse = responses
           .filter((response) => response.responseType === "gpt response")
@@ -150,7 +159,7 @@ export default function AskJanet() {
           .join(", ") || "";
         setHistory((prev) =>
           prev.map((item) =>
-            item.text === currentInput && item.type === "question" ? { ...item, aiResponse } : item
+            item.text === transformedInput && item.type === "question" ? { ...item, aiResponse } : item
           )
         );
       }
