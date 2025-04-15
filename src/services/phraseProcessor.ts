@@ -1,75 +1,77 @@
 import axios from 'axios';
 import { ActivityInput, analyzeActivity, ParsedActivity } from './openaiAPI';
 import { getRules } from './databaseService';
+import { db } from "../firebaseConfig";
+import { doc, updateDoc, addDoc, collection, getDoc } from "firebase/firestore";
 
-const useOpenAI = true; // Set this to false to use TensorFlow instead
+const useOpenAI = true;
 
-// Dummy labels and tokenizer for example
 const categories = ['exercise', 'meal', 'sleep', 'mood'];
 const dummyTokenizer = (text: string): number[] => {
   return text
     .toLowerCase()
     .split(/\s+/)
-    .map((word) => word.length % 10); // Dummy tokenization
+    .map((word) => word.length % 10);
 };
 
-// Example dummy TensorFlow model logic (restored as commented-out code)
-/* async function loadModel(): Promise<tf.LayersModel> {
-  // For React Native, load model from assets or remote URL
-  // Example: Assuming model is bundled in app assets
-  return await tf.loadLayersModel('https://example.com/path-to-your-model/model.json') as tf.LayersModel; // Update with real URL
-}
-
-async function classifyWithTensorFlow(phrase: string): Promise<ParsedActivity> {
-  const model = await loadModel();
-
-  const tokens = dummyTokenizer(phrase);
-  // const input = tf.tensor2d([tokens], [1, tokens.length]);
-  const prediction = model.predict(input) as tf.Tensor;
-
-  const predictionData = await prediction.data();
-  const categoryIndex = predictionData.indexOf(Math.max(...predictionData));
-  const category = categories[categoryIndex] || 'unknown';
-
-  const summary = phrase.split(' ').slice(0, 5).join(' ') + '...';
-
-  return { category, parsedDescription: summary };
-} */
-
-// New function to transform user input
 export function transformInput(input: string): string {
   let transformedInput = input;
-
-  // Handle transformations for inputs starting with "8", "8a", or "88"
   if (transformedInput.startsWith("8")) {
     if (transformedInput === "8") {
       transformedInput = "Ate " + transformedInput.slice(1);
     } else if (transformedInput.startsWith("8a") || transformedInput.startsWith("88")) {
       transformedInput = "Ate a" + transformedInput.slice(2);
-    } else if (transformedInput.toUpperCase().startsWith("DRINK") ) {
-      transformedInput = "Drank " + transformedInput.slice(5);
     }
   }
-
-  // Trim and replace double spaces with single spaces
   transformedInput = transformedInput.trim().replace(/\s\s+/g, " ");
-
   return transformedInput;
 }
 
-// Main switch function
-export const processPhrase = async (input: ActivityInput): Promise<ParsedActivity> => {
+export const processPhrase = async (
+  input: ActivityInput,
+  discussionCounts: { discussionID: string; activityLogId: string; count: number; description: string }[],
+  setDiscussionCounts: React.Dispatch<React.SetStateAction<{ discussionID: string; activityLogId: string; count: number; description: string }[]>>,
+  discussionId: string,
+  uid: string
+): Promise<ParsedActivity> => {
   console.log("Processing phrase:", input.description);
   const { categories: distinctCategories, description } = input;
-  let activityAnalysis = (await applyRules(description)) as ParsedActivity;
 
-  // Check if applyRules failed to assign a category or if it's "unclassified"
+  // Check DiscussionCounts array for a matching description
+  for (const entry of discussionCounts) {
+    if (entry.description === description) {
+      // Increment the count in the array
+      const updatedCounts = discussionCounts.map(countEntry =>
+        countEntry.activityLogId === entry.activityLogId
+          ? { ...countEntry, count: countEntry.count + 1 }
+          : countEntry
+      );
+      setDiscussionCounts(updatedCounts.sort((a, b) => b.count - a.count));
+
+      // Fetch the ActivityLog entry to get category and description
+      const activityLogRef = doc(db, "ActivityLog", entry.activityLogId);
+      const activityLogSnap = await getDoc(activityLogRef);
+      if (activityLogSnap.exists()) {
+        const activityLogData = activityLogSnap.data();
+
+        // Update Firestore DiscussionCounts count
+        const discussionCountRef = doc(db, `Users/${uid}/DiscussionCounts`, entry.discussionID);
+        await updateDoc(discussionCountRef, { count: entry.count + 1 });
+
+        return {
+          category: activityLogData.category,
+          parsedDescription: activityLogData.description
+        };
+      }
+    }
+  }
+
+  // If no match, proceed with rule application
+  let activityAnalysis = await applyRules(description);
   if (!activityAnalysis.category || activityAnalysis.category === "unclassified") {
     const callOpenAI = false;
     if (callOpenAI) {
       activityAnalysis = await analyzeActivity({ categories: distinctCategories, description });
-    } else {
-      // activityAnalysis = await classifyWithTensorFlow(input.description);
     }
   }
 
@@ -77,7 +79,6 @@ export const processPhrase = async (input: ActivityInput): Promise<ParsedActivit
 };
 
 export async function applyRules(discussion: string): Promise<ParsedActivity> {
-  // 1. Check hardcoded abbreviations first
   const abbreviationMap = new Map<string, string>([
     ['1', 'i urinated'],
     ['11', 'i had a high volume of urination'],
@@ -86,35 +87,47 @@ export async function applyRules(discussion: string): Promise<ParsedActivity> {
     ['222', 'i had a very large poop']
   ]);
 
-  if (abbreviationMap.has(discussion)) {
-    const expanded = abbreviationMap.get(discussion)!;
-    discussion = expanded; // Use expanded form for rule processing
+  // Step 1: Check if the phrase starts with a category followed by : or ;
+  let extractedCategory = '';
+  let remainingPhrase = discussion;
+
+  // Predefined categories
+  const validCategories = ['vitals', 'diet', 'mood', 'exercise', 'sleep', 'metabolism'];
+
+  // Regex to match only valid categories
+  const categoryMatch = discussion.match(new RegExp(`^(${validCategories.join('|')})[:;]\\s*(.+)$`, 'i'));
+  if (categoryMatch) {
+    extractedCategory = categoryMatch[1].toLowerCase();
+    remainingPhrase = categoryMatch[2];
+    console.log(`Extracted category: "${extractedCategory}", remaining phrase: "${remainingPhrase}"`);
+  }
+
+  // Step 2: Apply abbreviation expansion (if applicable)
+  if (abbreviationMap.has(remainingPhrase)) {
+    const expanded = abbreviationMap.get(remainingPhrase)!;
+    remainingPhrase = expanded;
     return {
-      category: "metabolism",
-      parsedDescription: discussion.trim()
+      category: extractedCategory || "metabolism", // Use extracted category if present, otherwise "metabolism"
+      parsedDescription: remainingPhrase.trim()
     };
   }
 
-  // 2. Fetch all rules from Firebase
-  const rules = await getRules();
-  //console.log("Fetched rules:", rules); // Restored commented-out log
-  // 3. Normalize input
-  const normalizedInput = discussion.replace(/^I /i, '').trim();
+  // Step 3: Normalize the remaining phrase
+  const normalizedInput = remainingPhrase.replace(/^I /i, '').trim();
 
-  // 4. Process rules in order
+  // Step 4: Apply rules to the remaining phrase
+  const rules = await getRules();
   for (const rule of rules) {
     let isMatch = false;
     let parsedDesc = '';
 
     if (rule.isRegex) {
-      // Handle regex rules
-      const regex = new RegExp(rule.phrase, 'i'); // Case-insensitive
+      const regex = new RegExp(rule.phrase, 'i');
       if (regex.test(normalizedInput)) {
         isMatch = true;
         parsedDesc = normalizedInput.replace(regex, rule.replacement);
       }
     } else {
-      // Handle exact match rules
       if (normalizedInput.includes(rule.phrase)) {
         isMatch = true;
         parsedDesc = normalizedInput.replace(rule.phrase, rule.replacement);
@@ -123,15 +136,15 @@ export async function applyRules(discussion: string): Promise<ParsedActivity> {
 
     if (isMatch) {
       return {
-        category: rule.category,
+        category: extractedCategory || rule.category, // Use extracted category if present, otherwise rule's category
         parsedDescription: parsedDesc.trim()
       };
     }
   }
 
-  // 5. Fallback if no rules matched
+  // Step 5: If no rules match, return the extracted category (if any) or uncategorized
   return {
-    category: 'uncategorized',
-    parsedDescription: discussion
+    category: extractedCategory || 'uncategorized',
+    parsedDescription: normalizedInput
   };
 }

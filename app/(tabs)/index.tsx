@@ -16,7 +16,9 @@ import {
   fetchInitialDiscussion,
   clearDiscussion,
 } from "../../src/services/databaseService";
-import { transformInput } from "../../src/services/phraseProcessor"; // Import the new function
+import { transformInput } from "../../src/services/phraseProcessor";
+import { db } from "../../src/firebaseConfig";
+import { collection, query, where, getDocs, getDoc, doc } from "firebase/firestore";
 import Header from "../../src/components/Header";
 import InputField from "../../src/components/InputField";
 import ActionButtons from "../../src/components/ActionButtons";
@@ -25,6 +27,29 @@ import SettingsButton from "../../src/components/SettingsButton";
 import { analyzeActivity, ModelAPIkey } from "../../src/services/openaiAPI";
 import Icon from "react-native-vector-icons/MaterialIcons";
 console.log("LifeLog loaded:", new Date());
+
+// Interface for ActivityLog document
+interface ActivityLog {
+  id: string;
+  discussionId: string;
+  description: string;
+  category: string;
+  timestamp: any; // Firestore Timestamp
+  cleared: boolean;
+  uid: string;
+  lockedCategory?: boolean;
+  lockedDescription?: boolean;
+}
+
+// Interface for Discussion document
+interface Discussion {
+  id: string;
+  discussionId: string;
+  description: string;
+  timestamp: any; // Firestore Timestamp
+  typeSay: string;
+  cleared?: boolean;
+}
 
 const IndexScreen: React.FC<{ onApiKeyLoaded: (cachedApiKey: string | null) => void }> = ({ onApiKeyLoaded }) => {
   const [loading, setLoading] = useState(true);
@@ -39,22 +64,13 @@ export default function AskJanet() {
   const [isQuestion, setIsQuestion] = useState(false);
   const [inDJ_Mode, setInDJ_Mode] = useState(false);
   const [history, setHistory] = useState<{ text: string; type: string; aiResponse?: string }[]>([]);
-  const [discussion, setDiscussion] = useState<any>(null);
+  const [discussion, setDiscussion] = useState<Discussion | null>(null);
   const router = useRouter();
   const [responses, setResponses] = useState<{ responseType: string; text: string }[]>([]);
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [menuVisible, setMenuVisible] = useState(false);
   const [loadingAuth, setLoadingAuth] = useState(true);
-
-// useEffect(() => {
-//   const fetchKey = async () => {
-//     const key = await getModelAPIkey("LifeLog", "OpenAI", "gpt-3.5-turbo");
-//     const { apiKey } = key as ModelAPIkey;
-//     onApiKeyLoaded(apiKey);
-//     setLoading(false);
-//   };
-//   fetchKey();
-// }, []);
+  const [discussionCounts, setDiscussionCounts] = useState<{ discussionID: string; activityLogId: string; count: number; description: string }[]>([]);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
@@ -72,14 +88,40 @@ export default function AskJanet() {
 
   useEffect(() => {
     if (!loadingAuth && userEmail) {
-      async function loadDiscussion() {
+      async function loadInitialData() {
         const initialDiscussion = await fetchInitialDiscussion();
         if (initialDiscussion) {
           console.log("✅ Fetched Initial Discussion:", initialDiscussion);
           setDiscussion(initialDiscussion);
         }
+
+        const uid = auth.currentUser?.uid;
+        if (uid) {
+          const q = query(collection(db, `Users/${uid}/DiscussionCounts`));
+          const querySnapshot = await getDocs(q);
+          const countsPromises = querySnapshot.docs.map(async documentSnapshot => {
+            const activityLogRef = doc(db, "ActivityLog", documentSnapshot.data().activityLogId as string);
+            const activityLogSnap = await getDoc(activityLogRef);
+            if (activityLogSnap.exists()) {
+              const activityLogData = activityLogSnap.data() as ActivityLog;
+              return {
+                discussionID: documentSnapshot.id,
+                activityLogId: documentSnapshot.data().activityLogId as string,
+                count: documentSnapshot.data().count as number,
+                description: activityLogData.description,
+              };
+            }
+            return null;
+          });
+
+          const counts = (await Promise.all(countsPromises))
+            .filter((count): count is { discussionID: string; activityLogId: string; count: number; description: string } => count !== null)
+            .sort((a, b) => b.count - a.count);
+          setDiscussionCounts(counts);
+          console.log("✅ Fetched DiscussionCounts:", counts);
+        }
       }
-      loadDiscussion();
+      loadInitialData();
     }
   }, [loadingAuth, userEmail]);
 
@@ -101,6 +143,12 @@ export default function AskJanet() {
   };
 
   async function fetchDiscussions() {
+    const uid = auth.currentUser?.uid;
+    if (!uid) {
+      console.error("User ID is null, cannot proceed with fetching discussions.");
+      return;
+    }
+
     let hasMoreDocuments = true;
     while (hasMoreDocuments) {
       const { snapshot, hasMore } = await getNextOpenDiscussion();
@@ -108,12 +156,13 @@ export default function AskJanet() {
       if (snapshot && !snapshot.empty) {
         console.log("✅ Processing Snapshot:", snapshot.docs.map((doc) => doc.data()));
         const docSnapshot = snapshot.docs[0];
-        const discussionTyped = {
+        const discussionTyped: Discussion = {
           id: docSnapshot.id,
-          discussionId: docSnapshot.data().id,
-          description: docSnapshot.data().description,
+          discussionId: docSnapshot.data().id as string,
+          description: docSnapshot.data().description as string,
           timestamp: docSnapshot.data().timestamp?.toDate() || new Date(),
-          typeSay: docSnapshot.data().typeSay,
+          typeSay: docSnapshot.data().typeSay as string,
+          cleared: docSnapshot.data().cleared as boolean | undefined,
         };
         console.log("Processing Discussion:", discussionTyped.id);
         if (discussionTyped.typeSay === "ask") {
@@ -140,10 +189,7 @@ export default function AskJanet() {
       const currentInput = input.trim();
       if (currentInput === "") return;
 
-      // Transform the input using the new function
       const transformedInput = transformInput(currentInput);
-
-      // Use the transformed input for both the UI and backend
       const newEntry = { text: transformedInput, type: isQuestion ? "question" : "fact" };
       setHistory((prev) => [...prev, newEntry]);
 
