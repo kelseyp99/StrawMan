@@ -9,7 +9,8 @@ param (
 $projectDir = "C:\Users\philk\Projects2\LifeLog"
 $commitMessage = "Automated commit: Update and build"
 $downloadsDir = "C:\Users\philk\Downloads"
-$wslProjectDir = "/mnt/c/Users/philk/Projects2/LifeLog"  # Updated to Windows-mounted path
+$wslProjectDir = "/home/kelseyp99/projects/LifeLog"
+$wslScriptsDir = "$wslProjectDir/src/utils/scripts"
 $firebaseAppId = "1:341732508688:android:4a8c275e1199f4e1c0e8b4"
 $releaseNotes = "New build uploaded on $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
 $testers = "email1@example.com,email2@example.com"  # Replace with real emails
@@ -31,14 +32,14 @@ if ($Local) {
     Write-Host "Running WSL pull and doctor script..."
     try {
         # Check if the script exists before running
-        $scriptCheck = wsl -d Ubuntu -e bash -c "cd $wslProjectDir && ls -la src/utils/scripts/manage_wsl.sh" 2>&1
+        $scriptCheck = wsl -d Ubuntu -e bash -c "cd $wslScriptsDir && ls -la ./manage_wsl.sh" 2>&1
         Write-Host "Script Check Output: $scriptCheck"
         if ($LASTEXITCODE -ne 0) {
-            Write-Host "Error: manage_wsl.sh not found in $wslProjectDir/src/utils/scripts/!" -ForegroundColor Red
+            Write-Host "Error: manage_wsl.sh not found in $wslScriptsDir/!" -ForegroundColor Red
             exit 1
         }
 
-        $pullOutput = wsl -d Ubuntu -e bash -c "cd $wslProjectDir && ./src/utils/scripts/manage_wsl.sh" 2>&1
+        $pullOutput = wsl -d Ubuntu -e bash -c "cd $wslScriptsDir && ./manage_wsl.sh" 2>&1
         Write-Host "WSL Pull Output: $pullOutput"
         if ($LASTEXITCODE -ne 0) {
             Write-Host "Error: WSL pull and doctor script failed!" -ForegroundColor Red
@@ -46,7 +47,7 @@ if ($Local) {
         }
 
         Write-Host "Running WSL build script..."
-        $buildOutput = wsl -d Ubuntu -e bash -c "cd $wslProjectDir && ./src/utils/scripts/build_and_distribute.sh --build-only" 2>&1
+        $buildOutput = wsl -d Ubuntu -e bash -c "cd $wslScriptsDir && ./build_and_distribute.sh --build-only" 2>&1
         Write-Host "WSL Build Output: $buildOutput"
         if ($LASTEXITCODE -ne 0) {
             Write-Host "Error: WSL build script failed!" -ForegroundColor Red
