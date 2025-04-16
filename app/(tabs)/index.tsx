@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Text, View, ActivityIndicator, Pressable, Modal, StyleSheet } from "react-native";
+import { Text, View, ActivityIndicator, Pressable, Modal, StyleSheet, FlatList, TouchableOpacity } from "react-native";
 import { auth } from "../../src/firebaseConfig";
 import { signOut, onAuthStateChanged } from "firebase/auth";
 import { getModelAPIkey } from "../../src/services/databaseService";
@@ -26,6 +26,9 @@ import HistoryList from "../../src/components/HistoryList";
 import SettingsButton from "../../src/components/SettingsButton";
 import { analyzeActivity, ModelAPIkey } from "../../src/services/openaiAPI";
 import Icon from "react-native-vector-icons/MaterialIcons";
+import RNFS from 'react-native-fs'; // For file system access
+import Clipboard from '@react-native-clipboard/clipboard'; // For clipboard access
+
 console.log("LifeLog loaded:", new Date());
 
 // Interface for ActivityLog document
@@ -71,6 +74,13 @@ export default function AskJanet() {
   const [menuVisible, setMenuVisible] = useState(false);
   const [loadingAuth, setLoadingAuth] = useState(true);
   const [discussionCounts, setDiscussionCounts] = useState<{ discussionID: string; activityLogId: string; count: number; description: string }[]>([]);
+  // State for dialog
+  const [dialogVisible, setDialogVisible] = useState(false);
+  const [dialogQuestion, setDialogQuestion] = useState("");
+  const [distinctCategories, setDistinctCategories] = useState<string[]>([]);
+  const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
+  const [filePath, setFilePath] = useState<string>("");
+  const [currentDiscussion, setCurrentDiscussion] = useState<Discussion | null>(null);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
@@ -92,7 +102,14 @@ export default function AskJanet() {
         const initialDiscussion = await fetchInitialDiscussion();
         if (initialDiscussion) {
           console.log("✅ Fetched Initial Discussion:", initialDiscussion);
-          setDiscussion(initialDiscussion);
+          setDiscussion({
+            id: initialDiscussion.id,
+            discussionId: initialDiscussion.discussionId,
+            description: initialDiscussion.description as string,
+            timestamp: initialDiscussion.timestamp,
+            typeSay: initialDiscussion.typeSay as string ?? '',
+            cleared: initialDiscussion.cleared,
+          });
         }
 
         const uid = auth.currentUser?.uid;
@@ -166,13 +183,15 @@ export default function AskJanet() {
         };
         console.log("Processing Discussion:", discussionTyped.id);
         if (discussionTyped.typeSay === "ask") {
-          const gptResponseId = await addQuestionDiscussion(input, discussionTyped.id);
-          const parsedResponses = await disperseQuestion(discussionTyped.id, gptResponseId);
-          if (!(await clearDiscussion(discussionTyped.id))) break;
-          if (parsedResponses) {
-            setHistory((prev) => [...prev, ...parsedResponses.map((response) => ({ text: response.toString(), type: "answer" }))]);
-          }
-          setResponses(responses);
+          // Show dialog for category selection
+          const categories = await getDistinctCategories();
+          setDistinctCategories(categories);
+          setDialogQuestion(discussionTyped.description);
+          setCurrentDiscussion(discussionTyped);
+          setSelectedCategories([]); // Reset selected categories
+          setFilePath(""); // Reset file path
+          setDialogVisible(true);
+          return; // Pause processing until dialog is confirmed
         } else {
           const distinctCategories = await getDistinctCategories();
           const description = await expandFromAbbreviation(discussionTyped.description);
@@ -183,6 +202,73 @@ export default function AskJanet() {
       }
     }
   }
+
+  // Handle dialog confirmation
+  const handleDialogConfirm = async () => {
+    if (!currentDiscussion) return;
+
+    try {
+      // Step 1: Process the question (create ActivityLog entry)
+      const gptResponseId = await addQuestionDiscussion(input, currentDiscussion.id);
+      const parsedResponses = await disperseQuestion(currentDiscussion.id, gptResponseId);
+      const cleared = await clearDiscussion(currentDiscussion.id);
+
+      // Step 2: Fetch the related ActivityLog entry
+      let activityLogDescription = "No ActivityLog description available";
+      const activityLogSnapshot = await getDocs(collection(db, "ActivityLog"));
+      const relatedLog = activityLogSnapshot.docs.find(doc => doc.data().discussionId === currentDiscussion.id);
+      if (relatedLog) {
+        activityLogDescription = relatedLog.data().description || "No description";
+      }
+
+      // Step 3: Create a text file with the question, selected categories, and ActivityLog.description
+      const content = `Question: ${dialogQuestion}\nSelected Categories: ${selectedCategories.length > 0 ? selectedCategories.join(", ") : "None"}\nActivityLog Description: ${activityLogDescription}`;
+      const fileName = `question_${currentDiscussion.id}_${Date.now()}.txt`;
+      const path = `${RNFS.DocumentDirectoryPath}/${fileName}`;
+
+      await RNFS.writeFile(path, content, 'utf8');
+      console.log("Text file created at:", path);
+      setFilePath(path);
+
+      // Step 4: Copy the question and file path to the clipboard
+      const clipboardContent = `Question: ${dialogQuestion}\nFile Path: ${path}`;
+      Clipboard.setString(clipboardContent);
+      console.log("Copied to clipboard:", clipboardContent);
+
+      // Step 5: Update history and responses
+      if (cleared && parsedResponses) {
+        setHistory((prev) => [...prev, ...parsedResponses.map((response) => ({ text: response.toString(), type: "answer" }))]);
+      }
+      setResponses(responses);
+
+      // Step 6: Continue processing
+      await processUnclearedGPTResponses();
+      setDialogVisible(false);
+      setCurrentDiscussion(null);
+      fetchDiscussions();
+    } catch (error) {
+      console.error("Error in dialog confirmation:", error);
+      setDialogVisible(false);
+      setCurrentDiscussion(null);
+      fetchDiscussions();
+    }
+  };
+
+  // Handle dialog cancellation
+  const handleDialogCancel = () => {
+    setDialogVisible(false);
+    setCurrentDiscussion(null);
+    fetchDiscussions();
+  };
+
+  // Handle category selection
+  const toggleCategory = (category: string) => {
+    setSelectedCategories((prev) =>
+      prev.includes(category)
+        ? prev.filter((cat) => cat !== category)
+        : [...prev, category]
+    );
+  };
 
   const handleSubmit = async () => {
     try {
@@ -247,6 +333,40 @@ export default function AskJanet() {
           </View>
         </View>
       </Modal>
+      {/* Dialog Modal for category selection */}
+      <Modal visible={dialogVisible} transparent={true} animationType="slide" onRequestClose={handleDialogCancel}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.dialogContainer}>
+            <Text style={styles.modalTitle}>Question Details</Text>
+            <Text style={styles.modalLabel}>Question: {dialogQuestion}</Text>
+            <Text style={styles.modalLabel}>Select Categories:</Text>
+            <FlatList
+              data={distinctCategories}
+              keyExtractor={(item) => item}
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  style={styles.categoryItem}
+                  onPress={() => toggleCategory(item)}
+                >
+                  <Text style={styles.categoryText}>{item}</Text>
+                  <Text>{selectedCategories.includes(item) ? "✔" : "⬜"}</Text>
+                </TouchableOpacity>
+              )}
+            />
+            {filePath ? (
+              <Text style={styles.modalLabel}>File Path: {filePath}</Text>
+            ) : null}
+            <View style={styles.modalButtons}>
+              <TouchableOpacity style={styles.modalButton} onPress={handleDialogCancel}>
+                <Text style={styles.modalButtonText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.modalButton, styles.saveButton]} onPress={handleDialogConfirm}>
+                <Text style={styles.modalButtonText}>Confirm</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -286,4 +406,21 @@ const styles = StyleSheet.create({
     marginTop: 10,
   },
   menuButtonText: { color: "#fff", fontSize: 16, fontWeight: "600" },
+  // Styles for the dialog modal
+  dialogContainer: {
+    backgroundColor: "#fff",
+    padding: 20,
+    borderTopLeftRadius: 10,
+    borderTopRightRadius: 10,
+    width: "100%",
+    maxHeight: "80%",
+  },
+  modalTitle: { fontSize: 18, fontWeight: "bold", marginBottom: 10 },
+  modalLabel: { fontSize: 16, marginBottom: 10 },
+  categoryItem: { flexDirection: "row", justifyContent: "space-between", padding: 10, borderBottomWidth: 1, borderBottomColor: "#ccc" },
+  categoryText: { fontSize: 16 },
+  modalButtons: { flexDirection: "row", justifyContent: "space-between", width: "100%", marginTop: 20 },
+  modalButton: { padding: 10, borderRadius: 5, backgroundColor: "#ddd", width: "45%", alignItems: "center" },
+  saveButton: { backgroundColor: "#007bff" },
+  modalButtonText: { color: "#fff", fontWeight: "bold" },
 });

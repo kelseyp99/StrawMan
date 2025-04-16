@@ -1,7 +1,5 @@
 #!/bin/bash
 # ./src/utils/scripts/build_and_distribute.sh --build-only
-# cd C:\Users\philk\Downloads
-# adb -s emulator-5554 install build-1744246199106.apk
 PROJECT_DIR="/home/kelseyp99/projects/LifeLog"
 WINDOWS_DEST="/mnt/c/Users/philk/Downloads/"
 
@@ -12,11 +10,8 @@ if [[ "$1" == "--build-only" ]]; then
     BUILD_ONLY=true
 fi
 
-echo "Pulling latest changes from origin/develop..."
-cd "$PROJECT_DIR"
-git pull origin develop || { echo "Error: Failed to pull from Git"; exit 1; }
-
 echo "Setting up Android environment and building the app..."
+cd "$PROJECT_DIR"
 export ANDROID_HOME=/home/kelseyp99/Android/Sdk
 export PATH=$PATH:$ANDROID_HOME/platform-tools
 

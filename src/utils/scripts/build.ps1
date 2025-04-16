@@ -27,30 +27,28 @@ if ($LASTEXITCODE -eq 0) {
 
 # Build locally in WSL if -Local is specified
 if ($Local) {
-    Write-Host "Initailizing WSL with pull and doctor script..."    Write-Host "Running WSL pull and doctor script..."
+    Write-Host "Initializing WSL with pull and doctor script..."
+    Write-Host "Running WSL pull and doctor script..."
     try {
-        $pullOutput = wsl -d Ubuntu -e bash -c "cd $wslProjectDir && ./src/utils/scripts/manage_wsl.sh" 2>&1        $pullOutput = wsl -d Ubuntu -e bash -c "cd $wslProjectDir && ./src/utils/scripts/pull_and_doctor.sh" 2>&1
+        $pullOutput = wsl -d Ubuntu -e bash -c "cd $wslProjectDir && ./src/utils/scripts/manage_wsl.sh" 2>&1
         Write-Host "WSL Pull Output: $pullOutput"
         if ($LASTEXITCODE -ne 0) {
-            Write-Host "Error: WSL pull and doctor script failed!" -ForegroundColor Red            Write-Host "Error: WSL pull and doctor script failed!" -ForegroundColor Red
+            Write-Host "Error: WSL pull and doctor script failed!" -ForegroundColor Red
             exit 1
-        }}
+        }
 
-# Build locally in WSL if -Local is specified
-if ($Local) {
-    Write-Host "Opening WSL and running build script..."
-    wsl -d Ubuntu -e bash -c "cd $wslProjectDir && ./src/utils/scripts/build_and_distribute.sh --build-only"
-
-    Write-Host "Pulling latest changes from WSL build..."
-    try {
-        git pull origin develop --ff-only -ErrorAction Stop
+        Write-Host "Running WSL build script..."
+        $buildOutput = wsl -d Ubuntu -e bash -c "cd $wslProjectDir && ./src/utils/scripts/build_and_distribute.sh --build-only" 2>&1
+        Write-Host "WSL Build Output: $buildOutput"
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host "Error: WSL build script failed!" -ForegroundColor Red
+            exit 1
+        }
     } catch {
-        Write-Host "Error: Pull failed, merge required!" -ForegroundColor Red
+        Write-Host "Error: WSL operation failed: $_" -ForegroundColor Red
         exit 1
     }
 }
-
-
 
 # Find latest APK if building locally or uploading to Firebase
 $latestApk = $null
