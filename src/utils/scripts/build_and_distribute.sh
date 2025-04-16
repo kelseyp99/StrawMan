@@ -1,6 +1,6 @@
 #!/bin/bash
 # ./src/utils/scripts/build_and_distribute.sh --build-only
-PROJECT_DIR="/home/kelseyp99/projects/LifeLog"
+PROJECT_DIR="/mnt/c/Users/philk/Projects2/LifeLog"
 WINDOWS_DEST="/mnt/c/Users/philk/Downloads/"
 
 set -e

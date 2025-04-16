@@ -9,7 +9,7 @@ param (
 $projectDir = "C:\Users\philk\Projects2\LifeLog"
 $commitMessage = "Automated commit: Update and build"
 $downloadsDir = "C:\Users\philk\Downloads"
-$wslProjectDir = "/home/kelseyp99/projects/LifeLog"
+$wslProjectDir = "/mnt/c/Users/philk/Projects2/LifeLog"  # Updated to Windows-mounted path
 $firebaseAppId = "1:341732508688:android:4a8c275e1199f4e1c0e8b4"
 $releaseNotes = "New build uploaded on $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
 $testers = "email1@example.com,email2@example.com"  # Replace with real emails
@@ -30,6 +30,14 @@ if ($Local) {
     Write-Host "Initializing WSL with pull and doctor script..."
     Write-Host "Running WSL pull and doctor script..."
     try {
+        # Check if the script exists before running
+        $scriptCheck = wsl -d Ubuntu -e bash -c "cd $wslProjectDir && ls -la src/utils/scripts/manage_wsl.sh" 2>&1
+        Write-Host "Script Check Output: $scriptCheck"
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host "Error: manage_wsl.sh not found in $wslProjectDir/src/utils/scripts/!" -ForegroundColor Red
+            exit 1
+        }
+
         $pullOutput = wsl -d Ubuntu -e bash -c "cd $wslProjectDir && ./src/utils/scripts/manage_wsl.sh" 2>&1
         Write-Host "WSL Pull Output: $pullOutput"
         if ($LASTEXITCODE -ne 0) {
