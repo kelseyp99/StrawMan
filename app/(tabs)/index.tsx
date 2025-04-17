@@ -80,8 +80,8 @@ const IndexScreen: React.FC<{ onApiKeyLoaded: (cachedApiKey: string | null) => v
   useEffect(() => {
     async function loadApiKey() {
       try {
-        const key = await getModelAPIkey("LifeLog","OpenAI", "gpt-3.5-turbo");
-        onApiKeyLoaded(key?.apiKey || null);
+        const key = await getModelAPIkey();
+        onApiKeyLoaded(key);
         console.log("API Key loaded:", key ? `${key.slice(0, 4)}...${key.slice(-4)}` : "None");
       } catch (error) {
         console.error("Failed to load API Key:", error);
@@ -126,22 +126,32 @@ export default function AskJanet() {
       if (user) {
         setUserEmail(user.email);
         console.log("Logged in as:", user.email, "UID:", user.uid);
-        setTimeout(() => loadInitialData(), 200); // Delay for auth stability
+        setTimeout(() => loadInitialData(), 500); // Increased delay for auth stability
       } else {
         console.log("No user logged in, delaying navigation to login");
-        setTimeout(() => router.replace("/login"), 200); // Delay navigation
+        setTimeout(() => router.replace("/login"), 500); // Delay navigation
       }
       setLoadingAuth(false);
     });
     return () => unsubscribe();
   }, [router]);
 
-  async function loadInitialData() {
-    if (!auth.currentUser?.uid) {
-      console.error("Cannot load initial data: No UID available.");
-      return;
+  async function waitForAuth(maxAttempts = 5, delayMs = 1000) {
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      if (auth.currentUser) {
+        console.log("Auth initialized, UID:", auth.currentUser.uid);
+        return auth.currentUser.uid;
+      }
+      console.log(`Waiting for auth initialization (attempt ${attempt}/${maxAttempts})...`);
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
     }
+    throw new Error("No user authenticated after max attempts");
+  }
+
+  async function loadInitialData() {
     try {
+      const uid = await waitForAuth();
+      console.log("loadInitialData UID:", uid);
       const initialDiscussion = await fetchInitialDiscussion();
       if (initialDiscussion) {
         console.log("✅ Fetched Initial Discussion:", initialDiscussion);
@@ -155,7 +165,6 @@ export default function AskJanet() {
         });
       }
 
-      const uid = auth.currentUser.uid;
       const q = query(collection(db, `Users/${uid}/DiscussionCounts`));
       const querySnapshot = await getDocs(q);
       const countsPromises = querySnapshot.docs.map(async (documentSnapshot) => {
@@ -193,7 +202,7 @@ export default function AskJanet() {
       await signOut(auth);
       console.log("User signed out");
       setMenuVisible(false);
-      setTimeout(() => router.replace("/login"), 200); // Delay navigation
+      setTimeout(() => router.replace("/login"), 500); // Delay navigation
     } catch (err: any) {
       console.error("Sign-out Error:", err.message);
     }
@@ -206,14 +215,9 @@ export default function AskJanet() {
   };
 
   async function fetchDiscussions() {
-    const uid = auth.currentUser?.uid;
-    if (!uid) {
-      console.error("User ID is null, cannot fetch discussions.");
-      return;
-    }
-
-    console.log("Fetching next open discussion...");
     try {
+      const uid = await waitForAuth();
+      console.log("fetchDiscussions UID:", uid);
       const { snapshot, hasMore } = await getNextOpenDiscussion();
       if (snapshot && !snapshot.empty) {
         console.log("✅ Snapshot found with", snapshot.docs.length, "documents:", snapshot.docs.map((doc) => doc.data()));
@@ -242,7 +246,7 @@ export default function AskJanet() {
             const categories = await getDistinctCategories();
             console.log("Categories fetched:", categories);
             setDistinctCategories(categories);
-            setDialogQuestion(discussionTyped.description || "No question available");
+            setDialogQuestion(discussionTyped.description || "No description available");
             setCurrentDiscussion(discussionTyped);
             setSelectedCategories([]);
             setFilePath("");
