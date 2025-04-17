@@ -1,5 +1,15 @@
-import React, { useState, useEffect } from "react";
-import { Text, View, ActivityIndicator, Pressable, Modal, StyleSheet, FlatList, TouchableOpacity } from "react-native";
+import React, { useState, useEffect, useRef } from "react";
+import {
+  Text,
+  View,
+  ActivityIndicator,
+  Pressable,
+  Modal,
+  StyleSheet,
+  FlatList,
+  TouchableOpacity,
+  Alert,
+} from "react-native";
 import { auth } from "../../src/firebaseConfig";
 import { signOut, onAuthStateChanged } from "firebase/auth";
 import { getModelAPIkey } from "../../src/services/databaseService";
@@ -26,8 +36,14 @@ import HistoryList from "../../src/components/HistoryList";
 import SettingsButton from "../../src/components/SettingsButton";
 import { analyzeActivity, ModelAPIkey } from "../../src/services/openaiAPI";
 import Icon from "react-native-vector-icons/MaterialIcons";
-import RNFS from 'react-native-fs'; // For file system access
-import Clipboard from '@react-native-clipboard/clipboard'; // For clipboard access
+import RNFS from "react-native-fs";
+import Clipboard from "@react-native-clipboard/clipboard";
+let captureRef: any; // Placeholder for RNViewShot
+try {
+  captureRef = require("react-native-view-shot").captureRef;
+} catch (error) {
+  console.warn("react-native-view-shot not installed. PNG/JPG saving disabled.");
+}
 
 console.log("LifeLog loaded:", new Date());
 
@@ -37,7 +53,7 @@ interface ActivityLog {
   discussionId: string;
   description: string;
   category: string;
-  timestamp: any; // Firestore Timestamp
+  timestamp: any;
   cleared: boolean;
   uid: string;
   lockedCategory?: boolean;
@@ -49,13 +65,31 @@ interface Discussion {
   id: string;
   discussionId: string;
   description: string;
-  timestamp: any; // Firestore Timestamp
+  timestamp: any;
   typeSay: string;
   cleared?: boolean;
 }
 
-const IndexScreen: React.FC<{ onApiKeyLoaded: (cachedApiKey: string | null) => void }> = ({ onApiKeyLoaded }) => {
+const IndexScreen: React.FC<{ onApiKeyLoaded: (cachedApiKey: string | null) => void }> = ({
+  onApiKeyLoaded,
+}) => {
   const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function loadApiKey() {
+      try {
+        const key = await getModelAPIkey();
+        onApiKeyLoaded(key);
+        console.log("API Key loaded:", key ? `${key.slice(0, 4)}...${key.slice(-4)}` : "None");
+      } catch (error) {
+        console.error("Failed to load API Key:", error);
+        onApiKeyLoaded(null);
+      } finally {
+        setLoading(false);
+      }
+    }
+    loadApiKey();
+  }, [onApiKeyLoaded]);
 
   if (loading) return <ActivityIndicator size="large" color="#0000ff" />;
   return null;
@@ -73,81 +107,91 @@ export default function AskJanet() {
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [menuVisible, setMenuVisible] = useState(false);
   const [loadingAuth, setLoadingAuth] = useState(true);
-  const [discussionCounts, setDiscussionCounts] = useState<{ discussionID: string; activityLogId: string; count: number; description: string }[]>([]);
-  // State for dialog
+  const [discussionCounts, setDiscussionCounts] = useState<
+    { discussionID: string; activityLogId: string; count: number; description: string }[]
+  >([]);
   const [dialogVisible, setDialogVisible] = useState(false);
   const [dialogQuestion, setDialogQuestion] = useState("");
   const [distinctCategories, setDistinctCategories] = useState<string[]>([]);
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
   const [filePath, setFilePath] = useState<string>("");
   const [currentDiscussion, setCurrentDiscussion] = useState<Discussion | null>(null);
+  const [processedDiscussions, setProcessedDiscussions] = useState<string[]>([]);
+  const dialogRef = useRef<View>(null);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       if (user) {
         setUserEmail(user.email);
-        console.log("Logged in as:", user.email);
+        console.log("Logged in as:", user.email, "UID:", user.uid);
+        setTimeout(() => loadInitialData(), 200); // Delay for auth stability
       } else {
-        console.log("No user logged in, redirecting to login");
-        router.replace("/login");
+        console.log("No user logged in, delaying navigation to login");
+        setTimeout(() => router.replace("/login"), 200); // Delay navigation
       }
       setLoadingAuth(false);
     });
     return () => unsubscribe();
   }, [router]);
 
-  useEffect(() => {
-    if (!loadingAuth && userEmail) {
-      async function loadInitialData() {
-        const initialDiscussion = await fetchInitialDiscussion();
-        if (initialDiscussion) {
-          console.log("✅ Fetched Initial Discussion:", initialDiscussion);
-          setDiscussion({
-            id: initialDiscussion.id,
-            discussionId: initialDiscussion.discussionId,
-            description: initialDiscussion.description as string,
-            timestamp: initialDiscussion.timestamp,
-            typeSay: initialDiscussion.typeSay as string ?? '',
-            cleared: initialDiscussion.cleared,
-          });
-        }
-
-        const uid = auth.currentUser?.uid;
-        if (uid) {
-          const q = query(collection(db, `Users/${uid}/DiscussionCounts`));
-          const querySnapshot = await getDocs(q);
-          const countsPromises = querySnapshot.docs.map(async documentSnapshot => {
-            const activityLogRef = doc(db, "ActivityLog", documentSnapshot.data().activityLogId as string);
-            const activityLogSnap = await getDoc(activityLogRef);
-            if (activityLogSnap.exists()) {
-              const activityLogData = activityLogSnap.data() as ActivityLog;
-              return {
-                discussionID: documentSnapshot.id,
-                activityLogId: documentSnapshot.data().activityLogId as string,
-                count: documentSnapshot.data().count as number,
-                description: activityLogData.description,
-              };
-            }
-            return null;
-          });
-
-          const counts = (await Promise.all(countsPromises))
-            .filter((count): count is { discussionID: string; activityLogId: string; count: number; description: string } => count !== null)
-            .sort((a, b) => b.count - a.count);
-          setDiscussionCounts(counts);
-          console.log("✅ Fetched DiscussionCounts:", counts);
-        }
-      }
-      loadInitialData();
+  async function loadInitialData() {
+    if (!auth.currentUser?.uid) {
+      console.error("Cannot load initial data: No UID available.");
+      return;
     }
-  }, [loadingAuth, userEmail]);
+    try {
+      const initialDiscussion = await fetchInitialDiscussion();
+      if (initialDiscussion) {
+        console.log("✅ Fetched Initial Discussion:", initialDiscussion);
+        setDiscussion({
+          id: initialDiscussion.id,
+          discussionId: initialDiscussion.discussionId || initialDiscussion.id,
+          description: initialDiscussion.description || "No description available",
+          timestamp: initialDiscussion.timestamp,
+          typeSay: initialDiscussion.typeSay || "ask",
+          cleared: initialDiscussion.cleared || false,
+        });
+      }
+
+      const uid = auth.currentUser.uid;
+      const q = query(collection(db, `Users/${uid}/DiscussionCounts`));
+      const querySnapshot = await getDocs(q);
+      const countsPromises = querySnapshot.docs.map(async (documentSnapshot) => {
+        const activityLogRef = doc(db, "ActivityLog", documentSnapshot.data().activityLogId as string);
+        const activityLogSnap = await getDoc(activityLogRef);
+        if (activityLogSnap.exists()) {
+          const activityLogData = activityLogSnap.data() as ActivityLog;
+          return {
+            discussionID: documentSnapshot.id,
+            activityLogId: documentSnapshot.data().activityLogId as string,
+            count: documentSnapshot.data().count as number,
+            description: activityLogData.description || "No description",
+          };
+        }
+        return null;
+      });
+
+      const counts = (await Promise.all(countsPromises))
+        .filter(
+          (
+            count
+          ): count is { discussionID: string; activityLogId: string; count: number; description: string } =>
+            count !== null
+        )
+        .sort((a, b) => b.count - a.count);
+      setDiscussionCounts(counts);
+      console.log("✅ Fetched DiscussionCounts:", counts);
+    } catch (error) {
+      console.error("Error loading initial data:", error);
+    }
+  }
 
   const handleSignOut = async () => {
     try {
       await signOut(auth);
       console.log("User signed out");
       setMenuVisible(false);
-      router.replace("/login");
+      setTimeout(() => router.replace("/login"), 200); // Delay navigation
     } catch (err: any) {
       console.error("Sign-out Error:", err.message);
     }
@@ -162,111 +206,216 @@ export default function AskJanet() {
   async function fetchDiscussions() {
     const uid = auth.currentUser?.uid;
     if (!uid) {
-      console.error("User ID is null, cannot proceed with fetching discussions.");
+      console.error("User ID is null, cannot fetch discussions.");
       return;
     }
 
-    let hasMoreDocuments = true;
-    while (hasMoreDocuments) {
+    console.log("Fetching next open discussion...");
+    try {
       const { snapshot, hasMore } = await getNextOpenDiscussion();
-      hasMoreDocuments = hasMore;
       if (snapshot && !snapshot.empty) {
-        console.log("✅ Processing Snapshot:", snapshot.docs.map((doc) => doc.data()));
+        console.log("✅ Snapshot found with", snapshot.docs.length, "documents:", snapshot.docs.map((doc) => doc.data()));
         const docSnapshot = snapshot.docs[0];
         const discussionTyped: Discussion = {
           id: docSnapshot.id,
-          discussionId: docSnapshot.data().id as string,
-          description: docSnapshot.data().description as string,
+          discussionId: docSnapshot.data().id || docSnapshot.id,
+          description: docSnapshot.data().description || "No description available",
           timestamp: docSnapshot.data().timestamp?.toDate() || new Date(),
-          typeSay: docSnapshot.data().typeSay as string,
-          cleared: docSnapshot.data().cleared as boolean | undefined,
+          typeSay: docSnapshot.data().typeSay || "ask",
+          cleared: docSnapshot.data().cleared || false,
         };
-        console.log("Processing Discussion:", discussionTyped.id);
-        if (discussionTyped.typeSay === "ask") {
-          // Show dialog for category selection
-          const categories = await getDistinctCategories();
-          setDistinctCategories(categories);
-          setDialogQuestion(discussionTyped.description);
-          setCurrentDiscussion(discussionTyped);
-          setSelectedCategories([]); // Reset selected categories
-          setFilePath(""); // Reset file path
-          setDialogVisible(true);
-          return; // Pause processing until dialog is confirmed
-        } else {
-          const distinctCategories = await getDistinctCategories();
-          const description = await expandFromAbbreviation(discussionTyped.description);
-          const activityAnalysis = await analyzeActivity({ categories: distinctCategories, description });
-          await addOrUpdateGPTResponse(discussionTyped.id, JSON.stringify(activityAnalysis), "updateDB");
+        console.log("Processing Discussion:", discussionTyped, "Description:", discussionTyped.description);
+
+        if (processedDiscussions.includes(discussionTyped.id) || discussionTyped.cleared) {
+          console.log("Skipping processed or cleared discussion:", discussionTyped.id);
+          if (hasMore) fetchDiscussions();
+          return;
         }
-        await processUnclearedGPTResponses();
+
+        setProcessedDiscussions((prev) => [...prev, discussionTyped.id]);
+
+        if (discussionTyped.typeSay === "ask") {
+          console.log("Triggering dialog for ask discussion, setting question:", discussionTyped.description);
+          try {
+            const categories = await getDistinctCategories();
+            console.log("Categories fetched:", categories);
+            setDistinctCategories(categories);
+            setDialogQuestion(discussionTyped.description || "No question available");
+            setCurrentDiscussion(discussionTyped);
+            setSelectedCategories([]);
+            setFilePath("");
+            setDialogVisible(true);
+          } catch (error) {
+            console.error("Error setting up dialog:", error);
+            setDialogQuestion("Error loading question");
+            setDialogVisible(false);
+            setCurrentDiscussion(null);
+            if (hasMore) fetchDiscussions();
+          }
+        } else {
+          console.log("Processing non-ask discussion:", discussionTyped.description);
+          if (apiKey) {
+            try {
+              const distinctCategories = await getDistinctCategories();
+              const description = await expandFromAbbreviation(discussionTyped.description);
+              const activityAnalysis = await analyzeActivity({ categories: distinctCategories, description });
+              await addOrUpdateGPTResponse(discussionTyped.id, JSON.stringify(activityAnalysis), "updateDB");
+            } catch (error) {
+              console.error("Error analyzing non-ask discussion:", error);
+            }
+          } else {
+            console.warn("Skipping OpenAI analysis due to missing API key.");
+          }
+          console.log("Clearing non-ask discussion:", discussionTyped.id);
+          try {
+            await clearDiscussion(discussionTyped.id);
+            await processUnclearedGPTResponses();
+            if (hasMore) fetchDiscussions();
+          } catch (error) {
+            console.error("Error clearing non-ask discussion:", error);
+            if (hasMore) fetchDiscussions();
+          }
+        }
+      } else {
+        console.log("No open discussions found.");
       }
+    } catch (error) {
+      console.error("Error fetching discussions:", error);
     }
   }
 
-  // Handle dialog confirmation
-  const handleDialogConfirm = async () => {
-    if (!currentDiscussion) return;
-
+  const handleSaveTxt = async () => {
+    if (!currentDiscussion) {
+      console.error("No current discussion for saving TXT.");
+      setFilePath("Error: No discussion available");
+      return;
+    }
     try {
-      // Step 1: Process the question (create ActivityLog entry)
-      const gptResponseId = await addQuestionDiscussion(input, currentDiscussion.id);
-      const parsedResponses = await disperseQuestion(currentDiscussion.id, gptResponseId);
-      const cleared = await clearDiscussion(currentDiscussion.id);
-
-      // Step 2: Fetch the related ActivityLog entry
-      let activityLogDescription = "No ActivityLog description available";
-      const activityLogSnapshot = await getDocs(collection(db, "ActivityLog"));
-      const relatedLog = activityLogSnapshot.docs.find(doc => doc.data().discussionId === currentDiscussion.id);
-      if (relatedLog) {
-        activityLogDescription = relatedLog.data().description || "No description";
-      }
-
-      // Step 3: Create a text file with the question, selected categories, and ActivityLog.description
-      const content = `Question: ${dialogQuestion}\nSelected Categories: ${selectedCategories.length > 0 ? selectedCategories.join(", ") : "None"}\nActivityLog Description: ${activityLogDescription}`;
+      const content = `Question: ${dialogQuestion}\nSelected Categories: ${
+        selectedCategories.length > 0 ? selectedCategories.join(", ") : "None"
+      }\nActivityLog Description: ${await getActivityLogDescription()}`;
       const fileName = `question_${currentDiscussion.id}_${Date.now()}.txt`;
       const path = `${RNFS.DocumentDirectoryPath}/${fileName}`;
-
-      await RNFS.writeFile(path, content, 'utf8');
-      console.log("Text file created at:", path);
+      await RNFS.writeFile(path, content, "utf8");
+      console.log("Text file saved at:", path);
       setFilePath(path);
+      Clipboard.setString(`Question: ${dialogQuestion}\nFile Path: ${path}`);
+      console.log("Copied to clipboard:", path);
+    } catch (error) {
+      console.error("Error saving TXT:", error);
+      setFilePath("Error saving TXT file");
+    }
+  };
 
-      // Step 4: Copy the question and file path to the clipboard
-      const clipboardContent = `Question: ${dialogQuestion}\nFile Path: ${path}`;
-      Clipboard.setString(clipboardContent);
-      console.log("Copied to clipboard:", clipboardContent);
+  const handleSaveImage = async (format: "jpg" | "png") => {
+    if (!dialogRef.current || !currentDiscussion) {
+      console.error("No dialog ref or discussion for saving image.");
+      setFilePath("Error: No dialog available");
+      Alert.alert("Error", `Cannot save as ${format.toUpperCase()}: No dialog or discussion available.`);
+      return;
+    }
+    if (!captureRef) {
+      console.error(`react-native-view-shot not installed for ${format.toUpperCase()} saving.`);
+      Alert.alert(
+        "Error",
+        `Cannot save as ${format.toUpperCase()}: react-native-view-shot is not installed. Run 'npm install react-native-view-shot' and rebuild with EAS.`
+      );
+      return;
+    }
+    try {
+      const uri = await captureRef(dialogRef.current, { format, quality: 0.8 });
+      const fileName = `question_${currentDiscussion.id}_${Date.now()}.${format}`;
+      const path = `${RNFS.DocumentDirectoryPath}/${fileName}`;
+      await RNFS.moveFile(uri, path);
+      console.log(`${format.toUpperCase()} saved at:`, path);
+      setFilePath(path);
+      Clipboard.setString(`Question: ${dialogQuestion}\nFile Path: ${path}`);
+      console.log("Copied to clipboard:", path);
+    } catch (error) {
+      console.error(`Error saving ${format.toUpperCase()}:`, error);
+      setFilePath(`Error saving ${format.toUpperCase()} file`);
+      Alert.alert("Error", `Failed to save as ${format.toUpperCase()}: ${error.message}`);
+    }
+  };
 
-      // Step 5: Update history and responses
-      if (cleared && parsedResponses) {
-        setHistory((prev) => [...prev, ...parsedResponses.map((response) => ({ text: response.toString(), type: "answer" }))]);
-      }
-      setResponses(responses);
+  async function getActivityLogDescription() {
+    try {
+      if (!currentDiscussion) return "No ActivityLog description available";
+      const activityLogSnapshot = await getDocs(collection(db, "ActivityLog"));
+      const relatedLog = activityLogSnapshot.docs.find(
+        (doc) => doc.data().discussionId === currentDiscussion.id
+      );
+      return relatedLog ? relatedLog.data().description || "No description" : "No ActivityLog description available";
+    } catch (error) {
+      console.error("Error fetching ActivityLog:", error);
+      return "No ActivityLog description available";
+    }
+  }
 
-      // Step 6: Continue processing
-      await processUnclearedGPTResponses();
+  const handleDialogConfirm = async () => {
+    if (!currentDiscussion) {
+      console.error("No current discussion set.");
       setDialogVisible(false);
       setCurrentDiscussion(null);
+      fetchDiscussions();
+      return;
+    }
+
+    try {
+      console.log("Confirming dialog for discussion:", currentDiscussion.id);
+      const gptResponseId = await addQuestionDiscussion(input, currentDiscussion.id);
+      const parsedResponses = await disperseQuestion(currentDiscussion.id, gptResponseId);
+      console.log("Clearing discussion:", currentDiscussion.id);
+      const cleared = await clearDiscussion(currentDiscussion.id);
+
+      if (cleared && parsedResponses) {
+        const newResponses = parsedResponses.map((response) => ({
+          responseType: "gpt response",
+          text: response.toString(),
+        }));
+        setHistory((prev) => [
+          ...prev,
+          ...newResponses.map((response) => ({ text: response.text, type: "answer" })),
+        ]);
+        setResponses(newResponses); // Set new responses only
+        console.log("Setting responses:", newResponses);
+      }
+
+      await handleSaveTxt(); // Save TXT on Confirm
+      console.log("Closing dialog and fetching next discussion.");
+      setDialogVisible(false);
+      setCurrentDiscussion(null);
+      setResponses([]); // Clear responses to prevent gptresponse loop
       fetchDiscussions();
     } catch (error) {
       console.error("Error in dialog confirmation:", error);
       setDialogVisible(false);
       setCurrentDiscussion(null);
+      setResponses([]);
       fetchDiscussions();
     }
   };
 
-  // Handle dialog cancellation
-  const handleDialogCancel = () => {
+  const handleDialogCancel = async () => {
+    if (currentDiscussion) {
+      console.log("Canceling dialog, clearing discussion:", currentDiscussion.id);
+      try {
+        await clearDiscussion(currentDiscussion.id);
+      } catch (error) {
+        console.error("Error clearing discussion on cancel:", error);
+      }
+    } else {
+      console.log("No current discussion to clear.");
+    }
     setDialogVisible(false);
     setCurrentDiscussion(null);
+    setResponses([]);
     fetchDiscussions();
   };
 
-  // Handle category selection
   const toggleCategory = (category: string) => {
     setSelectedCategories((prev) =>
-      prev.includes(category)
-        ? prev.filter((cat) => cat !== category)
-        : [...prev, category]
+      prev.includes(category) ? prev.filter((cat) => cat !== category) : [...prev, category]
     );
   };
 
@@ -275,6 +424,7 @@ export default function AskJanet() {
       const currentInput = input.trim();
       if (currentInput === "") return;
 
+      console.log("Submitting input:", currentInput);
       const transformedInput = transformInput(currentInput);
       const newEntry = { text: transformedInput, type: isQuestion ? "question" : "fact" };
       setHistory((prev) => [...prev, newEntry]);
@@ -282,7 +432,7 @@ export default function AskJanet() {
       await addOrUpdateDiscussion(transformedInput, isQuestion ? "ask" : "tell");
       setInput("");
       fetchDiscussions();
-      console.log("made it here");
+      console.log("Input processed:", transformedInput);
 
       if (isQuestion) {
         const aiResponse = responses
@@ -291,7 +441,9 @@ export default function AskJanet() {
           .join(", ") || "";
         setHistory((prev) =>
           prev.map((item) =>
-            item.text === transformedInput && item.type === "question" ? { ...item, aiResponse } : item
+            item.text === transformedInput && item.type === "question"
+              ? { ...item, aiResponse }
+              : item
           )
         );
       }
@@ -333,34 +485,49 @@ export default function AskJanet() {
           </View>
         </View>
       </Modal>
-      {/* Dialog Modal for category selection */}
-      <Modal visible={dialogVisible} transparent={true} animationType="slide" onRequestClose={handleDialogCancel}>
+      <Modal
+        visible={dialogVisible}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={handleDialogCancel}
+      >
         <View style={styles.modalOverlay}>
-          <View style={styles.dialogContainer}>
+          <View ref={dialogRef} style={styles.dialogContainer}>
             <Text style={styles.modalTitle}>Question Details</Text>
-            <Text style={styles.modalLabel}>Question: {dialogQuestion}</Text>
+            <Text style={styles.modalLabel}>Question: {dialogQuestion || "No question available"}</Text>
             <Text style={styles.modalLabel}>Select Categories:</Text>
             <FlatList
               data={distinctCategories}
               keyExtractor={(item) => item}
               renderItem={({ item }) => (
-                <TouchableOpacity
-                  style={styles.categoryItem}
-                  onPress={() => toggleCategory(item)}
-                >
+                <TouchableOpacity style={styles.categoryItem} onPress={() => toggleCategory(item)}>
                   <Text style={styles.categoryText}>{item}</Text>
                   <Text>{selectedCategories.includes(item) ? "✔" : "⬜"}</Text>
                 </TouchableOpacity>
               )}
             />
-            {filePath ? (
-              <Text style={styles.modalLabel}>File Path: {filePath}</Text>
-            ) : null}
+            <Text style={styles.modalLabel}>
+              Saved File: {filePath || "No file saved yet"}
+            </Text>
+            <View style={styles.saveButtons}>
+              <TouchableOpacity style={styles.saveButton} onPress={handleSaveTxt}>
+                <Text style={styles.saveButtonText}>Save as TXT</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.saveButton} onPress={() => handleSaveImage("png")}>
+                <Text style={styles.saveButtonText}>Save as PNG</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.saveButton} onPress={() => handleSaveImage("jpg")}>
+                <Text style={styles.saveButtonText}>Save as JPG</Text>
+              </TouchableOpacity>
+            </View>
             <View style={styles.modalButtons}>
               <TouchableOpacity style={styles.modalButton} onPress={handleDialogCancel}>
                 <Text style={styles.modalButtonText}>Cancel</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={[styles.modalButton, styles.saveButton]} onPress={handleDialogConfirm}>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.confirmButton]}
+                onPress={handleDialogConfirm}
+              >
                 <Text style={styles.modalButtonText}>Confirm</Text>
               </TouchableOpacity>
             </View>
@@ -406,7 +573,6 @@ const styles = StyleSheet.create({
     marginTop: 10,
   },
   menuButtonText: { color: "#fff", fontSize: 16, fontWeight: "600" },
-  // Styles for the dialog modal
   dialogContainer: {
     backgroundColor: "#fff",
     padding: 20,
@@ -416,11 +582,43 @@ const styles = StyleSheet.create({
     maxHeight: "80%",
   },
   modalTitle: { fontSize: 18, fontWeight: "bold", marginBottom: 10 },
-  modalLabel: { fontSize: 16, marginBottom: 10 },
-  categoryItem: { flexDirection: "row", justifyContent: "space-between", padding: 10, borderBottomWidth: 1, borderBottomColor: "#ccc" },
+  modalLabel: { fontSize: 16, marginBottom: 10, color: "#333" },
+  categoryItem: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    padding: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: "#ccc",
+  },
   categoryText: { fontSize: 16 },
-  modalButtons: { flexDirection: "row", justifyContent: "space-between", width: "100%", marginTop: 20 },
-  modalButton: { padding: 10, borderRadius: 5, backgroundColor: "#ddd", width: "45%", alignItems: "center" },
-  saveButton: { backgroundColor: "#007bff" },
+  modalButtons: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    width: "100%",
+    marginTop: 20,
+  },
+  modalButton: {
+    padding: 10,
+    borderRadius: 5,
+    backgroundColor: "#ddd",
+    width: "45%",
+    alignItems: "center",
+  },
+  confirmButton: { backgroundColor: "#007bff" },
   modalButtonText: { color: "#fff", fontWeight: "bold" },
+  saveButtons: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    width: "100%",
+    marginTop: 10,
+    marginBottom: 10,
+  },
+  saveButton: {
+    padding: 8,
+    borderRadius: 5,
+    backgroundColor: "#28a745",
+    width: "30%",
+    alignItems: "center",
+  },
+  saveButtonText: { color: "#fff", fontSize: 14, fontWeight: "600" },
 });

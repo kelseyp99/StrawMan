@@ -21,13 +21,13 @@
   "include": [
     "src/**/*.ts",
     "src/**/*.tsx",
-    "junk/HistoryList copy.tsx"
   ],
   "exclude": [
     "node_modules",
     "junk",
     "junk/**",
     "junk/**/*",
-    "**/junk/**/*"
+    "**/junk/**/*",
+    "src/services/databaseServiceRealm.ts"
   ]
 }
