@@ -12,11 +12,12 @@
       "usesAppTrackingTransparency": true
     },
     "android": {
+      "package": "com.anonymous.lifelog",
+      "permissions": ["WRITE_EXTERNAL_STORAGE", "READ_EXTERNAL_STORAGE"],
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "package": "com.anonymous.lifelog",
       "compileSdkVersion": 33
     },
     "plugins": [

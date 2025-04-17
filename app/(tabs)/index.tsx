@@ -9,6 +9,7 @@ import {
   FlatList,
   TouchableOpacity,
   Alert,
+  Platform,
 } from "react-native";
 import { auth } from "../../src/firebaseConfig";
 import { signOut, onAuthStateChanged } from "firebase/auth";
@@ -38,6 +39,7 @@ import { analyzeActivity, ModelAPIkey } from "../../src/services/openaiAPI";
 import Icon from "react-native-vector-icons/MaterialIcons";
 import RNFS from "react-native-fs";
 import Clipboard from "@react-native-clipboard/clipboard";
+import { request, PERMISSIONS } from "react-native-permissions";
 let captureRef: any; // Placeholder for RNViewShot
 try {
   captureRef = require("react-native-view-shot").captureRef;
@@ -78,8 +80,8 @@ const IndexScreen: React.FC<{ onApiKeyLoaded: (cachedApiKey: string | null) => v
   useEffect(() => {
     async function loadApiKey() {
       try {
-        const key = await getModelAPIkey();
-        onApiKeyLoaded(key);
+        const key = await getModelAPIkey("LifeLog","OpenAI", "gpt-3.5-turbo");
+        onApiKeyLoaded(key?.apiKey || null);
         console.log("API Key loaded:", key ? `${key.slice(0, 4)}...${key.slice(-4)}` : "None");
       } catch (error) {
         console.error("Failed to load API Key:", error);
@@ -295,7 +297,8 @@ export default function AskJanet() {
         selectedCategories.length > 0 ? selectedCategories.join(", ") : "None"
       }\nActivityLog Description: ${await getActivityLogDescription()}`;
       const fileName = `question_${currentDiscussion.id}_${Date.now()}.txt`;
-      const path = `${RNFS.DocumentDirectoryPath}/${fileName}`;
+      const path = `${RNFS.PicturesDirectoryPath}/LifeLog/${fileName}`;
+      await RNFS.mkdir(`${RNFS.PicturesDirectoryPath}/LifeLog`); // Create LifeLog folder
       await RNFS.writeFile(path, content, "utf8");
       console.log("Text file saved at:", path);
       setFilePath(path);
@@ -318,19 +321,49 @@ export default function AskJanet() {
       console.error(`react-native-view-shot not installed for ${format.toUpperCase()} saving.`);
       Alert.alert(
         "Error",
-        `Cannot save as ${format.toUpperCase()}: react-native-view-shot is not installed. Run 'npm install react-native-view-shot' and rebuild with EAS.`
+        `Cannot save as ${format.toUpperCase()}: react-native-view-shot is not installed. Run 'npm install react-native-view-shot' in PowerShell and rebuild with 'eas build --platform android --profile local --local'.`
       );
       return;
     }
     try {
+      // Request storage permission on Android
+      if (Platform.OS === "android") {
+        console.log("Requesting WRITE_EXTERNAL_STORAGE permission...");
+        const permissionResult = await request(PERMISSIONS.ANDROID.WRITE_EXTERNAL_STORAGE);
+        console.log("Permission result:", permissionResult);
+        if (permissionResult !== "granted") {
+          throw new Error("WRITE_EXTERNAL_STORAGE permission denied");
+        }
+      }
+
       const uri = await captureRef(dialogRef.current, { format, quality: 0.8 });
       const fileName = `question_${currentDiscussion.id}_${Date.now()}.${format}`;
-      const path = `${RNFS.DocumentDirectoryPath}/${fileName}`;
-      await RNFS.moveFile(uri, path);
-      console.log(`${format.toUpperCase()} saved at:`, path);
-      setFilePath(path);
-      Clipboard.setString(`Question: ${dialogQuestion}\nFile Path: ${path}`);
-      console.log("Copied to clipboard:", path);
+      const galleryPath = `${RNFS.PicturesDirectoryPath}/LifeLog/${fileName}`;
+      console.log(`Attempting to create directory: ${RNFS.PicturesDirectoryPath}/LifeLog`);
+      try {
+        await RNFS.mkdir(`${RNFS.PicturesDirectoryPath}/LifeLog`);
+        console.log("Directory created successfully");
+      } catch (mkdirError) {
+        console.error("Failed to create directory:", mkdirError);
+        // Fallback to DocumentDirectoryPath if Pictures fails
+        const fallbackPath = `${RNFS.DocumentDirectoryPath}/LifeLog/${fileName}`;
+        console.log(`Falling back to: ${RNFS.DocumentDirectoryPath}/LifeLog`);
+        await RNFS.mkdir(`${RNFS.DocumentDirectoryPath}/LifeLog`);
+        await RNFS.moveFile(uri, fallbackPath);
+        console.log(`${format.toUpperCase()} saved at fallback:`, fallbackPath);
+        setFilePath(fallbackPath);
+        Clipboard.setString(`Question: ${dialogQuestion}\nFile Path: ${fallbackPath}`);
+        console.log("Copied to clipboard:", fallbackPath);
+        return; // Skip gallery scan for fallback
+      }
+      await RNFS.moveFile(uri, galleryPath);
+      console.log(`${format.toUpperCase()} saved at:`, galleryPath);
+      setFilePath(galleryPath);
+      Clipboard.setString(`Question: ${dialogQuestion}\nFile Path: ${galleryPath}`);
+      console.log("Copied to clipboard:", galleryPath);
+      // Notify media scanner to add to gallery
+      await RNFS.scanFile(galleryPath);
+      console.log(`${format.toUpperCase()} added to gallery`);
     } catch (error) {
       console.error(`Error saving ${format.toUpperCase()}:`, error);
       setFilePath(`Error saving ${format.toUpperCase()} file`);

@@ -73,18 +73,35 @@ if ($Local -or $Firebase) {
     }
 }
 
-# Install APK locally if built
+# Install APK on connected devices & emulators if -Local is specified
 if ($Local -and $latestApk) {
-    Write-Host "Installing APK on emulator-5554..."
-    adb -s emulator-5554 install $apkPath
-    if ($LASTEXITCODE -eq 0) {
-        Write-Host "APK installed successfully!"
-    } else {
-        Write-Host "Failed to install APK!" -ForegroundColor Red
+    # Get list of connected devices (emulators + real devices)
+    $deviceList = adb devices | Select-String "^(emulator-[0-9]+|\w+)\s+device" | ForEach-Object { $_.Matches.Groups[1].Value }
+
+    if ($deviceList.Count -eq 0) {
+        Write-Host "No devices or emulators are currently running." -ForegroundColor Red
         exit 1
     }
-}
 
+    foreach ($device in $deviceList) {
+        Write-Host "`nInstalling APK on $device..."
+        adb -s $device install -r $apkPath
+
+        if ($LASTEXITCODE -eq 0) {
+            Write-Host "✅ APK installed successfully on $device."
+
+            # OPTIONAL: Launch the app (replace with your actual package and activity)
+            $packageName = "com.yourapp.package"
+            $mainActivity = "com.yourapp.package.MainActivity"
+            adb -s $device shell am start -n "$packageName/$mainActivity"
+        } else {
+            Write-Host "❌ Failed to install APK on $device." -ForegroundColor Red
+        }
+    }
+} else {
+    Write-Host "No APK to install on devices." -ForegroundColor Yellow
+}
+  
 # Upload to Firebase if -Firebase is specified
 if ($Firebase -and $latestApk) {
     Write-Host "Uploading APK to Firebase App Distribution..."
