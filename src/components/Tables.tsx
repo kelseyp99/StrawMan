@@ -72,7 +72,7 @@ const MainComponent: React.FC = () => {
         const activityLogSnapshot = await getDocs(collection(db, "ActivityLog"));
         const discussionSnap = await getDocs(collection(db, "Discussion"));
         setDiscussionSnapshot(discussionSnap);
-        const uid = getUID();
+        const uid = await getUID(); // Await getUID
         
         const categories = await getDistinctCategories();
         setAllCategories((prev) => [...new Set([...prev, ...categories])]);
@@ -127,7 +127,7 @@ const MainComponent: React.FC = () => {
                   rawTimestamp: data.timestamp ? data.timestamp.toDate() : new Date(),
                 };
               })
-              .filter((doc) => doc.uid === uid)
+              .filter((doc) => doc.uid === uid) // Awaited uid
               .sort((a, b) => b.rawTimestamp - a.rawTimestamp),
           },
           {
@@ -153,7 +153,7 @@ const MainComponent: React.FC = () => {
                   rawTimestamp: data.timestamp ? data.timestamp.toDate() : new Date(),
                 };
               })
-              .filter((doc) => doc.uid === uid)
+              .filter((doc) => doc.uid === uid) // Awaited uid
               .sort((a, b) => b.rawTimestamp - a.rawTimestamp),
           },
         ]);
@@ -258,7 +258,7 @@ const MainComponent: React.FC = () => {
         setActivityLogDescriptions({});
       }
 
-      const uid = getUID();
+      const uid = await getUID(); // Await getUID
       if (uid) {
         const activityAnalysis = await processPhrase(
           { categories: allCategories, description: descriptionToProcess },
@@ -319,7 +319,7 @@ const MainComponent: React.FC = () => {
             }, {} as { [key: string]: string });
             setActivityLogDescriptions(descriptions);
 
-            const uid = getUID();
+            const uid = await getUID(); // Await getUID
             if (uid) {
               const activityAnalysis = await processPhrase(
                 { categories: allCategories, description: descriptionToProcess },
@@ -436,7 +436,7 @@ const MainComponent: React.FC = () => {
           timestamp: editTimestamp,
         });
 
-        const uid = getUID();
+        const uid = await getUID(); // Await getUID
         if (editTableName === "Discussion Data" && relatedActivityLogs.length > 0) {
           for (const log of relatedActivityLogs) {
             const newDescription = activityLogDescriptions[log.id]?.trim();
@@ -509,7 +509,7 @@ const MainComponent: React.FC = () => {
 
         if (editTableName === "Discussion Data") {
           const activityLogSnapshot = await getDocs(collection(db, "ActivityLog"));
-          const uid = getUID();
+          const uid = await getUID(); // Await getUID
           setTables((prevTables) =>
             prevTables.map((table) =>
               table.name === "Activity Log Data"
@@ -578,7 +578,7 @@ const MainComponent: React.FC = () => {
           onPress: async () => {
             try {
               const distinctCategories = await getDistinctCategories();
-              const uid = getUID();
+              const uid = await getUID(); // Await getUID
               if (!uid) {
                 console.error("User ID is null, cannot proceed with ActivityLog update.");
                 Alert.alert('Error', 'User ID not found. Please sign in again.');

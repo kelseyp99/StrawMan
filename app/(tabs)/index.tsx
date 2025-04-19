@@ -13,7 +13,7 @@ import {
 } from "react-native";
 import { auth } from "../../src/firebaseConfig";
 import { signOut, onAuthStateChanged } from "firebase/auth";
-import { getModelAPIkey } from "../../src/services/databaseService";
+import { getModelAPIkey } from "../../src/services/apiUtils"; // Updated import
 import { useRouter } from "expo-router";
 import {
   disperseQuestion,
@@ -40,7 +40,9 @@ import Icon from "react-native-vector-icons/MaterialIcons";
 import RNFS from "react-native-fs";
 import Clipboard from "@react-native-clipboard/clipboard";
 import { request, PERMISSIONS } from "react-native-permissions";
-let captureRef: any; // Placeholder for RNViewShot
+import { setUID } from "../../src/utils/uidManager";
+
+let captureRef: any;
 try {
   captureRef = require("react-native-view-shot").captureRef;
 } catch (error) {
@@ -49,7 +51,6 @@ try {
 
 console.log("LifeLog loaded:", new Date());
 
-// Interface for ActivityLog document
 interface ActivityLog {
   id: string;
   discussionId: string;
@@ -62,7 +63,6 @@ interface ActivityLog {
   lockedDescription?: boolean;
 }
 
-// Interface for Discussion document
 interface Discussion {
   id: string;
   discussionId: string;
@@ -80,9 +80,9 @@ const IndexScreen: React.FC<{ onApiKeyLoaded: (cachedApiKey: string | null) => v
   useEffect(() => {
     async function loadApiKey() {
       try {
-        const key = await getModelAPIkey();
-        onApiKeyLoaded(key);
-        console.log("API Key loaded:", key ? `${key.slice(0, 4)}...${key.slice(-4)}` : "None");
+        const key = await getModelAPIkey("owner", "name", "model");
+        onApiKeyLoaded(key?.apiKey || null);
+        console.log("API Key loaded:", key ? `${key.apiKey.slice(0, 4)}...${key.apiKey.slice(-4)}` : "None");
       } catch (error) {
         console.error("Failed to load API Key:", error);
         onApiKeyLoaded(null);
@@ -126,32 +126,30 @@ export default function AskJanet() {
       if (user) {
         setUserEmail(user.email);
         console.log("Logged in as:", user.email, "UID:", user.uid);
-        setTimeout(() => loadInitialData(), 500); // Increased delay for auth stability
+        setUID(user.uid);
+        setTimeout(async () => {
+          try {
+            await initializeUser();
+            loadInitialData();
+          } catch (error) {
+            console.error("Error initializing user:", error);
+          }
+        }, 500);
       } else {
         console.log("No user logged in, delaying navigation to login");
-        setTimeout(() => router.replace("/login"), 500); // Delay navigation
+        setTimeout(() => router.replace("/login"), 500);
       }
       setLoadingAuth(false);
     });
     return () => unsubscribe();
   }, [router]);
 
-  async function waitForAuth(maxAttempts = 5, delayMs = 1000) {
-    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-      if (auth.currentUser) {
-        console.log("Auth initialized, UID:", auth.currentUser.uid);
-        return auth.currentUser.uid;
-      }
-      console.log(`Waiting for auth initialization (attempt ${attempt}/${maxAttempts})...`);
-      await new Promise((resolve) => setTimeout(resolve, delayMs));
-    }
-    throw new Error("No user authenticated after max attempts");
-  }
-
   async function loadInitialData() {
+    if (!auth.currentUser?.uid) {
+      console.error("Cannot load initial data: No UID available.");
+      return;
+    }
     try {
-      const uid = await waitForAuth();
-      console.log("loadInitialData UID:", uid);
       const initialDiscussion = await fetchInitialDiscussion();
       if (initialDiscussion) {
         console.log("✅ Fetched Initial Discussion:", initialDiscussion);
@@ -165,6 +163,7 @@ export default function AskJanet() {
         });
       }
 
+      const uid = auth.currentUser.uid;
       const q = query(collection(db, `Users/${uid}/DiscussionCounts`));
       const querySnapshot = await getDocs(q);
       const countsPromises = querySnapshot.docs.map(async (documentSnapshot) => {
@@ -202,7 +201,7 @@ export default function AskJanet() {
       await signOut(auth);
       console.log("User signed out");
       setMenuVisible(false);
-      setTimeout(() => router.replace("/login"), 500); // Delay navigation
+      setTimeout(() => router.replace("/login"), 500);
     } catch (err: any) {
       console.error("Sign-out Error:", err.message);
     }
@@ -215,9 +214,14 @@ export default function AskJanet() {
   };
 
   async function fetchDiscussions() {
+    const uid = auth.currentUser?.uid;
+    if (!uid) {
+      console.error("User ID is null, cannot fetch discussions.");
+      return;
+    }
+
+    console.log("Fetching next open discussion...");
     try {
-      const uid = await waitForAuth();
-      console.log("fetchDiscussions UID:", uid);
       const { snapshot, hasMore } = await getNextOpenDiscussion();
       if (snapshot && !snapshot.empty) {
         console.log("✅ Snapshot found with", snapshot.docs.length, "documents:", snapshot.docs.map((doc) => doc.data()));
@@ -246,7 +250,7 @@ export default function AskJanet() {
             const categories = await getDistinctCategories();
             console.log("Categories fetched:", categories);
             setDistinctCategories(categories);
-            setDialogQuestion(discussionTyped.description || "No description available");
+            setDialogQuestion(discussionTyped.description || "No question available");
             setCurrentDiscussion(discussionTyped);
             setSelectedCategories([]);
             setFilePath("");
@@ -302,7 +306,7 @@ export default function AskJanet() {
       }\nActivityLog Description: ${await getActivityLogDescription()}`;
       const fileName = `question_${currentDiscussion.id}_${Date.now()}.txt`;
       const path = `${RNFS.PicturesDirectoryPath}/LifeLog/${fileName}`;
-      await RNFS.mkdir(`${RNFS.PicturesDirectoryPath}/LifeLog`); // Create LifeLog folder
+      await RNFS.mkdir(`${RNFS.PicturesDirectoryPath}/LifeLog`);
       await RNFS.writeFile(path, content, "utf8");
       console.log("Text file saved at:", path);
       setFilePath(path);
@@ -325,12 +329,11 @@ export default function AskJanet() {
       console.error(`react-native-view-shot not installed for ${format.toUpperCase()} saving.`);
       Alert.alert(
         "Error",
-        `Cannot save as ${format.toUpperCase()}: react-native-view-shot is not installed. Run 'npm install react-native-view-shot' in PowerShell and rebuild with 'eas build --platform android --profile local --local'.`
+        `Cannot save as ${format.toUpperCase()}: react-native-view-shot is not installed. Run 'npm install react-native-view-shot' and rebuild.`
       );
       return;
     }
     try {
-      // Request storage permission on Android
       if (Platform.OS === "android") {
         console.log("Requesting WRITE_EXTERNAL_STORAGE permission...");
         const permissionResult = await request(PERMISSIONS.ANDROID.WRITE_EXTERNAL_STORAGE);
@@ -339,7 +342,6 @@ export default function AskJanet() {
           throw new Error("WRITE_EXTERNAL_STORAGE permission denied");
         }
       }
-
       const uri = await captureRef(dialogRef.current, { format, quality: 0.8 });
       const fileName = `question_${currentDiscussion.id}_${Date.now()}.${format}`;
       const galleryPath = `${RNFS.PicturesDirectoryPath}/LifeLog/${fileName}`;
@@ -349,7 +351,6 @@ export default function AskJanet() {
         console.log("Directory created successfully");
       } catch (mkdirError) {
         console.error("Failed to create directory:", mkdirError);
-        // Fallback to DocumentDirectoryPath if Pictures fails
         const fallbackPath = `${RNFS.DocumentDirectoryPath}/LifeLog/${fileName}`;
         console.log(`Falling back to: ${RNFS.DocumentDirectoryPath}/LifeLog`);
         await RNFS.mkdir(`${RNFS.DocumentDirectoryPath}/LifeLog`);
@@ -358,14 +359,13 @@ export default function AskJanet() {
         setFilePath(fallbackPath);
         Clipboard.setString(`Question: ${dialogQuestion}\nFile Path: ${fallbackPath}`);
         console.log("Copied to clipboard:", fallbackPath);
-        return; // Skip gallery scan for fallback
+        return;
       }
       await RNFS.moveFile(uri, galleryPath);
       console.log(`${format.toUpperCase()} saved at:`, galleryPath);
       setFilePath(galleryPath);
       Clipboard.setString(`Question: ${dialogQuestion}\nFile Path: ${galleryPath}`);
       console.log("Copied to clipboard:", galleryPath);
-      // Notify media scanner to add to gallery
       await RNFS.scanFile(galleryPath);
       console.log(`${format.toUpperCase()} added to gallery`);
     } catch (error) {
@@ -414,15 +414,15 @@ export default function AskJanet() {
           ...prev,
           ...newResponses.map((response) => ({ text: response.text, type: "answer" })),
         ]);
-        setResponses(newResponses); // Set new responses only
+        setResponses(newResponses);
         console.log("Setting responses:", newResponses);
       }
 
-      await handleSaveTxt(); // Save TXT on Confirm
+      await handleSaveTxt();
       console.log("Closing dialog and fetching next discussion.");
       setDialogVisible(false);
       setCurrentDiscussion(null);
-      setResponses([]); // Clear responses to prevent gptresponse loop
+      setResponses([]);
       fetchDiscussions();
     } catch (error) {
       console.error("Error in dialog confirmation:", error);
@@ -561,10 +561,7 @@ export default function AskJanet() {
               <TouchableOpacity style={styles.modalButton} onPress={handleDialogCancel}>
                 <Text style={styles.modalButtonText}>Cancel</Text>
               </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.modalButton, styles.confirmButton]}
-                onPress={handleDialogConfirm}
-              >
+              <TouchableOpacity style={[styles.modalButton, styles.confirmButton]} onPress={handleDialogConfirm}>
                 <Text style={styles.modalButtonText}>Confirm</Text>
               </TouchableOpacity>
             </View>

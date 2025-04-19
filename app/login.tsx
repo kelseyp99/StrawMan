@@ -1,19 +1,27 @@
 import React, { useState, useEffect } from "react";
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Image } from "react-native";
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, Image, Platform } from "react-native";
 import { auth } from "../src/firebaseConfig";
 import {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   onAuthStateChanged,
   signOut,
+  GoogleAuthProvider,
+  signInWithCredential,
 } from "firebase/auth";
-import { useRouter } from "expo-router/build/hooks";
+import { useRouter } from "expo-router";
 import Icon from "react-native-vector-icons/MaterialIcons";
 import Header from "../src/components/Header";
-import * as FileSystem from 'expo-file-system'; // File system for persistence
-import { setUID, clearUID,  } from "../src/utils/uidManager"; // Import UID manager
+import * as FileSystem from 'expo-file-system';
+import { setUID, clearUID } from "../src/utils/uidManager";
+import * as WebBrowser from 'expo-web-browser';
+import * as Google from 'expo-auth-session/providers/google';
+import Constants from 'expo-constants';
+import { initializeUser } from "../src/services/databaseService";
 
 const STORAGE_FILE = `${FileSystem.documentDirectory}userUID.txt`;
+
+WebBrowser.maybeCompleteAuthSession();
 
 export default function Login() {
   const [email, setEmail] = useState("");
@@ -21,10 +29,19 @@ export default function Login() {
   const [error, setError] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [userEmail, setUserEmail] = useState<string | null>(null);
-  const [userUID, setUserUID] = useState<string | null>(null); // State for UID
+  const [userUID, setUserUID] = useState<string | null>(null);
   const router = useRouter();
 
-  // Load UID from file on mount
+  // Log Constants.expoConfig for debugging
+  console.log("Expo Config:", JSON.stringify(Constants.expoConfig, null, 2));
+
+  const [request, response, promptAsync] = Google.useIdTokenAuthRequest({
+    clientId: Platform.OS === 'ios'
+      ? Constants.expoConfig?.extra?.googleClientIdIos
+      : Constants.expoConfig?.extra?.googleClientIdAndroid,
+    scopes: ['profile', 'email'],
+  });
+
   useEffect(() => {
     const loadUID = async () => {
       try {
@@ -46,35 +63,45 @@ export default function Login() {
       if (user) {
         console.log("User logged in:", user.uid);
         setUserEmail(user.email);
-        setUserUID(user.uid); // Save UID in state
-        setUID(user.uid); // Update global UID
-        //saveUID(user.uid); // Save to file
+        setUserUID(user.uid);
+        setUID(user.uid);
+        initializeUser().catch(error => console.error("Error initializing user:", error));
         router.replace("/(tabs)");
       } else {
         setUserEmail(null);
-        setUserUID(null); // Clear UID in state
-        removeUID(); // Remove from file
+        setUserUID(null);
+        clearUID();
+        removeUID();
       }
     });
     return unsubscribe;
   }, []);
 
-  // Save UID to file
-  // const saveUID = async (uid) => {
-  //   try {
-  //     await FileSystem.writeAsStringAsync(STORAGE_FILE, uid, { encoding: FileSystem.Encoding.UTF_8 });
-  //     console.log("UID saved to file:", uid);
-  //     const fileInfo = await FileSystem.getInfoAsync(STORAGE_FILE);
-  //     console.log("File exists after save:", fileInfo.exists);
-  //   } catch (error) {
-  //     console.error("Error saving UID:", error);
-  //   }
-  // };
+  useEffect(() => {
+    if (response?.type === 'success') {
+      const { id_token } = response.params;
+      const credential = GoogleAuthProvider.credential(id_token);
+      signInWithCredential(auth, credential)
+        .then((userCredential) => {
+          console.log("Google Sign-In UID:", userCredential.user.uid);
+          setUserUID(userCredential.user.uid);
+          setUID(userCredential.user.uid);
+          initializeUser().catch(error => console.error("Error initializing user:", error));
+          router.replace("/(tabs)");
+        })
+        .catch((err) => {
+          setError(err.message);
+          console.error("Google Sign-In Error:", err.message);
+        });
+    } else if (response?.type === 'error') {
+      setError("Google Sign-In failed");
+      console.error("Google Sign-In Error:", response.error);
+    }
+  }, [response]);
 
-  // Remove UID from file
   const removeUID = async () => {
     try {
-      await FileSystem.deleteAsync(STORAGE_FILE, { idempotent: true }).catch(() => {});
+      await FileSystem.deleteAsync(STORAGE_FILE, { idempotent: true });
       console.log("UID removed from file");
     } catch (error) {
       console.error("Error removing UID:", error);
@@ -86,10 +113,10 @@ export default function Login() {
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
       console.log("Signed in UID:", userCredential.user.uid);
       setUserUID(userCredential.user.uid);
-      setUID(userCredential.user.uid); // Update global UID
-      //saveUID(userCredential.user.uid);
+      setUID(userCredential.user.uid);
+      initializeUser().catch(error => console.error("Error initializing user:", error));
       router.replace("/(tabs)");
-    } catch (err) {
+    } catch (err: any) {
       setError(err.message);
       console.error("Sign-in Error:", err.message);
     }
@@ -100,9 +127,10 @@ export default function Login() {
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       console.log("Signed up UID:", userCredential.user.uid);
       setUserUID(userCredential.user.uid);
-      //saveUID(userCredential.user.uid);
+      setUID(userCredential.user.uid);
+      initializeUser().catch(error => console.error("Error initializing user:", error));
       router.replace("/(tabs)");
-    } catch (err) {
+    } catch (err: any) {
       setError(err.message);
       console.error("Sign-up Error:", err.message);
     }
@@ -116,15 +144,21 @@ export default function Login() {
       setPassword("");
       setUserEmail(null);
       setUserUID(null);
-      removeUID();
-    } catch (err) {
+      clearUID();
+      await removeUID();
+    } catch (err: any) {
       setError(err.message);
       console.error("Sign-out Error:", err.message);
     }
   };
 
-  const handleGoogleLogin = () => {
-    console.log("Google login pressed (dummy)");
+  const handleGoogleLogin = async () => {
+    if (request) {
+      promptAsync();
+    } else {
+      setError("Google Sign-In not ready");
+      console.error("Google Sign-In request not initialized");
+    }
   };
 
   const handleFacebookLogin = () => {
@@ -170,11 +204,10 @@ export default function Login() {
         <Text style={styles.buttonText}>Sign Up</Text>
       </TouchableOpacity>
       <View style={{ height: 1, width: "100%", backgroundColor: "#ccc", marginVertical: 10 }} />
-      {/* Google Login Button */}
       <TouchableOpacity style={styles.googleButton} onPress={handleGoogleLogin}>
         <Image
           source={require("../assets/images/google/signin-assets/Android/svg/light/android_light_sq_SI.png")}
-          style={{ width: 200, height: 50, resizeMode: "corntain" }}
+          style={{ width: 200, height: 50, resizeMode: "contain" }}
         />
       </TouchableOpacity>
       <TouchableOpacity style={styles.facebookButton} onPress={handleFacebookLogin}>
@@ -189,7 +222,6 @@ export default function Login() {
           </TouchableOpacity>
         </View>
       )}
-      {/* Show UID regardless of login state to check persistence */}
       {userUID && (
         <Text style={styles.loggedInText}>Persisted User UID: {userUID}</Text>
       )}
@@ -266,11 +298,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     marginVertical: 5,
-  },
-  googleButtonText: {
-    color: "#444",
-    fontSize: 16,
-    fontWeight: "600",
   },
   facebookButton: {
     flexDirection: "row",

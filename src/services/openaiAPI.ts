@@ -6,7 +6,6 @@ import { addOrUpdateGPTResponse, clearDiscussion, getURLofGPT, queryAllFieldsByC
 const API_URL = Config.API_URL;
 // Load environment variables from .env
 
-
 /**
  * shareTextAndFile
  *
@@ -20,7 +19,6 @@ const API_URL = Config.API_URL;
  * Note: Actual support for pre-populating text and attaching the file depends on the target app.
  */
 
-
 export interface ModelAPIkey {
   aiModel: string;
   apiKey: string;
@@ -28,16 +26,16 @@ export interface ModelAPIkey {
 }
 
 export interface ActivityInput {
-  categories: string[]; // List of categories
-  description: string;  // Activity descriptionf
+  categories: string[];
+  description: string;
 }
 
 export interface ParsedActivity {
-  category: string;     // The category returned by OpenAI
-  parsedDescription: string; // Parsed activity or additional structured info
+  category: string;
+  parsedDescription: string;
 }
 
-import { getModelAPIkey } from "./databaseService"; // Adjust path if needed
+import { getModelAPIkey } from "./apiUtils";
 
 let cachedAiModel: string | null = null;
 let cachedApiKey: string | null = null;
@@ -46,19 +44,19 @@ let cachedEndPointURL: string | null = null;
 // ✅ Function to get the API Key (fetch once, then reuse)
 const getAPIKey = async (): Promise<ModelAPIkey> => {
   if (cachedApiKey) {
-  //  console.log("Returning cached API key.");
-  //  console.log("Fetched API Model:", cachedAiModel);
-  //  console.log("Fetched API Key:", cachedApiKey);
-  //  console.log("Fetched EndPoint URL:", cachedEndPointURL);
+    // console.log("Returning cached API key.");
+    // console.log("Fetched API Model:", cachedAiModel);
+    // console.log("Fetched API Key:", cachedApiKey);
+    // console.log("Fetched EndPoint URL:", cachedEndPointURL);
     return { aiModel: cachedAiModel!, apiKey: cachedApiKey!, endPointURL: cachedEndPointURL! };
   }
 
   try {
-    const key = await getModelAPIkey("LifeLog","OpenAI", "gpt-3.5-turbo");
+    const key = await getModelAPIkey("LifeLog", "OpenAI", "gpt-3.5-turbo");
     if (!key) throw new Error("API Key not found");
-   // console.log("Fetched API Model:", key.aiModel);
-  //  console.log("Fetched API Key:", key.apiKey);
-  //  console.log("Fetched EndPoint URL:", key.endPointURL);
+    // console.log("Fetched API Model:", key.aiModel);
+    // console.log("Fetched API Key:", key.apiKey);
+    // console.log("Fetched EndPoint URL:", key.endPointURL);
     cachedAiModel = key.aiModel;
     cachedApiKey = key.apiKey;
     cachedEndPointURL = key.endPointURL;
@@ -72,8 +70,8 @@ const getAPIKey = async (): Promise<ModelAPIkey> => {
 // ✅ Function to send a request to OpenAI API
 export const fetchAIResponse = async (input: string): Promise<any> => {
   try {
-    const aiConnection = await getAPIKey(); // Ensure key is available
-    const { aiModel,apiKey, endPointURL } = aiConnection
+    const aiConnection = await getAPIKey();
+    const { aiModel, apiKey, endPointURL } = aiConnection;
     console.log("Using API model:", aiModel);
     console.log("Using API Key:", apiKey);
     console.log("Using EndPoint URL:", endPointURL);
@@ -93,14 +91,12 @@ export const fetchAIResponse = async (input: string): Promise<any> => {
   }
 };
 
-
-
 export const analyzeActivity = async (input: ActivityInput): Promise<ParsedActivity> => {
   try {
     const { categories, description } = input;
     console.log('Debug: Received input:', input);
-    const aiConnection = await getAPIKey(); // Ensure key is available
-    const { aiModel,apiKey, endPointURL } = aiConnection
+    const aiConnection = await getAPIKey();
+    const { aiModel, apiKey, endPointURL } = aiConnection;
     console.log("Using API model:", aiModel);
     console.log("Using API Key:", apiKey);
     console.log("Using EndPoint URL:", endPointURL);
@@ -128,14 +124,14 @@ export const analyzeActivity = async (input: ActivityInput): Promise<ParsedActiv
     console.log('Debug: System Prompt:', systemPrompt);
     console.log('Debug: User Prompt:', userPrompt);
     //if (true) return { category: 'Uncategorized', parsedDescription: 'No description provided.' };
-   // const apiKey = await getAPIKey(); // Ensure key is available
+    // const apiKey = await getAPIKey(); // Ensure key is available
     //console.log("Using API Key:", apiKey);
     
     const response = await axios.post(
       endPointURL,
       {
         //model: 'text-ada-001',
-       // model: 'gpt-4',
+        // model: 'gpt-4',
         model: aiModel,
         messages: [
           { role: 'system', content: systemPrompt },
@@ -162,7 +158,7 @@ export const analyzeActivity = async (input: ActivityInput): Promise<ParsedActiv
       return { category: 'Uncategorized', parsedDescription: 'Unable to parse activity.' };
     }
   } catch (error) {
-    const errorAsError = error as AxiosError; // Assuming the error is an AxiosError
+    const errorAsError = error as AxiosError;
     console.error('Error during OpenAI API call:', errorAsError);
   
     if (errorAsError.response) {
@@ -182,10 +178,10 @@ export const analyzeActivity = async (input: ActivityInput): Promise<ParsedActiv
 };
 
 interface QuestionInputForParsing {
-  categories: string[]; // List of categories
+  categories: string[];
   gpts_names: string[];
-  question: string;  // Activity description
-  discussionId: string
+  question: string;
+  discussionId: string;
 }
 
 export const sendQuestionForParsing = async (input: QuestionInputForParsing): Promise<ParsedActivity> => {
@@ -197,27 +193,27 @@ export const sendQuestionForParsing = async (input: QuestionInputForParsing): Pr
     // Extract the necessary fields from the input object, which include categories, GPT names,
     // the question to be parsed, and the discussion ID for database tracking.
     const { categories, gpts_names, question, discussionId } = input;
-    const aiConnection = await getAPIKey(); // Ensure key is available
-    const { aiModel, apiKey, endPointURL } = aiConnection
-   // console.log("Using API Key:", apiKey);
-   // console.log("Using EndPoint URL:", endPointURL);
+    const aiConnection = await getAPIKey();
+    const { aiModel, apiKey, endPointURL } = aiConnection;
+    // console.log("Using API Key:", apiKey);
+    // console.log("Using EndPoint URL:", endPointURL);
 
     // Set the URL for the OpenAI API endpoint that we will be interacting with.
     if (!cachedEndPointURL) {
       throw new Error("API endpoint URL is not set.");
     }
-   // const url = cachedEndPointURL;
-        // Create a new object
-        // const myObject = {
-        //   paramName: 'openai_url',
-        //   paramValue: url
-        // };
+    // const url = cachedEndPointURL;
+    // Create a new object
+    // const myObject = {
+    //   paramName: 'openai_url',
+    //   paramValue: url
+    // };
 
-        // // Add the object to the Realm
-        // realm.write(() => {
-        //   realm.create('MyObject', myObject);
-        // });
-        
+    // // Add the object to the Realm
+    // realm.write(() => {
+    //   realm.create('MyObject', myObject);
+    // });
+    
     // Define the system prompt. This instructs the AI on what task it needs to perform,
     // which involves analyzing the question, splitting it into parts, and assigning each part
     // to a relevant category and GPT. It also specifies the categories and GPTs available.
@@ -250,40 +246,38 @@ export const sendQuestionForParsing = async (input: QuestionInputForParsing): Pr
     const response = await axios.post(
       endPointURL,
       {
-        model: aiModel, // Model to use for generating the response.
+        model: aiModel,
         messages: [
-          { role: 'system', content: systemPrompt }, // Message that defines the task.
-          { role: 'user', content: userPrompt }, // Message containing the user's question.
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt },
         ],
-        temperature: 0.7, // Controls the randomness of the response; 0.7 is moderately creative.
+        temperature: 0.7,
       },
       {
         headers: {
-          'Content-Type': 'application/json', // Set content type to JSON.
-          Authorization: `Bearer ${apiKey}`, // Include the API key for authorization.
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${apiKey}`,
         },
       }
     );
 
     // Log the response from the API for debugging.
-   // console.log('Debug: API response:', response.data);
+    // console.log('Debug: API response:', response.data);
 
     // Check if the API response contains valid choices.
     if (response.data && response.data.choices && response.data.choices.length > 0) {
       // Extract the content from the first response choice.
       const responseText = response.data.choices[0].message.content;
-    //  console.log('Debug: Parsed response:', responseText);
+      // console.log('Debug: Parsed response:', responseText);
 
       // Parse the JSON response to obtain the structured ParsedActivity object.
       const result: ParsedActivity = JSON.parse(responseText);
       console.log('Debug: Final Parsed Result:', result);
 
       // Prepare to update the database with the parsed result.
-      const responseType = "parsed question"; // Define the type of response.
-      const stringifiedResponse = JSON.stringify(result); // Convert the parsed result to a string.
-
-      // Add or update the GPT response in the database with the discussion ID.
-      addOrUpdateGPTResponse(discussionId, stringifiedResponse, responseType);
+      const responseType = "parsed question";
+      const stringifiedResponse = JSON.stringify(result);
+      await addOrUpdateGPTResponse(discussionId, stringifiedResponse, responseType);
 
       // Return the parsed result to the caller.
       return result;
@@ -296,7 +290,7 @@ export const sendQuestionForParsing = async (input: QuestionInputForParsing): Pr
     }
   } catch (error) {
     // Catch and handle errors that occur during the API call.
-    const errorAsError = error as AxiosError; // Cast the error as an AxiosError for type safety.
+    const errorAsError = error as AxiosError;
     console.error('Error during OpenAI API call:', errorAsError);
 
     // If the error contains a response, log additional details.
@@ -314,30 +308,30 @@ export const sendQuestionForParsing = async (input: QuestionInputForParsing): Pr
 };
 
 export interface QuestionInput {
-  category: string; // List of categories
+  category: string;
   gpt: string;
-  question: string;  // Activity description
+  question: string;
   discussionId: string;
 }
 
 export const sendQuestion = async (input: QuestionInput): Promise<ParsedActivity> => {
   try {
     const { category, gpt, question, discussionId } = input;
-    const aiConnection = await getAPIKey(); // Ensure key is available
-    const { aiModel,apiKey, endPointURL } = aiConnection
+    const aiConnection = await getAPIKey();
+    const { aiModel, apiKey, endPointURL } = aiConnection;
     // console.log("Using API Key:", apiKey);
     // console.log("Using EndPoint URL:", endPointURL);
     if (!cachedEndPointURL) {
       throw new Error("API endpoint URL is not set.");
     }
-   // const url = cachedEndPointURL;
-    //  const getDescriptionsWithTimestamps = async (categories: string[]): Promise<any[]> => {
+    // const url = cachedEndPointURL;
+    // const getDescriptionsWithTimestamps = async (categories: string[]): Promise<any[]> => {
     //   return categories.map(category => ({ category, timestamp: new Date().toISOString() }));
     // };
     
-  //  const queryAllFieldsByCategories = async (categories: string[]): Promise<any[]> => {
-    //  return categories.map(category => ({ category, timestamp: new Date().toISOString() }));
-    //};
+    // const queryAllFieldsByCategories = async (categories: string[]): Promise<any[]> => {
+    //   return categories.map(category => ({ category, timestamp: new Date().toISOString() }));
+    // };
     const list = await queryAllFieldsByCategories([category]);
     const listString = list.join(', ');
     //console.log('Debug: vlistString', listString);
@@ -369,17 +363,17 @@ export const sendQuestion = async (input: QuestionInput): Promise<ParsedActivity
       console.log('Debug: Parsed response:', responseText);
     
       // Parse the response JSON returned from OpenAI
-         const responseType = "parsed answer";
-     // const stringifiedResponse = JSON.stringify(result); // Convert ParsedActivity to string
-     //const responseText2 = { category: 'testing', parsedDescription: 'testing'};
-     addOrUpdateGPTResponse(discussionId, responseText, responseType, true);  
+      const responseType = "parsed answer";
+      // const stringifiedResponse = JSON.stringify(result); // Convert ParsedActivity to string
+      //const responseText2 = { category: 'testing', parsedDescription: 'testing'};
+      await addOrUpdateGPTResponse(discussionId, responseText, responseType, true);
       return { category: category, parsedDescription: responseText };
     } else {
       console.warn('Debug: No valid response from OpenAI.');
       return { category: 'Uncategorized', parsedDescription: 'Unable to parse activity.' };
     }
   } catch (error) {
-    const errorAsError = error as AxiosError; // Assuming the error is an AxiosError
+    const errorAsError = error as AxiosError;
     console.error('d92k Error during OpenAI API call:', errorAsError);
     if (errorAsError.response) {
       console.error('Error details:', errorAsError.response.data);

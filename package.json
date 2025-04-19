@@ -1,7 +1,8 @@
 {
   "name": "LifeLog",
   "main": "expo-router/entry",
-  "version": "1.0.0",
+  "version": "1.1.0",
+  "appId": "com.anonymous.lifelog",
   "scripts": {
     "start": "expo start --dev-client -c",
     "reset-project": "node ./scripts/reset-project.js",
@@ -41,7 +42,6 @@
     "expo-secure-store": "~14.0.1",
     "expo-splash-screen": "~0.29.24",
     "expo-status-bar": "~2.0.1",
-    "expo-store": "^0.0.0",
     "expo-symbols": "~0.2.2",
     "expo-system-ui": "~4.0.9",
     "expo-updates": "~0.27.4",
@@ -74,6 +74,7 @@
   "devDependencies": {
     "@babel/core": "^7.25.2",
     "@types/axios": "^0.14.4",
+    "@types/firebase": "^2.4.32",
     "@types/jest": "^29.5.12",
     "@types/react": "~18.3.12",
     "@types/react-native-fs": "^2.8.3",

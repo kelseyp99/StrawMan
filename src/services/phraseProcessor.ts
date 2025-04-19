@@ -69,7 +69,7 @@ export const processPhrase = async (
   // If no match, proceed with rule application
   let activityAnalysis = await applyRules(description);
   if (!activityAnalysis.category || activityAnalysis.category === "unclassified") {
-    const callOpenAI = false;
+    const callOpenAI = useOpenAI; // Use the constant defined at the top
     if (callOpenAI) {
       activityAnalysis = await analyzeActivity({ categories: distinctCategories, description });
     }
@@ -107,7 +107,7 @@ export async function applyRules(discussion: string): Promise<ParsedActivity> {
     const expanded = abbreviationMap.get(remainingPhrase)!;
     remainingPhrase = expanded;
     return {
-      category: extractedCategory || "metabolism", // Use extracted category if present, otherwise "metabolism"
+      category: extractedCategory || "metabolism",
       parsedDescription: remainingPhrase.trim()
     };
   }
@@ -136,7 +136,7 @@ export async function applyRules(discussion: string): Promise<ParsedActivity> {
 
     if (isMatch) {
       return {
-        category: extractedCategory || rule.category, // Use extracted category if present, otherwise rule's category
+        category: extractedCategory || rule.category,
         parsedDescription: parsedDesc.trim()
       };
     }

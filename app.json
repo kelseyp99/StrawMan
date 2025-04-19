@@ -2,10 +2,10 @@
   "expo": {
     "name": "LifeLog",
     "slug": "LifeLog",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "orientation": "portrait",
     "icon": "./assets/images/ask-janet-icon.png",
-    "scheme": "lifelog",
+    "scheme": "com.anonymous.lifelog",
     "userInterfaceStyle": "automatic",
     "ios": {
       "supportsTablet": true,
@@ -32,7 +32,8 @@
     "extra": {
       "eas": {
         "projectId": "a27bcb78-af2a-4ef8-adeb-7fae3e17731d"
-      }
+      },
+      "googleClientIdAndroid": "341732508688-4063fe724164fa1c18f695.apps.googleusercontent.com"
     },
     "owner": "kelseyp99",
     "jsEngine": "hermes"
