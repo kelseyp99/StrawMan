@@ -22,7 +22,7 @@ import {
   DocumentReference,
   DocumentSnapshot,
 } from "firebase/firestore";
-import { db } from "../firebaseConfig";
+import { auth,  db } from "../firebaseConfig";
 import { format } from "date-fns";
 import { getUID } from "../utils/uidManager";
 import { sendQuestion, sendQuestionForParsing } from "./openaiAPI";
@@ -31,19 +31,19 @@ const APP_VERSION = "1.1.0";
 const APP_ID = "com.anonymous.lifelog";
 
 export async function initializeUser() {
-  const uid = await getUID();
-  if (!uid) {
-    throw new Error("No UID available for initializing user");
+  const user = auth.currentUser;
+  if (!user) {
+    throw new Error("No user signed in");
   }
   try {
-    console.log(`Initializing user document for UID: ${uid}`);
-    const userRef = doc(db, `Users/${uid}`);
+    console.log(`Initializing user document for UID: ${user.uid}`);
+    const userRef = doc(db, `Users/${user.uid}`);
     const userData = {
-      appVersion: APP_VERSION,
-      appId: APP_ID,
-      timestamp: new Date(),
+      appVersion: "1.1.0",
+      appId: "com.anonymous.lifelog",
+      timestamp: new Date().toISOString(),
     };
-    console.log(`Writing to Firestore path: Users/${uid}`, userData);
+    console.log(`Writing to Firestore path: Users/${user.uid}`, userData);
     await setDoc(userRef, userData, { merge: true });
     console.log("User document initialized successfully");
   } catch (error) {

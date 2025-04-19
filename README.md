@@ -40,6 +40,37 @@ git push --set-upstream origin
 #Verify
 git log --oneline
 
+## Google Sign-In Setup
+
+This section outlines the successful steps to configure Google Sign-In for the LifeLog Android app using Firebase Authentication and `expo-auth-session`. The process resolved the "Error 400: invalid_request, Custom URI scheme is not enabled for your Android client" and related authentication errors.
+
+### Steps
+
+1. **Create Android OAuth Client ID in Google Cloud Console**:
+   - Navigated to [Google Cloud Console](https://console.cloud.google.com) > **APIs & Services > Credentials**.
+   - Created an OAuth 2.0 Client ID for Android:
+     - **Name**: `LifeLog Android Debug`.
+     - **Package name**: `com.anonymous.lifelog`.
+     - **SHA-1 fingerprint**: `2F:48:17:82:A9:5C:48:1A:AA:0C:8D:4D:13:49:64:42:F3:BC:33:0F` (obtained via `keytool -list -v -keystore C:\Users\philk\.android\debug.keystore -alias androiddebugkey -storepass android -keypass android`).
+     - **Custom URI scheme**: Added `com.anonymous.lifelog:/oauth2redirect` to enable `expo-auth-session` redirects.
+   - Copied the Client ID: `341732508688-o2qbbr16g2qh3e8niofee9iv4tl6krhb.apps.googleusercontent.com`.
+
+2. **Enable Google Sign-In in Firebase**:
+   - In Firebase Console (`lifelog-f2904`) > **Authentication > Sign-in method**, enabled the Google provider.
+   - Did **not** modify **Web SDK configuration** to avoid the UI’s invalid requirement for a Web client secret, as Android Client IDs have no secret.
+
+3. **Update `app.config.js`**:
+   - Added the Android Client ID to `extra.googleClientIdAndroid` in `app.config.js` to ensure `expo-auth-session` uses the correct credentials.
+   - Included `scheme: "com.anonymous.lifelog"` to resolve linking scheme warnings.
+   - Example:
+     ```javascript
+     extra: {
+       EXPO_PUBLIC_IS_EXPO_GO: process.env.EXPO_PUBLIC_IS_EXPO_GO || "true",
+       googleClientIdAndroid: "341732508688-o2qbbr16g2qh3e8niofee9iv4tl6krhb.apps.googleusercontent.com",
+       eas: {
+         projectId: "a27bcb78-af2a-4ef8-adeb-7fae3e17731d"
+       }
+     }
 
 # Welcome to your Expo app 👋
  is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).

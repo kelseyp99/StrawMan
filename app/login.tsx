@@ -8,6 +8,7 @@ import {
   signOut,
   GoogleAuthProvider,
   signInWithCredential,
+  linkWithCredential,
 } from "firebase/auth";
 import { useRouter } from "expo-router";
 import Icon from "react-native-vector-icons/MaterialIcons";
@@ -81,18 +82,55 @@ export default function Login() {
     if (response?.type === 'success') {
       const { id_token } = response.params;
       const credential = GoogleAuthProvider.credential(id_token);
-      signInWithCredential(auth, credential)
-        .then((userCredential) => {
-          console.log("Google Sign-In UID:", userCredential.user.uid);
-          setUserUID(userCredential.user.uid);
-          setUID(userCredential.user.uid);
-          initializeUser().catch(error => console.error("Error initializing user:", error));
-          router.replace("/(tabs)");
-        })
-        .catch((err) => {
-          setError(err.message);
-          console.error("Google Sign-In Error:", err.message);
-        });
+
+      // Check if a user is currently signed in
+      const currentUser = auth.currentUser;
+
+      if (currentUser) {
+        // Link Google provider to the current user (e.g., email/password account)
+        linkWithCredential(currentUser, credential)
+          .then((userCredential) => {
+            console.log("Google provider linked to UID:", userCredential.user.uid);
+            setUserUID(userCredential.user.uid);
+            setUID(userCredential.user.uid);
+            initializeUser().catch(error => console.error("Error initializing user:", error));
+            router.replace("/(tabs)");
+          })
+          .catch((err) => {
+            if (err.code === 'auth/credential-already-in-use') {
+              // Google account is already linked to another user; sign in instead
+              signInWithCredential(auth, credential)
+                .then((userCredential) => {
+                  console.log("Signed in with Google UID:", userCredential.user.uid);
+                  setUserUID(userCredential.user.uid);
+                  setUID(userCredential.user.uid);
+                  initializeUser().catch(error => console.error("Error initializing user:", error));
+                  router.replace("/(tabs)");
+                })
+                .catch((signInErr) => {
+                  setError(signInErr.message);
+                  console.error("Google Sign-In Error:", signInErr.message);
+                });
+            } else {
+              setError(err.message);
+              console.error("Google Linking Error:", err.message);
+            }
+          });
+      } else {
+        // No current user; sign in with Google
+        signInWithCredential(auth, credential)
+          .then((userCredential) => {
+            console.log("Google Sign-In UID:", userCredential.user.uid);
+            setUserUID(userCredential.user.uid);
+            setUID(userCredential.user.uid);
+            initializeUser().catch(error => console.error("Error initializing user:", error));
+            router.replace("/(tabs)");
+          })
+          .catch((err) => {
+            setError(err.message);
+            console.error("Google Sign-In Error:", err.message);
+          });
+      }
     } else if (response?.type === 'error') {
       setError("Google Sign-In failed");
       console.error("Google Sign-In Error:", response.error);
