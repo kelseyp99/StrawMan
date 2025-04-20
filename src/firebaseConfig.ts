@@ -1,13 +1,14 @@
 import { initializeApp } from "firebase/app";
-import { getAuth, initializeAuth } from "firebase/auth";
+import { getAuth, initializeAuth, Auth } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 import Constants from "expo-constants";
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-// Workaround for TypeScript error: getReactNativePersistence not found
-const { getReactNativePersistence } = require('firebase/auth') as {
-  getReactNativePersistence: (storage: any) => any;
-};
+// Declare getReactNativePersistence to fix TypeScript error
+declare module 'firebase/auth' {
+  export function getReactNativePersistence(storage: any): any;
+}
+import { getReactNativePersistence } from 'firebase/auth';
 
 const firebaseConfig = {
   apiKey: Constants.expoConfig?.extra?.firebase?.apiKey || process.env.EXPO_PUBLIC_FIREBASE_API_KEY || "AIzaSyDba17ybV3s_h6gcZSP1-9nGgaALc1_2Pk",

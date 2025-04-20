@@ -52,7 +52,7 @@ const getAPIKey = async (): Promise<ModelAPIkey> => {
   }
 
   try {
-    const key = await getModelAPIkey("LifeLog", "OpenAI", "gpt-3.5-turbo");
+    const key = await getModelAPIkey();
     if (!key) throw new Error("API Key not found");
     // console.log("Fetched API Model:", key.aiModel);
     // console.log("Fetched API Key:", key.apiKey);
