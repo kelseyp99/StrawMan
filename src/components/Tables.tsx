@@ -391,7 +391,7 @@ const MainComponent: React.FC = () => {
               Alert.alert('Success', `${unclearedDocs.length} Activity Log entries updated successfully!`);
             } catch (error) {
               console.error('Error updating Activity Log:', error);
-              Alert.alert('Error', `Failed to update Activity Log: ${error.message}`);
+              Alert.alert('Error', `Failed to update Activity Log: ${(error as any).message}`);
             }
           },
         },
@@ -780,7 +780,7 @@ const MainComponent: React.FC = () => {
       Alert.alert("Success", "Item and related ActivityLog entries updated successfully.");
     } catch (error) {
       console.error("Error in saveEdit:", error, { editTableName, editItemId, editDesc, editCleared, editTypeSay, editTimestamp, relatedActivityLogs });
-      Alert.alert("Error", `Failed to save changes: ${error.message}`);
+      Alert.alert("Error", `Failed to save changes: ${error}`);
     }
   }, [editDesc, editCleared, editTypeSay, editTimestamp, editTableName, editItemId, relatedActivityLogs, activityLogDescriptions, activityLogCategories, uid]);
 

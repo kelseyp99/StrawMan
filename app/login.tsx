@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Image, Platform } from "react-native";
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, Platform } from "react-native";
 import { auth } from "../src/firebaseConfig";
 import {
   signInWithEmailAndPassword,
@@ -11,7 +11,7 @@ import {
   linkWithCredential,
 } from "firebase/auth";
 import { useRouter } from "expo-router";
-import Icon from "react-native-vector-icons/MaterialIcons";
+import Icon from "react-native-vector-icons/Ionicons"; // Changed to Ionicons
 import Header from "../src/components/Header";
 import * as FileSystem from 'expo-file-system';
 import { setUID, clearUID } from "../src/utils/uidManager";
@@ -199,8 +199,8 @@ export default function Login() {
     }
   };
 
-  const handleFacebookLogin = () => {
-    console.log("Facebook login pressed (dummy)");
+  const handleAppleLogin = () => {
+    console.log("Apple login pressed (dummy)");
   };
 
   const toggleShowPassword = () => {
@@ -236,21 +236,19 @@ export default function Login() {
         </TouchableOpacity>
       </View>
       <TouchableOpacity style={styles.button} onPress={handleSignIn}>
-        <Text style={styles.buttonText}>Sign In</Text>
+        <Text style={styles.buttonText}>Sign In WIth Email</Text>
       </TouchableOpacity>
-      <TouchableOpacity style={styles.button} onPress={handleSignUp}>
-        <Text style={styles.buttonText}>Sign Up</Text>
+      <TouchableOpacity style={styles.signUpLink} onPress={handleSignUp}>
+        <Text style={styles.signUpText}>Create an account</Text>
       </TouchableOpacity>
       <View style={{ height: 1, width: "100%", backgroundColor: "#ccc", marginVertical: 10 }} />
       <TouchableOpacity style={styles.googleButton} onPress={handleGoogleLogin}>
-        <Image
-          source={require("../assets/images/google/signin-assets/Android/svg/light/android_light_sq_SI.png")}
-          style={{ width: 200, height: 50, resizeMode: "contain" }}
-        />
+        <Icon name="logo-google" size={20} color="#fff" style={styles.socialIcon} />
+        <Text style={styles.buttonText}>Continue with Google</Text>
       </TouchableOpacity>
-      <TouchableOpacity style={styles.facebookButton} onPress={handleFacebookLogin}>
-        <Icon name="facebook" size={20} color="#fff" style={styles.socialIcon} />
-        <Text style={styles.facebookButtonText}>Log in with Facebook</Text>
+      <TouchableOpacity style={styles.appleButton} onPress={handleAppleLogin}>
+        <Icon name="logo-apple" size={20} color="#fff" style={styles.socialIcon} />
+        <Text style={styles.buttonText}>Continue with Apple</Text>
       </TouchableOpacity>
       {userEmail && (
         <View style={styles.logoutContainer}>
@@ -325,32 +323,33 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "600",
   },
+  signUpLink: {
+    marginVertical: 10,
+  },
+  signUpText: {
+    color: "#007AFF",
+    fontSize: 16,
+    textDecorationLine: "underline",
+  },
   googleButton: {
     flexDirection: "row",
     width: "100%",
     padding: 15,
-    backgroundColor: "#fff",
-    borderWidth: 1,
-    borderColor: "#ccc",
+    backgroundColor: "#666", // Changed to grey
     borderRadius: 8,
     alignItems: "center",
     justifyContent: "center",
     marginVertical: 5,
   },
-  facebookButton: {
+  appleButton: {
     flexDirection: "row",
     width: "100%",
     padding: 15,
-    backgroundColor: "#4267B2",
+    backgroundColor: "#000",
     borderRadius: 8,
     alignItems: "center",
     justifyContent: "center",
     marginVertical: 5,
-  },
-  facebookButtonText: {
-    color: "#fff",
-    fontSize: 16,
-    fontWeight: "600",
   },
   socialIcon: {
     marginRight: 10,
