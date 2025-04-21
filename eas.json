@@ -13,6 +13,19 @@
       },
       "ios": {
         "simulator": true
+      },
+      "production": {
+        "developmentClient": false,
+        "distribution": "store",
+        "android": {
+          "buildType": "apk"
+        },
+        "env": {
+          "EXPO_PUBLIC_IS_EXPO_GO": "false"
+        }
+      },
+      "submit": {
+        "production": {}
       }
     },
     "preview": {

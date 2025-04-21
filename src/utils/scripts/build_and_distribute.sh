@@ -1,14 +1,36 @@
 #!/bin/bash
-# ./src/utils/scripts/build_and_distribute.sh --build-only
+# ./src/utils/scripts/build_and_distribute.sh [--build-only | --production] [--branch <branch-name>]
 PROJECT_DIR="/mnt/c/Users/philk/Projects2/LifeLog"
 WINDOWS_DEST="/mnt/c/Users/philk/Downloads/"
 
 set -e
 
 BUILD_ONLY=false
-if [[ "$1" == "--build-only" ]]; then
-    BUILD_ONLY=true
-fi
+PROFILE="development"
+BRANCH="develop"
+
+# Parse command-line arguments
+while [[ "$#" -gt 0 ]]; do
+    case $1 in
+        --build-only)
+            BUILD_ONLY=true
+            shift
+            ;;
+        --production)
+            PROFILE="production"
+            shift
+            ;;
+        --branch)
+            BRANCH="$2"
+            shift 2
+            ;;
+        *)
+            echo "Error: Unknown option: $1"
+            echo "Usage: $0 [--build-only | --production] [--branch <branch-name>]"
+            exit 1
+            ;;
+    esac
+done
 
 echo "Setting up Android environment and building the app..."
 cd "$PROJECT_DIR"
@@ -17,8 +39,8 @@ export PATH=$PATH:$ANDROID_HOME/platform-tools
 
 rm -rf ~/.gradle/caches ~/.eas/build
 
-echo "Running EAS build for Android..."
-EXPO_PUBLIC_IS_EXPO_GO=false eas build --platform android --local --profile development --clear-cache
+echo "Running EAS build for Android with profile $PROFILE..."
+EXPO_PUBLIC_IS_EXPO_GO=false eas build --platform android --local --profile $PROFILE --clear-cache
 
 echo "Locating latest build artifacts..."
 LATEST_APK=$(find "$PROJECT_DIR" -maxdepth 1 -name "*.apk" -printf "%T@ %p\n" | sort -nr | head -n1 | cut -d' ' -f2-)
@@ -51,9 +73,12 @@ else
     exit 1
 fi
 
-echo "Committing and pushing changes from WSL..."
-git add .
-git commit -m "Automated commit from WSL: Build artifacts" || echo "Nothing to commit in WSL"
-git push origin develop || { echo "Error: Failed to push from WSL"; exit 1; }
+if [ "$BUILD_ONLY" = false ]; then
+    echo "Committing and pushing changes from WSL to origin/$BRANCH..."
+    git checkout "$BRANCH" || { echo "Error: Branch $BRANCH does not exist locally"; exit 1; }
+    git add .
+    git commit -m "Automated commit from WSL: Build artifacts for $PROFILE profile on $BRANCH" || echo "Nothing to commit in WSL"
+    git push origin "$BRANCH" || { echo "Error: Failed to push from WSL"; exit 1; }
+fi
 
 echo "Script completed successfully!"

@@ -3,32 +3,37 @@
 param (
     [switch]$Local,      # Build locally in WSL
     [switch]$Firebase,   # Upload to Firebase
-    [switch]$CloudMain   # Copy develop to main for cloud build
+    [switch]$CloudMain,  # Copy develop to main for cloud build
+    [switch]$Production  # Build production APK with developmentClient: false
 )
 
 $projectDir = "C:\Users\philk\Projects2\LifeLog"
-$commitMessage = "Automated commit: Update and build"
+# Get the current Git branch
+$Branch = git rev-parse --abbrev-ref HEAD
+$commitMessage = "Automated commit: Update and build for branch $Branch"
 $downloadsDir = "C:\Users\philk\Downloads"
-$wslProjectDir = "/home/kelseyp99/projects/LifeLog"
+$wslProjectDir = "/mnt/c/Users/philk/Projects2/LifeLog"
 $wslScriptsDir = "$wslProjectDir/src/utils/scripts"
 $firebaseAppId = "1:341732508688:android:4a8c275e1199f4e1c0e8b4"
 $releaseNotes = "New build uploaded on $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
-$testers = "email1@example.com,email2@example.com"  # Replace with real emails
+$testers = "werkhardor@gmail.com"  # Updated with your email
 
 Set-Location -Path $projectDir
 
-Write-Host "Committing and pushing changes from PowerShell..."
+Write-Host "Current branch: $Branch"
+Write-Host "Committing and pushing changes from PowerShell to $Branch..."
+git checkout $Branch
 git add .
 git commit -m $commitMessage
 if ($LASTEXITCODE -eq 0) {
-    git push origin develop
+    git push origin $Branch
 } else {
     Write-Host "Nothing to commit, proceeding..."
 }
 
-# Build locally in WSL if -Local is specified
-if ($Local) {
-    Write-Host "Initializing WSL with pull and doctor script..."
+# Build locally in WSL if -Local or -Production is specified
+if ($Local -or $Production) {
+    Write-Host "Initializing WSL with pull and doctor script for branch $Branch..."
     Write-Host "Running WSL pull and doctor script..."
     try {
         # Check if the script exists before running
@@ -39,7 +44,7 @@ if ($Local) {
             exit 1
         }
 
-        $pullOutput = wsl -d Ubuntu -e bash -c "cd $wslScriptsDir && ./manage_wsl.sh" 2>&1
+        $pullOutput = wsl -d Ubuntu -e bash -c "cd $wslScriptsDir && ./manage_wsl.sh --branch $Branch" 2>&1
         Write-Host "WSL Pull Output: $pullOutput"
         if ($LASTEXITCODE -ne 0) {
             Write-Host "Error: WSL pull and doctor script failed!" -ForegroundColor Red
@@ -47,7 +52,8 @@ if ($Local) {
         }
 
         Write-Host "Running WSL build script..."
-        $buildOutput = wsl -d Ubuntu -e bash -c "cd $wslScriptsDir && ./build_and_distribute.sh --build-only" 2>&1
+        $buildFlag = if ($Production) { "--production" } else { "--build-only" }
+        $buildOutput = wsl -d Ubuntu -e bash -c "cd $wslScriptsDir && ./build_and_distribute.sh $buildFlag --branch $Branch" 2>&1
         Write-Host "WSL Build Output: $buildOutput"
         if ($LASTEXITCODE -ne 0) {
             Write-Host "Error: WSL build script failed!" -ForegroundColor Red
@@ -61,9 +67,9 @@ if ($Local) {
 
 # Find latest APK if building locally or uploading to Firebase
 $latestApk = $null
-if ($Local -or $Firebase) {
+if ($Local -or $Firebase -or $Production) {
     Write-Host "Finding latest APK in Downloads..."
-    $latestApk = Get-ChildItem -Path $downloadsDir -Filter "build-*.apk" | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+    $latestApk = Get-ChildItem -Path $downloadsDir -Filter "*.apk" | Sort-Object LastWriteTime -Descending | Select-Object -First 1
     if ($latestApk) {
         $apkPath = $latestApk.FullName
         Write-Host "Latest APK found: $apkPath"
@@ -73,8 +79,8 @@ if ($Local -or $Firebase) {
     }
 }
 
-# Install APK on connected devices & emulators if -Local is specified
-if ($Local -and $latestApk) {
+# Install APK on connected devices & emulators if -Local or -Production is specified
+if (($Local -or $Production) -and $latestApk) {
     # Get list of connected devices (emulators + real devices)
     $deviceList = adb devices | Select-String "^(emulator-[0-9]+|\w+)\s+device" | ForEach-Object { $_.Matches.Groups[1].Value }
 
@@ -89,10 +95,9 @@ if ($Local -and $latestApk) {
 
         if ($LASTEXITCODE -eq 0) {
             Write-Host "✅ APK installed successfully on $device."
-
-            # OPTIONAL: Launch the app (replace with your actual package and activity)
-            $packageName = "com.yourapp.package"
-            $mainActivity = "com.yourapp.package.MainActivity"
+            # Launch the app
+            $packageName = "com.anonymous.lifelog"
+            $mainActivity = "com.anonymous.lifelog.MainActivity"
             adb -s $device shell am start -n "$packageName/$mainActivity"
         } else {
             Write-Host "❌ Failed to install APK on $device." -ForegroundColor Red
@@ -101,7 +106,7 @@ if ($Local -and $latestApk) {
 } else {
     Write-Host "No APK to install on devices." -ForegroundColor Yellow
 }
-  
+
 # Upload to Firebase if -Firebase is specified
 if ($Firebase -and $latestApk) {
     Write-Host "Uploading APK to Firebase App Distribution..."
@@ -129,14 +134,14 @@ if ($CloudMain) {
         Write-Host "Successfully copied develop to main for Expo cloud build!"
     } else {
         Write-Host "Error: Failed to merge develop into main!" -ForegroundColor Red
-        git checkout develop
+        git checkout $Branch
         exit 1
     }
-    git checkout develop
+    git checkout $Branch
 }
 
-# Start Expo dev client if local build was done
-if ($Local) {
+# Start Expo dev client if local build was done (not for production)
+if ($Local -and -not $Production) {
     Write-Host "Closing any existing npx expo start instances..."
     taskkill /IM "node.exe" /FI "WINDOWTITLE eq *npx expo start*" /F 2>$null
     if ($LASTEXITCODE -eq 0 -or $LASTEXITCODE -eq 128) {
