@@ -1,5 +1,3 @@
-# build.ps1 (in src\utils\scripts)
-
 param (
     [switch]$Local,      # Build locally in WSL
     [switch]$Firebase,   # Upload to Firebase
@@ -83,33 +81,27 @@ fi
 echo "Pull and doctor steps completed successfully!"
 '@
 
-        # Write the script out (UTF-8 no BOM)
+        # Write the script out (ASCII, no BOM)
         $windowsScriptPath = Join-Path $projectDir 'src\utils\scripts\manage_wsl.sh'
-        $scriptContent | Out-File -FilePath $windowsScriptPath -Encoding UTF8NoBOM -Force
+        $scriptContent | Out-File -FilePath $windowsScriptPath -Encoding ascii -Force
 
-        # Normalize to Unix line endings
+        # Normalize to Unix line endings (still ASCII)
         (Get-Content $windowsScriptPath -Raw) -replace "`r`n", "`n" |
-            Set-Content $windowsScriptPath -NoNewline
-
-        Write-Host "manage_wsl.sh recreated on Windows side at $windowsScriptPath"
+            Set-Content $windowsScriptPath -Encoding ascii -NoNewline
 
         # Make it executable in WSL
-        $chmodOutput = wsl -d Ubuntu -e bash -c "chmod +x $wslScriptsDir/manage_wsl.sh" 2>&1
-        Write-Host "chmod Output: $chmodOutput"
+        wsl -d Ubuntu -e bash -c "chmod +x $wslScriptsDir/manage_wsl.sh" 2>&1 | Out-Null
 
         # Run the pull & doctor steps in WSL
-        $pullOutput = wsl -d Ubuntu -e bash -c "cd $wslScriptsDir && ./manage_wsl.sh --branch $Branch" 2>&1
-        Write-Host "WSL Pull Output: $pullOutput"
+        wsl -d Ubuntu -e bash -c "cd $wslScriptsDir && ./manage_wsl.sh --branch $Branch" 2>&1
         if ($LASTEXITCODE -ne 0) {
             Write-Host "Error: WSL pull and doctor script failed!" -ForegroundColor Red
             exit 1
         }
 
-        # Now run the WSL build script
-        Write-Host "Running WSL build script..."
+        # Run the WSL build script
         $buildFlag = if ($Production) { "--production" } else { "--build-only" }
-        $buildOutput = wsl -d Ubuntu -e bash -c "cd $wslScriptsDir && ./build_and_distribute.sh $buildFlag --branch $Branch" 2>&1
-        Write-Host "WSL Build Output: $buildOutput"
+        wsl -d Ubuntu -e bash -c "cd $wslScriptsDir && ./build_and_distribute.sh $buildFlag --branch $Branch" 2>&1
         if ($LASTEXITCODE -ne 0) {
             Write-Host "Error: WSL build script failed!" -ForegroundColor Red
             exit 1
@@ -121,7 +113,7 @@ echo "Pull and doctor steps completed successfully!"
     }
 }
 
-# Find the latest APK in Downloads (for install or Firebase)
+# Find the latest APK in Downloads
 if ($Local -or $Firebase -or $Production) {
     Write-Host "Finding latest APK in Downloads..."
     $latestApk = Get-ChildItem -Path $downloadsDir -Filter "*.apk" |
@@ -135,12 +127,10 @@ if ($Local -or $Firebase -or $Production) {
     Write-Host "Latest APK found: $apkPath"
 }
 
-# Install APK on emulator and any attached devices
+# Install APK on emulator and attached devices
 if ($Local -or $Production) {
-    Write-Host "`nInstalling APK on emulator and attached devices..."
-    # Emulator
+    Write-Host "Installing APK on emulator and attached devices..."
     adb -s emulator-5554 install -r $apkPath
-    # All other devices
     adb devices | Where-Object { $_ -match "device$" -and $_ -notmatch "emulator" } |
         ForEach-Object {
             $id = ($_ -split "`t")[0]
@@ -166,11 +156,8 @@ if ($CloudMain) {
 
 # Start Expo dev client (non-production)
 if ($Local -and -not $Production) {
-    Write-Host "Closing any existing Expo instances..."
-    taskkill /IM "node.exe" /FI "WINDOWTITLE eq *npx expo start*" /F 2>$null
-
-    Write-Host "Starting Expo dev client in a new terminal..."
-    Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd `"$projectDir`"; npx expo start --dev-client -c" 
+    Write-Host "Starting Expo dev client..."
+    Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd `"$projectDir`"; npx expo start --dev-client -c"
 }
 
 Write-Host "build.ps1 script completed successfully!"
