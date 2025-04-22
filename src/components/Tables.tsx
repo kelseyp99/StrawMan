@@ -54,9 +54,9 @@ const RelatedLogEntry = memo(({ log, description, onDescriptionChange, onCategor
   console.log(`Rendering RelatedLogEntry for ID: ${log.id}`);
   return (
     <View style={styles.relatedLogEntry}>
-      <Text style={styles.modalLabel}>ID: ${log.id}</Text>
+      <Text style={styles.modalLabel}>ID: {log.id}</Text>
       <TouchableOpacity onPress={() => onCategoryChange(log.id)}>
-        <Text style={styles.modalLabel}>Category: ${log.category}</Text>
+        <Text style={styles.modalLabel}>Category: {log.category}</Text>
       </TouchableOpacity>
       <TextInput
         style={styles.modalInput}
@@ -905,7 +905,7 @@ const MainComponent: React.FC = () => {
           >
             <View style={styles.modalOverlay}>
               <ScrollView style={styles.modalContainer}>
-                <Text style={styles.modalTitle}>Edit ${editTableName} Entry</Text>
+                <Text style={styles.modalTitle}>Edit {editTableName} Entry</Text>
                 <Text style={styles.modalSubtitle}>Discussion Details</Text>
                 <TextInput
                   style={styles.modalInput}
