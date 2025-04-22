@@ -44,6 +44,14 @@ if ($Local -or $Production) {
             exit 1
         }
 
+        # Fix line endings and permissions for manage_wsl.sh
+        $fixScript = wsl -d Ubuntu -e bash -c "sed -i 's/\r$//' $wslScriptsDir/manage_wsl.sh && chmod +x $wslScriptsDir/manage_wsl.sh" 2>&1
+        Write-Host "Fix Script Output: $fixScript"
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host "Error: Failed to fix line endings or permissions for manage_wsl.sh!" -ForegroundColor Red
+            exit 1
+        }
+
         $pullOutput = wsl -d Ubuntu -e bash -c "cd $wslScriptsDir && ./manage_wsl.sh --branch $Branch" 2>&1
         Write-Host "WSL Pull Output: $pullOutput"
         if ($LASTEXITCODE -ne 0) {
