@@ -44,11 +44,12 @@ if ($Local -or $Production) {
             exit 1
         }
 
-        # Fix line endings and permissions for manage_wsl.sh
-        $fixScript = wsl -d Ubuntu -e bash -c "sed -i 's/\r$//' $wslScriptsDir/manage_wsl.sh && chmod +x $wslScriptsDir/manage_wsl.sh" 2>&1
+        # Recreate manage_wsl.sh in WSL from Windows content with UTF-8 and LF
+        $scriptContent = Get-Content -Path "$projectDir\src\utils\scripts\manage_wsl.sh" -Raw
+        $fixScript = wsl -d Ubuntu -e bash -c "echo '$scriptContent' | cat > $wslScriptsDir/manage_wsl.sh && sed -i 's/\r$//' $wslScriptsDir/manage_wsl.sh && chmod +x $wslScriptsDir/manage_wsl.sh" 2>&1
         Write-Host "Fix Script Output: $fixScript"
         if ($LASTEXITCODE -ne 0) {
-            Write-Host "Error: Failed to fix line endings or permissions for manage_wsl.sh!" -ForegroundColor Red
+            Write-Host "Error: Failed to recreate manage_wsl.sh with correct encoding and permissions!" -ForegroundColor Red
             exit 1
         }
 
