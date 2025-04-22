@@ -1,4 +1,3 @@
-```powershell
 # build.ps1 (in src\utils\scripts)
 
 param (
@@ -175,4 +174,3 @@ if ($Local -and -not $Production) {
 }
 
 Write-Host "build.ps1 script completed successfully!"
-```
