@@ -46,7 +46,9 @@ if ($Local -or $Production) {
 
         # Recreate manage_wsl.sh in WSL from Windows content with UTF-8 and LF
         $scriptContent = Get-Content -Path "$projectDir\src\utils\scripts\manage_wsl.sh" -Raw
-        $fixScript = wsl -d Ubuntu -e bash -c "echo '$scriptContent' | cat > $wslScriptsDir/manage_wsl.sh && sed -i 's/\r$//' $wslScriptsDir/manage_wsl.sh && chmod +x $wslScriptsDir/manage_wsl.sh" 2>&1
+        # Escape single quotes for WSL Bash
+        $escapedScriptContent = $scriptContent -replace "'", "'\\''"
+        $fixScript = wsl -d Ubuntu -e bash -c "echo '$escapedScriptContent' | cat > $wslScriptsDir/manage_wsl.sh && sed -i 's/\r$//' $wslScriptsDir/manage_wsl.sh && chmod +x $wslScriptsDir/manage_wsl.sh" 2>&1
         Write-Host "Fix Script Output: $fixScript"
         if ($LASTEXITCODE -ne 0) {
             Write-Host "Error: Failed to recreate manage_wsl.sh with correct encoding and permissions!" -ForegroundColor Red
