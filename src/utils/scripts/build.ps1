@@ -30,51 +30,64 @@ if ($LASTEXITCODE -eq 0) {
 } else {
     Write-Host "Nothing to commit, proceeding..."
 }
+# -------------------------------------------------
+# Part of build.ps1: recreate manage_wsl.sh reliably
+# -------------------------------------------------
 
-# Build locally in WSL if -Local or -Production is specified
-if ($Local -or $Production) {
-    Write-Host "Initializing WSL with pull and doctor script for branch $Branch..."
-    Write-Host "Running WSL pull and doctor script..."
-    try {
-        # Check if the script exists before running
-        $scriptCheck = wsl -d Ubuntu -e bash -c "cd $wslScriptsDir && ls -la ./manage_wsl.sh" 2>&1
-        Write-Host "Script Check Output: $scriptCheck"
-        if ($LASTEXITCODE -ne 0) {
-            Write-Host "Error: manage_wsl.sh not found in $wslScriptsDir/!" -ForegroundColor Red
-            exit 1
-        }
+# 1. Put the exact contents of manage_wsl.sh into a PowerShell here‑string.
+$scriptContent = @'
+#!/bin/bash
+# ./src/utils/scripts/manage_wsl.sh [--branch <branch-name>]
 
-        # Recreate manage_wsl.sh in WSL from Windows content with UTF-8 and LF
-        $scriptContent = Get-Content -Path "$projectDir\src\utils\scripts\manage_wsl.sh" -Raw
-        # Escape single quotes for WSL Bash
-        $escapedScriptContent = $scriptContent -replace "'", "'\\''"
-        $fixScript = wsl -d Ubuntu -e bash -c "echo '$escapedScriptContent' | cat > $wslScriptsDir/manage_wsl.sh && sed -i 's/\r$//' $wslScriptsDir/manage_wsl.sh && chmod +x $wslScriptsDir/manage_wsl.sh" 2>&1
-        Write-Host "Fix Script Output: $fixScript"
-        if ($LASTEXITCODE -ne 0) {
-            Write-Host "Error: Failed to recreate manage_wsl.sh with correct encoding and permissions!" -ForegroundColor Red
-            exit 1
-        }
+PROJECT_DIR="/home/kelseyp99/projects/LifeLog"
+DEFAULT_BRANCH="develop"
+BRANCH="$DEFAULT_BRANCH"
 
-        $pullOutput = wsl -d Ubuntu -e bash -c "cd $wslScriptsDir && ./manage_wsl.sh --branch $Branch" 2>&1
-        Write-Host "WSL Pull Output: $pullOutput"
-        if ($LASTEXITCODE -ne 0) {
-            Write-Host "Error: WSL pull and doctor script failed!" -ForegroundColor Red
+# Parse command-line arguments
+while [[ "$#" -gt 0 ]]; do
+    case $1 in
+        --branch)
+            BRANCH="$2"
+            shift 2
+            ;;
+        *)
+            echo "Error: Unknown option: $1"
+            echo "Usage: $0 [--branch <branch-name>]"
             exit 1
-        }
+            ;;
+    esac
+done
 
-        Write-Host "Running WSL build script..."
-        $buildFlag = if ($Production) { "--production" } else { "--build-only" }
-        $buildOutput = wsl -d Ubuntu -e bash -c "cd $wslScriptsDir && ./build_and_distribute.sh $buildFlag --branch $Branch" 2>&1
-        Write-Host "WSL Build Output: $buildOutput"
-        if ($LASTEXITCODE -ne 0) {
-            Write-Host "Error: WSL build script failed!" -ForegroundColor Red
-            exit 1
-        }
-    } catch {
-        Write-Host "Error: WSL operation failed: $_" -ForegroundColor Red
-        exit 1
-    }
-}
+echo "Force pulling latest changes from origin/$BRANCH..."
+cd "$PROJECT_DIR"
+git fetch origin -v
+git checkout -f "$BRANCH" || { echo "Error: Branch $BRANCH does not exist locally"; exit 1; }
+git clean -fd
+git reset --hard "origin/$BRANCH" || { echo "Error: Failed to force pull from Git"; exit 1; }
+
+echo "Running expo-doctor to check dependencies (informational only)..."
+npx expo-doctor
+if [ $? -eq 0 ]; then
+    echo "Expo doctor completed successfully!"
+else
+    echo "Warning: Expo doctor reported issues, proceeding anyway..." >&2
+fi
+
+echo "Pull and doctor steps completed successfully!"
+'@
+
+# 2. Write it out with UTF8 no BOM
+$scriptContent | Out-File -FilePath ".\manage_wsl.sh" -Encoding UTF8NoBOM -Force
+
+# 3. Normalize to Unix line endings (LF)
+(Get-Content ".\manage_wsl.sh" -Raw) -replace "`r`n", "`n" |
+    Set-Content ".\manage_wsl.sh" -NoNewline
+
+# 4. Give it execute permission in WSL
+bash -c "chmod +x ./manage_wsl.sh"
+
+Write-Host "manage_wsl.sh recreated with proper encoding, line endings, and +x permission."
+
 
 # Find latest APK if building locally or uploading to Firebase
 $latestApk = $null
