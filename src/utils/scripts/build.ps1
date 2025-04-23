@@ -135,12 +135,11 @@ echo "Script completed successfully!"
     try {
         # Ensure the scripts directory exists
         wsl -d Ubuntu -e bash -c "mkdir -p $wslScriptsDir"
-        # Write the script with LF endings
-        wsl -d Ubuntu -e bash -c "echo '$scriptContent' > $wslScriptsDir/build_and_distribute.sh"
+        # Write the script with LF endings using printf
+        wsl -d Ubuntu -e bash -c "printf '%s\n' $(printf '%q' \"$scriptContent\") > $wslScriptsDir/build_and_distribute.sh"
         # Fix permissions
         wsl -d Ubuntu -e bash -c "chmod +x $wslScriptsDir/build_and_distribute.sh"
         Write-Host "Generated build_and_distribute.sh in WSL."
-
         # Fallback: Fix line endings for all .sh files
         wsl -d Ubuntu -e bash -c "find $wslScriptsDir -name '*.sh' -exec sed -i 's/\r$//' {} \;"
         Write-Host "Applied line-ending fix to all .sh files."
