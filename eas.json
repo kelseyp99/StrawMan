@@ -26,15 +26,18 @@
       }
     },
     "production": {
-      "env": {
-        "EXPO_PUBLIC_GIT_BRANCH": "main"
-      },
+      "developmentClient": false,
+      "distribution": "store",
       "channel": "production",
       "android": {
-        "buildType": "app-bundle"
+        "buildType": "apk"
       },
       "ios": {
         "simulator": false
+      },
+      "env": {
+        "EXPO_PUBLIC_GIT_BRANCH": "main",
+        "EXPO_PUBLIC_IS_EXPO_GO": "false"
       }
     },
     "beta": {

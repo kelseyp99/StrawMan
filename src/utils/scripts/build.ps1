@@ -1,10 +1,10 @@
 # build.ps1 (in src\utils\scripts\)
 
 param (
-    [switch]$Local,      # Build locally in WSL
+    [switch]$Local,      # Build locally with development profile (default)
     [switch]$Firebase,   # Upload to Firebase
-    [switch]$CloudMain,  # Copy develop to main for cloud build
-    [switch]$Production  # Build production APK with developmentClient: false
+    [switch]$CloudMain,  # Cloud build on main branch
+    [switch]$Production  # Build local production APK
 )
 
 $projectDir = "C:\Users\philk\Projects2\LifeLog"
@@ -31,15 +31,15 @@ if ($LASTEXITCODE -eq 0) {
     Write-Host "Nothing to commit, proceeding..."
 }
 
-# Build locally in WSL if -Local or -Production is specified
-if ($Local -or $Production) {
+# Build locally or in cloud based on flags
+if ($Local -or $Production -or $CloudMain) {
     Write-Host "Initializing WSL with pull and build script for branch $Branch..."
     Write-Host "Generating build_and_distribute.sh in WSL..."
 
     # Generate build_and_distribute.sh in WSL with LF line endings
     $scriptContent = @'
 #!/bin/bash
-# build_and_distribute.sh [--build-only | --production] [--branch <branch-name>]
+# build_and_distribute.sh [--build-only | --production | --cloud] [--branch <branch-name>]
 PROJECT_DIR="/mnt/c/Users/philk/Projects2/LifeLog"
 WINDOWS_DEST="/mnt/c/Users/philk/Downloads/"
 
@@ -47,6 +47,7 @@ set -e
 
 BUILD_ONLY=false
 PROFILE="development"
+CLOUD=false
 BRANCH="'$Branch'"
 
 # Parse command-line arguments
@@ -60,13 +61,18 @@ while [[ "$#" -gt 0 ]]; do
             PROFILE="production"
             shift
             ;;
+        --cloud)
+            CLOUD=true
+            PROFILE="production"
+            shift
+            ;;
         --branch)
             BRANCH="$2"
             shift 2
             ;;
         *)
             echo "Error: Unknown option: $1"
-            echo "Usage: $0 [--build-only | --production] [--branch <branch-name>]"
+            echo "Usage: $0 [--build-only | --production | --cloud] [--branch <branch-name>]"
             exit 1
             ;;
     esac
@@ -87,7 +93,11 @@ export PATH=$PATH:$ANDROID_HOME/platform-tools
 rm -rf ~/.gradle/caches ~/.eas/build
 
 echo "Running EAS build for Android with profile $PROFILE..."
-EXPO_PUBLIC_IS_EXPO_GO=false eas build --platform android --local --profile $PROFILE --clear-cache
+if [ "$CLOUD" = true ]; then
+    EXPO_PUBLIC_IS_EXPO_GO=false eas build --platform android --profile $PROFILE --clear-cache
+else
+    EXPO_PUBLIC_IS_EXPO_GO=false eas build --platform android --local --profile $PROFILE --clear-cache
+fi
 
 echo "Locating latest build artifacts..."
 LATEST_APK=$(find "$PROJECT_DIR" -maxdepth 1 -name '*.apk' -exec stat -c '%Y %n' {} + | sort -nr | head -n1 | awk '{print $2}')
@@ -149,18 +159,39 @@ echo "Script completed successfully!"
     }
 
     Write-Host "Running WSL build script..."
-    $buildFlag = if ($Production) { "--production" } else { "--build-only" }
+    if ($CloudMain) {
+        Write-Host "Preparing cloud build by merging develop to main..."
+        git checkout main
+        git merge develop --ff-only
+        if ($LASTEXITCODE -eq 0) {
+            git push origin main
+            Write-Host "Successfully merged develop to main for cloud build!"
+        } else {
+            Write-Host "Error: Failed to merge develop into main!" -ForegroundColor Red
+            git checkout $Branch
+            exit 1
+        }
+        $buildFlag = "--cloud"
+        $Branch = "main"  # Cloud build uses main branch
+    } elseif ($Production) {
+        $buildFlag = "--production"
+    } else {
+        $buildFlag = "--build-only"
+    }
     $buildOutput = wsl -d Ubuntu -e bash -c "cd $wslScriptsDir && ./build_and_distribute.sh $buildFlag --branch $Branch" 2>&1
     Write-Host "WSL Build Output: $buildOutput"
     if ($LASTEXITCODE -ne 0) {
         Write-Host "Error: WSL build script failed!" -ForegroundColor Red
         exit 1
     }
+    if ($CloudMain) {
+        git checkout $Branch  # Return to original branch
+    }
 }
 
 # Find latest APK if building locally or uploading to Firebase
 $latestApk = $null
-if ($Local -or $Firebase -or $Production) {
+if ($Local -or $Firebase -or $Production -or $CloudMain) {
     Write-Host "Finding latest APK in Downloads..."
     $latestApk = Get-ChildItem -Path $downloadsDir -Filter "*.apk" | Sort-Object LastWriteTime -Descending | Select-Object -First 1
     if ($latestApk) {
@@ -173,7 +204,7 @@ if ($Local -or $Firebase -or $Production) {
 }
 
 # Install APK on connected devices & emulators if -Local or -Production is specified
-if (($Local -or $Production) -and $latestApk) {
+if (($Local -or $Production -or $CloudMain) -and $latestApk) {
     # Get list of connected devices (emulators + real devices)
     $deviceList = adb devices | Select-String "^(emulator-[0-9]+|\w+)\s+device" | ForEach-Object { $_.Matches.Groups[1].Value }
 
@@ -217,24 +248,8 @@ if ($Firebase -and $latestApk) {
     }
 }
 
-# Copy develop to main if -CloudMain is specified
-if ($CloudMain) {
-    Write-Host "Copying develop to main for Expo cloud build..."
-    git checkout main
-    git merge develop --ff-only
-    if ($LASTEXITCODE -eq 0) {
-        git push origin main
-        Write-Host "Successfully copied develop to main for Expo cloud build!"
-    } else {
-        Write-Host "Error: Failed to merge develop into main!" -ForegroundColor Red
-        git checkout $Branch
-        exit 1
-    }
-    git checkout $Branch
-}
-
-# Start Expo dev client if local build was done (not for production)
-if ($Local -and -not $Production) {
+# Start Expo dev client if local development build was done
+if ($Local -and -not $Production -and -not $CloudMain) {
     Write-Host "Closing any existing npx expo start instances..."
     taskkill /IM "node.exe" /FI "WINDOWTITLE eq *npx expo start*" /F 2>$null
     if ($LASTEXITCODE -eq 0 -or $LASTEXITCODE -eq 128) {
