@@ -134,14 +134,14 @@ echo "Script completed successfully!"
     # Write script to WSL
     try {
         # Ensure the scripts directory exists
-        wsl -d Ubuntu bash -c "mkdir -p $wslScriptsDir"
+        wsl -d Ubuntu -e bash -c "mkdir -p $wslScriptsDir"
         # Write the script with LF endings using printf
-        wsl -d Ubuntu bash -c "printf '%s\n' \"$(printf '%q' \"$scriptContent\")\" > $wslScriptsDir/build_and_distribute.sh"
+        wsl -d Ubuntu -e printf "%s\n" "$scriptContent" > "$wslScriptsDir/build_and_distribute.sh"
         # Fix permissions
-        wsl -d Ubuntu bash -c "chmod +x $wslScriptsDir/build_and_distribute.sh"
+        wsl -d Ubuntu -e bash -c "chmod +x $wslScriptsDir/build_and_distribute.sh"
         Write-Host "Generated build_and_distribute.sh in WSL."
         # Fallback: Fix line endings for all .sh files
-        wsl -d Ubuntu bash -c "find $wslScriptsDir -name '*.sh' -exec sed -i 's/\r$//' {} \;"
+        wsl -d Ubuntu -e bash -c "find $wslScriptsDir -name '*.sh' -exec sed -i 's/\r$//' {} \;"
         Write-Host "Applied line-ending fix to all .sh files."
     } catch {
         Write-Host "Error: Failed to generate or fix build_and_distribute.sh in WSL: $_" -ForegroundColor Red
