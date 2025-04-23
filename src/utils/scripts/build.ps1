@@ -136,7 +136,7 @@ echo "Script completed successfully!"
         # Ensure the scripts directory exists
         wsl -d Ubuntu -e bash -c "mkdir -p $wslScriptsDir"
         # Write the script with LF endings using printf
-        wsl -d Ubuntu -e printf "%s\n" "$scriptContent" > "$wslScriptsDir/build_and_distribute.sh"
+        wsl -d Ubuntu -e bash -c "printf '%s\n' \"$scriptContent\" > $wslScriptsDir/build_and_distribute.sh"
         # Fix permissions
         wsl -d Ubuntu -e bash -c "chmod +x $wslScriptsDir/build_and_distribute.sh"
         Write-Host "Generated build_and_distribute.sh in WSL."
