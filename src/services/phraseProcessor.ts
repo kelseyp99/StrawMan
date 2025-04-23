@@ -15,16 +15,29 @@ const dummyTokenizer = (text: string): number[] => {
 };
 
 export function transformInput(input: string): string {
-  let transformedInput = input;
-  if (transformedInput.startsWith("8")) {
-    if (transformedInput === "8") {
-      transformedInput = "Ate " + transformedInput.slice(1);
-    } else if (transformedInput.startsWith("8a") || transformedInput.startsWith("88")) {
-      transformedInput = "Ate a" + transformedInput.slice(2);
+  const trimmed = input.trim();
+  let result = trimmed;
+
+  // 1) "88‑..."  → "Ate a ..."
+  const double8 = trimmed.match(/^88\s*(.*)$/i);
+  if (double8) {
+    result = `Ate a ${double8[1]}`;
+  } else {
+    // 2) "8‑..."  → "Ate ..."
+    const single8 = trimmed.match(/^8\s*(.*)$/i);
+    if (single8) {
+      result = `Ate ${single8[1]}`;
+    } else {
+      // 3) "eight ..." → "Ate ..."
+      const wordEight = trimmed.match(/^eight\s*(.*)$/i);
+      if (wordEight) {
+        result = `Ate ${wordEight[1]}`;
+      }
     }
   }
-  transformedInput = transformedInput.trim().replace(/\s\s+/g, " ");
-  return transformedInput;
+
+  // collapse any multiple spaces into one and trim again
+  return result.replace(/\s{2,}/g, ' ').trim();
 }
 
 export const processPhrase = async (
@@ -67,24 +80,93 @@ export const processPhrase = async (
   }
 
   // If no match, proceed with rule application
-  let activityAnalysis = await applyRules(description);
-  if (!activityAnalysis.category || activityAnalysis.category === "unclassified") {
-    const callOpenAI = useOpenAI; // Use the constant defined at the top
+  let activityAnalysis = await applyRules(description, distinctCategories);
+  if (!activityAnalysis.category || activityAnalysis.category === "uncategorized") {
+    const callOpenAI = useOpenAI;
     if (callOpenAI) {
       activityAnalysis = await analyzeActivity({ categories: distinctCategories, description });
+    }
+  }
+
+  // Update DiscussionCounts if valid category
+  if (activityAnalysis.category && activityAnalysis.category !== "uncategorized" && activityAnalysis.parsedDescription) {
+    // Check if an ActivityLog entry exists for this discussionId and description
+    const existingLog = await findDuplicateActivityLog(discussionId, activityAnalysis.category, activityAnalysis.parsedDescription, uid);
+    let activityLogId: string;
+
+    if (existingLog) {
+      activityLogId = existingLog.id;
+      // Check if a DiscussionCounts entry exists for this activityLogId
+      const existingCount = discussionCounts.find(count => count.activityLogId === activityLogId);
+      if (existingCount) {
+        const updatedCounts = discussionCounts.map(countEntry =>
+          countEntry.activityLogId === activityLogId
+            ? { ...countEntry, count: countEntry.count + 1 }
+            : countEntry
+        );
+        setDiscussionCounts(updatedCounts.sort((a, b) => b.count - a.count));
+        const discussionCountRef = doc(db, `Users/${uid}/DiscussionCounts`, existingCount.discussionID);
+        await updateDoc(discussionCountRef, { count: existingCount.count + 1 });
+      } else {
+        const newDiscussionCount = {
+          discussionID: discussionId,
+          activityLogId: activityLogId,
+          count: 1,
+          description: activityAnalysis.parsedDescription
+        };
+        const newDocRef = await addDoc(collection(db, `Users/${uid}/DiscussionCounts`), newDiscussionCount);
+        setDiscussionCounts((prev) => [...prev, { ...newDiscussionCount, discussionID: newDocRef.id }].sort((a, b) => b.count - a.count));
+      }
+    } else {
+      // Create a new ActivityLog entry
+      const newActivityLog = await addDoc(collection(db, "ActivityLog"), {
+        discussionId: discussionId,
+        category: activityAnalysis.category,
+        description: activityAnalysis.parsedDescription,
+        timestamp: Timestamp.fromDate(new Date()),
+        cleared: false,
+        uid: uid,
+        lockedCategory: false,
+        lockedDescription: false,
+      });
+      activityLogId = newActivityLog.id;
+      console.log(`Created new ActivityLog entry ${activityLogId} for discussionId ${discussionId}`);
+
+      // Create a new DiscussionCounts entry
+      const newDiscussionCount = {
+        discussionID: discussionId,
+        activityLogId: activityLogId,
+        count: 1,
+        description: activityAnalysis.parsedDescription
+      };
+      const newDocRef = await addDoc(collection(db, `Users/${uid}/DiscussionCounts`), newDiscussionCount);
+      setDiscussionCounts((prev) => [...prev, { ...newDiscussionCount, discussionID: newDocRef.id }].sort((a, b) => b.count - a.count));
     }
   }
 
   return activityAnalysis;
 };
 
-export async function applyRules(discussion: string): Promise<ParsedActivity> {
+// Helper function to find duplicate ActivityLog entries
+async function findDuplicateActivityLog(discussionId: string, category: string, description: string, uid: string): Promise<ActivityLog | null> {
+  const q = query(
+    collection(db, "ActivityLog"),
+    where("discussionId", "==", discussionId),
+    where("category", "==", category),
+    where("description", "==", description),
+    where("uid", "==", uid)
+  );
+  const snapshot = await getDocs(q);
+  return snapshot.empty ? null : { id: snapshot.docs[0].id, ...snapshot.docs[0].data() } as ActivityLog;
+}
+
+export async function applyRules(discussion: string, distinctCategories: string[]): Promise<ParsedActivity> {
   const abbreviationMap = new Map<string, string>([
-    ['1', 'i urinated'],
-    ['11', 'i had a high volume of urination'],
-    ['2', 'i had a regular size poop'],
-    ['22', 'i had a large poop'],
-    ['222', 'i had a very large poop']
+    ['1', 'urinated'],
+    ['11', 'high volume of urination'],
+    ['2', 'regular size poop'],
+    ['22', 'large poop'],
+    ['222', 'very large poop']
   ]);
 
   // Step 1: Check if the phrase starts with a category followed by : or ;
@@ -92,7 +174,7 @@ export async function applyRules(discussion: string): Promise<ParsedActivity> {
   let remainingPhrase = discussion;
 
   // Predefined categories
-  const validCategories = ['vitals', 'diet', 'mood', 'exercise', 'sleep', 'metabolism'];
+  const validCategories = distinctCategories;
 
   // Regex to match only valid categories
   const categoryMatch = discussion.match(new RegExp(`^(${validCategories.join('|')})[:;]\\s*(.+)$`, 'i'));
@@ -137,7 +219,7 @@ export async function applyRules(discussion: string): Promise<ParsedActivity> {
     if (isMatch) {
       return {
         category: extractedCategory || rule.category,
-        parsedDescription: parsedDesc.trim()
+        parsedDescription: parsedDesc.replace(/["']/g, '').trim() // clean up any leading/trailing spaces
       };
     }
   }

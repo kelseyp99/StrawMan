@@ -1,3 +1,5 @@
+# build.ps1 (in src\utils\scripts\)
+
 param (
     [switch]$Local,      # Build locally in WSL
     [switch]$Firebase,   # Upload to Firebase
@@ -5,144 +7,159 @@ param (
     [switch]$Production  # Build production APK with developmentClient: false
 )
 
-# Paths and branch info
-$projectDir    = "C:\Users\philk\Projects2\LifeLog"
-$wslProjectDir = "/mnt/c/Users/philk/Projects2/LifeLog"
-$wslScriptsDir = "$wslProjectDir/src/utils/scripts"
-$downloadsDir  = "C:\Users\philk\Downloads"
-
-# Determine current Git branch
+$projectDir = "C:\Users\philk\Projects2\LifeLog"
+# Get the current Git branch
 $Branch = git rev-parse --abbrev-ref HEAD
 $commitMessage = "Automated commit: Update and build for branch $Branch"
+$downloadsDir = "C:\Users\philk\Downloads"
+$wslProjectDir = "/mnt/c/Users/philk/Projects2/LifeLog"
+$wslScriptsDir = "$wslProjectDir/src/utils/scripts"
+$firebaseAppId = "1:341732508688:android:4a8c275e1199f4e1c0e8b4"
+$releaseNotes = "New build uploaded on $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
+$testers = "werkhardor@gmail.com"  # Updated with your email
 
-# Stage and push any pending changes
+Set-Location -Path $projectDir
+
+Write-Host "Current branch: $Branch"
+Write-Host "Committing and pushing changes from PowerShell to $Branch..."
+git checkout $Branch
 git add .
-$diff = git diff --cached --name-only
-if ($diff) {
-    Write-Host "Committing and pushing changes from PowerShell to $Branch..."
-    git commit -m $commitMessage
+git commit -m $commitMessage
+if ($LASTEXITCODE -eq 0) {
     git push origin $Branch
 } else {
     Write-Host "Nothing to commit, proceeding..."
 }
 
-# If building locally (or production), run WSL pull+doctor+build
+# Build locally in WSL if -Local or -Production is specified
 if ($Local -or $Production) {
     Write-Host "Initializing WSL with pull and doctor script for branch $Branch..."
+    Write-Host "Running WSL pull and doctor script..."
     try {
-        # Verify manage_wsl.sh exists
-        $scriptCheck = wsl -d Ubuntu -e bash -c "cd $wslScriptsDir && ls -la manage_wsl.sh" 2>&1
+        # Check if the script exists before running
+        $scriptCheck = wsl -d Ubuntu -e bash -c "cd $wslScriptsDir && ls -la ./manage_wsl.sh" 2>&1
         Write-Host "Script Check Output: $scriptCheck"
         if ($LASTEXITCODE -ne 0) {
-            Write-Host "Error: manage_wsl.sh not found in $wslScriptsDir!" -ForegroundColor Red
+            Write-Host "Error: manage_wsl.sh not found in $wslScriptsDir/!" -ForegroundColor Red
             exit 1
         }
 
-        # Recreate manage_wsl.sh on Windows side
-        $manageContent = @'
-#!/bin/bash
-# ./src/utils/scripts/manage_wsl.sh [--branch <branch-name>]
-PROJECT_DIR="/home/kelseyp99/projects/LifeLog"
-DEFAULT_BRANCH="develop"
-BRANCH="$DEFAULT_BRANCH"
-while [[ "$#" -gt 0 ]]; do
-    case $1 in
-        --branch) BRANCH="$2"; shift 2 ;;
-        *) echo "Usage: $0 [--branch <branch-name>]"; exit 1 ;;
-    esac
-done
-cd "$PROJECT_DIR"
-git fetch origin -v
-git checkout -f "$BRANCH"
-git clean -fd
-git reset --hard "origin/$BRANCH"
-npx expo-doctor || echo "Warning: expo-doctor issues"
-'@
-        $winManagePath = Join-Path $projectDir 'src\utils\scripts\manage_wsl.sh'
-        $manageContent | Out-File -FilePath $winManagePath -Encoding ascii -Force
-        (Get-Content $winManagePath -Raw) -replace "`r`n","`n" | Set-Content $winManagePath -Encoding ascii -NoNewline
-        wsl -d Ubuntu -e bash -c "chmod +x $wslScriptsDir/manage_wsl.sh" | Out-Null
+        # Fix line endings and permissions for manage_wsl.sh
+        $fixScript = wsl -d Ubuntu -e bash -c "sed -i 's/\r$//' $wslScriptsDir/manage_wsl.sh && chmod +x $wslScriptsDir/manage_wsl.sh" 2>&1
+        Write-Host "Fix Script Output: $fixScript"
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host "Error: Failed to fix line endings or permissions for manage_wsl.sh!" -ForegroundColor Red
+            exit 1
+        }
 
-        # Run the manage script
         $pullOutput = wsl -d Ubuntu -e bash -c "cd $wslScriptsDir && ./manage_wsl.sh --branch $Branch" 2>&1
         Write-Host "WSL Pull Output: $pullOutput"
-        if ($LASTEXITCODE -ne 0) { throw "manage_wsl.sh failed" }
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host "Error: WSL pull and doctor script failed!" -ForegroundColor Red
+            exit 1
+        }
 
-        # Show build_and_distribute.sh on WSL for debugging
-        Write-Host "Contents of build_and_distribute.sh in WSL:"
-        $catOut = wsl -d Ubuntu -e bash -c "cd $wslScriptsDir && cat build_and_distribute.sh" 2>&1
-        Write-Host $catOut
-
-        # Recreate build_and_distribute.sh on Windows side
-        $buildDistContent = @'
-#!/bin/bash
-# ./src/utils/scripts/build_and_distribute.sh [--build-only|--production] [--branch <branch>]
-buildFlag="$1"; shift
-branch="$2"
-cd "$PROJECT_DIR"
-git fetch origin
-git checkout -f "$branch"
-npm install
-npx expo build:android ${buildFlag}
-# (add your distribution/upload commands here)
-'@
-        $winBuildDistPath = Join-Path $projectDir 'src\utils\scripts\build_and_distribute.sh'
-        $buildDistContent | Out-File -FilePath $winBuildDistPath -Encoding ascii -Force
-        (Get-Content $winBuildDistPath -Raw) -replace "`r`n","`n" | Set-Content $winBuildDistPath -Encoding ascii -NoNewline
-        wsl -d Ubuntu -e bash -c "chmod +x $wslScriptsDir/build_and_distribute.sh" | Out-Null
-
-        # Run the build_and_distribute script
-        Write-Host "Running build_and_distribute.sh..."
-        $flag = if ($Production) { "--production" } else { "--build-only" }
-        $buildOutput = wsl -d Ubuntu -e bash -c "cd $wslScriptsDir && ./build_and_distribute.sh $flag $Branch" 2>&1
+        Write-Host "Running WSL build script..."
+        $buildFlag = if ($Production) { "--production" } else { "--build-only" }
+        $buildOutput = wsl -d Ubuntu -e bash -c "cd $wslScriptsDir && ./build_and_distribute.sh $buildFlag --branch $Branch" 2>&1
         Write-Host "WSL Build Output: $buildOutput"
-        if ($LASTEXITCODE -ne 0) { throw "build_and_distribute.sh failed" }
-    }
-    catch {
-        Write-Host "Error during WSL steps: $_" -ForegroundColor Red
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host "Error: WSL build script failed!" -ForegroundColor Red
+            exit 1
+        }
+    } catch {
+        Write-Host "Error: WSL operation failed: $_" -ForegroundColor Red
         exit 1
     }
 }
 
-# Find the latest APK in Downloads
+# Find latest APK if building locally or uploading to Firebase
+$latestApk = $null
 if ($Local -or $Firebase -or $Production) {
     Write-Host "Finding latest APK in Downloads..."
-    $latestApk = Get-ChildItem $downloadsDir -Filter "*.apk" |
-                 Sort LastWriteTime -Descending | Select -First 1
-    if (-not $latestApk) {
-        Write-Host "No APK found!" -ForegroundColor Red
+    $latestApk = Get-ChildItem -Path $downloadsDir -Filter "*.apk" | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+    if ($latestApk) {
+        $apkPath = $latestApk.FullName
+        Write-Host "Latest APK found: $apkPath"
+    } else {
+        Write-Host "No APK found in $downloadsDir!" -ForegroundColor Red
         exit 1
     }
-    $apkPath = $latestApk.FullName
-    Write-Host "Latest APK: $apkPath"
 }
 
-# Install APK on emulator and devices
-if ($Local -or $Production) {
-    adb -s emulator-5554 install -r $apkPath
-    adb devices | Where { $_ -match "device$" -and $_ -notmatch "emulator" } |
-        ForEach {
-            $id = ($_ -split "`t")[0]
-            adb -s $id install -r $apkPath
+# Install APK on connected devices & emulators if -Local or -Production is specified
+if (($Local -or $Production) -and $latestApk) {
+    # Get list of connected devices (emulators + real devices)
+    $deviceList = adb devices | Select-String "^(emulator-[0-9]+|\w+)\s+device" | ForEach-Object { $_.Matches.Groups[1].Value }
+
+    if ($deviceList.Count -eq 0) {
+        Write-Host "No devices or emulators are currently running." -ForegroundColor Red
+        exit 1
+    }
+
+    foreach ($device in $deviceList) {
+        Write-Host "`nInstalling APK on $device..."
+        adb -s $device install -r $apkPath
+
+        if ($LASTEXITCODE -eq 0) {
+            Write-Host "✅ APK installed successfully on $device."
+            # Launch the app
+            $packageName = "com.anonymous.lifelog"
+            $mainActivity = "com.anonymous.lifelog.MainActivity"
+            adb -s $device shell am start -n "$packageName/$mainActivity"
+        } else {
+            Write-Host "❌ Failed to install APK on $device." -ForegroundColor Red
         }
+    }
+} else {
+    Write-Host "No APK to install on devices." -ForegroundColor Yellow
 }
 
-# Upload to Firebase if needed
-if ($Firebase) {
-    firebase appdistribution:distribute $apkPath --app your_firebase_app_id --groups testers
+# Upload to Firebase if -Firebase is specified
+if ($Firebase -and $latestApk) {
+    Write-Host "Uploading APK to Firebase App Distribution..."
+    if (Test-Path "firebase.cmd") {
+        firebase appdistribution:distribute $apkPath --app $firebaseAppId --release-notes $releaseNotes --testers $testers
+        if ($LASTEXITCODE -eq 0) {
+            Write-Host "Upload complete!"
+        } else {
+            Write-Host "Error: Failed to upload APK to Firebase!" -ForegroundColor Red
+            exit 1
+        }
+    } else {
+        Write-Host "Error: Firebase CLI not found, please install with 'npm install -g firebase-tools'!" -ForegroundColor Red
+        exit 1
+    }
 }
 
-# Merge develop → main if requested
+# Copy develop to main if -CloudMain is specified
 if ($CloudMain) {
+    Write-Host "Copying develop to main for Expo cloud build..."
     git checkout main
-    git merge --no-ff develop -m "Merge develop into main"
-    git push origin main
-    git checkout develop
+    git merge develop --ff-only
+    if ($LASTEXITCODE -eq 0) {
+        git push origin main
+        Write-Host "Successfully copied develop to main for Expo cloud build!"
+    } else {
+        Write-Host "Error: Failed to merge develop into main!" -ForegroundColor Red
+        git checkout $Branch
+        exit 1
+    }
+    git checkout $Branch
 }
 
-# Start Expo dev client
+# Start Expo dev client if local build was done (not for production)
 if ($Local -and -not $Production) {
-    Start-Process powershell -Arg "-NoExit","-Command","cd `"$projectDir`"; npx expo start --dev-client -c"
+    Write-Host "Closing any existing npx expo start instances..."
+    taskkill /IM "node.exe" /FI "WINDOWTITLE eq *npx expo start*" /F 2>$null
+    if ($LASTEXITCODE -eq 0 -or $LASTEXITCODE -eq 128) {
+        Write-Host "Existing Expo instances closed (or none found)."
+    } else {f
+        Write-Host "Warning: Failed to close Expo instances, proceeding anyway." -ForegroundColor Yellow
+    }
+
+    Write-Host "Starting Expo dev client in a new terminal and selecting Android..."
+    Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd $projectDir; npx expo start --dev-client -c; 'a' | Out-Null"
 }
 
-Write-Host "build.ps1 completed successfully!"
+Write-Host "Script completed!"

@@ -3,7 +3,7 @@ import { View, Text, TextInput, StyleSheet, TouchableOpacity, FlatList, Keyboard
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { format } from "date-fns";
 import { db } from "../firebaseConfig";
-import { collection, doc, getDocs, deleteDoc, updateDoc, addDoc, DocumentData, QuerySnapshot, query, getDoc, writeBatch } from "firebase/firestore";
+import { collection, doc, getDocs, deleteDoc, updateDoc, addDoc, DocumentData, QuerySnapshot, query, getDoc, writeBatch, where, Timestamp, onSnapshot } from "firebase/firestore";
 import { getUID } from "../utils/uidManager";
 import Swipeable from "react-native-gesture-handler/Swipeable";
 import { addOrUpdateActivityLog, addOrUpdateGPTResponse, getDistinctCategories } from "@/services/databaseService";
@@ -45,11 +45,12 @@ interface SwipeableTablePropsType {
 }
 
 // Memoized RelatedLogEntry
-const RelatedLogEntry = memo(({ log, description, onDescriptionChange, onCategoryChange }: {
+const RelatedLogEntry = memo(({ log, description, onDescriptionChange, onCategoryChange, onDelete }: {
   log: ActivityLog;
   description: string;
   onDescriptionChange: (id: string, text: string) => void;
   onCategoryChange: (id: string) => void;
+  onDelete: (id: string) => void;
 }) => {
   console.log(`Rendering RelatedLogEntry for ID: ${log.id}`);
   return (
@@ -65,6 +66,9 @@ const RelatedLogEntry = memo(({ log, description, onDescriptionChange, onCategor
         multiline
         placeholder="Edit Activity Log description"
       />
+      <TouchableOpacity style={styles.modalDeleteButton} onPress={() => onDelete(log.id)}>
+        <Text style={styles.deleteButtonText}>Delete</Text>
+      </TouchableOpacity>
     </View>
   );
 }, (prevProps, nextProps) => {
@@ -153,20 +157,79 @@ const MainComponent: React.FC = () => {
     fetchUid();
   }, []);
 
+  // Real-time listeners for ActivityLog and Discussion
+  useEffect(() => {
+    if (!uid) return;
+
+    const activityLogQuery = query(collection(db, "ActivityLog"), where("uid", "==", uid));
+    const discussionQuery = query(collection(db, "Discussion"), where("uid", "==", uid));
+
+    const unsubscribeActivityLog = onSnapshot(activityLogQuery, () => {
+      console.log("ActivityLog changed, refreshing data...");
+      fetchData();
+    }, (error) => {
+      console.error("Error in ActivityLog listener:", error);
+    });
+
+    const unsubscribeDiscussion = onSnapshot(discussionQuery, () => {
+      console.log("Discussion changed, refreshing data...");
+      fetchData();
+    }, (error) => {
+      console.error("Error in Discussion listener:", error);
+    });
+
+    return () => {
+      unsubscribeActivityLog();
+      unsubscribeDiscussion();
+    };
+  }, [uid, fetchData]);
+
+  // Refresh tables when switching tabs
+  useEffect(() => {
+    if (uid && initialized) {
+      console.log("Table index changed to:", currentTableIndex, "Refreshing data...");
+      fetchData();
+    }
+  }, [currentTableIndex, uid, initialized, fetchData]);
+
+  // Function to check for duplicate ActivityLog entries
+  const findDuplicateActivityLog = async (discussionId: string, category: string, description: string, uid: string): Promise<ActivityLog | null> => {
+    const q = query(
+      collection(db, "ActivityLog"),
+      where("discussionId", "==", discussionId),
+      where("category", "==", category),
+      where("description", "==", description),
+      where("uid", "==", uid)
+    );
+    const snapshot = await getDocs(q);
+    return snapshot.empty ? null : { id: snapshot.docs[0].id, ...snapshot.docs[0].data() } as ActivityLog;
+  };
+
   const fetchData = useCallback(async () => {
     if (!uid) return;
     try {
       setLoading(true);
       console.log("Fetching data from Firestore...");
+      
+      console.log("Fetching ActivityLog...");
       const activityLogSnapshot = await getDocs(collection(db, "ActivityLog"));
+      console.log("ActivityLog fetched:", activityLogSnapshot.docs.length, "documents");
+
+      console.log("Fetching Discussion...");
       const discussionSnap = await getDocs(collection(db, "Discussion"));
+      console.log("Discussion fetched:", discussionSnap.docs.length, "documents");
       setDiscussionSnapshot(discussionSnap);
 
+      console.log("Fetching categories...");
       const categories = await getDistinctCategories();
+      console.log("Categories fetched:", categories.length);
       setAllCategories((prev) => [...new Set([...prev, ...categories])]);
 
+      console.log("Fetching DiscussionCounts for UID:", uid);
       const q = query(collection(db, `Users/${uid}/DiscussionCounts`));
       const querySnapshot = await getDocs(q);
+      console.log("DiscussionCounts fetched:", querySnapshot.docs.length, "documents");
+
       const countsPromises = querySnapshot.docs.map(async document => {
         const data = document.data() as DiscussionCount;
         const activityLogRef = doc(db, "ActivityLog", data.activityLogId);
@@ -189,7 +252,7 @@ const MainComponent: React.FC = () => {
       setDiscussionCounts(counts);
       console.log("✅ Fetched DiscussionCounts:", counts);
 
-      console.log("Fetching table data...");
+      console.log("Processing table data...");
       const activityLogData = activityLogSnapshot.docs
         .map((doc) => {
           const data = doc.data() as ActivityLog;
@@ -345,34 +408,43 @@ const MainComponent: React.FC = () => {
                     JSON.stringify(activityAnalysis),
                     'updateDB'
                   );
+
+                  // Check for existing ActivityLog entry
+                  const existingLog = await findDuplicateActivityLog(
+                    discussionTyped.id,
+                    activityAnalysis.category,
+                    activityAnalysis.parsedDescription,
+                    uid
+                  );
+
                   let newActivityLogId: string;
-                  if (activityAnalysis.category === "uncategorized") {
-                    const newActivityLog = await addDoc(collection(db, "ActivityLog"), {
-                      discussionId: discussionTyped.id,
-                      category: "uncategorized",
-                      description: "",
-                      timestamp: discussionTyped.timestamp,
+                  if (existingLog) {
+                    // Update existing ActivityLog entry
+                    const logRef = doc(db, "ActivityLog", existingLog.id);
+                    await updateDoc(logRef, {
+                      timestamp: Timestamp.fromDate(discussionTyped.timestamp),
                       cleared: false,
-                      uid: uid,
                       lockedCategory: false,
                       lockedDescription: false,
                     });
-                    newActivityLogId = newActivityLog.id;
-                    console.log(`Created new ActivityLog entry for discussionId ${discussionTyped.id} (uncategorized)`);
+                    newActivityLogId = existingLog.id;
+                    console.log(`Updated existing ActivityLog entry ${existingLog.id} for discussionId ${discussionTyped.id}`);
                   } else {
+                    // Create new ActivityLog entry
                     const newActivityLog = await addDoc(collection(db, "ActivityLog"), {
                       discussionId: discussionTyped.id,
-                      category: activityAnalysis.category,
+                      category: activityAnalysis.category !== "uncategorized" ? activityAnalysis.category : "uncategorized",
                       description: activityAnalysis.parsedDescription,
-                      timestamp: discussionTyped.timestamp,
+                      timestamp: Timestamp.fromDate(discussionTyped.timestamp),
                       cleared: false,
                       uid: uid,
                       lockedCategory: false,
                       lockedDescription: false,
                     });
                     newActivityLogId = newActivityLog.id;
-                    console.log(`Created new ActivityLog entry for discussionId ${discussionTyped.id} with category ${activityAnalysis.category}`);
+                    console.log(`Created new ActivityLog entry ${newActivityLogId} for discussionId ${discussionTyped.id}`);
                   }
+
                   const docRef = doc(db, 'Discussion', discussionTyped.id);
                   await updateDoc(docRef, { cleared: true });
                   console.log(`Marked Discussion ${discussionTyped.id} as cleared`);
@@ -389,6 +461,7 @@ const MainComponent: React.FC = () => {
               }
               console.log('Activity Log update completed successfully.');
               Alert.alert('Success', `${unclearedDocs.length} Activity Log entries updated successfully!`);
+              fetchData(); // Refresh tables after update
             } catch (error) {
               console.error('Error updating Activity Log:', error);
               Alert.alert('Error', `Failed to update Activity Log: ${(error as any).message}`);
@@ -398,7 +471,7 @@ const MainComponent: React.FC = () => {
       ],
       { cancelable: true }
     );
-  }, [uid, discussionCounts]);
+  }, [uid, discussionCounts, fetchData]);
 
   const handleSort = useCallback((column: string) => {
     setSortBy((prev) => {
@@ -434,21 +507,72 @@ const MainComponent: React.FC = () => {
   const handleDelete = useCallback(async (tableName: string, itemId: string) => {
     try {
       const collectionName = tableName === "Activity Log Data" ? "ActivityLog" : "Discussion";
-      await deleteDoc(doc(db, collectionName, itemId));
+      const batch = writeBatch(db);
+
+      // Delete the primary document
+      const primaryRef = doc(db, collectionName, itemId);
+      batch.delete(primaryRef);
+      console.log(`Deleting ${collectionName} ${itemId}`);
+
+      // If deleting a Discussion, delete related ActivityLog entries
+      if (tableName === "Discussion Data") {
+        const activityLogQuery = query(
+          collection(db, "ActivityLog"),
+          where("discussionId", "==", itemId),
+          where("uid", "==", uid)
+        );
+        const activityLogSnapshot = await getDocs(activityLogQuery);
+        activityLogSnapshot.forEach((doc) => {
+          batch.delete(doc.ref);
+          console.log(`Deleting ActivityLog ${doc.id} for discussionId ${itemId}`);
+        });
+
+        // Delete related DiscussionCounts
+        const discussionCountsQuery = query(
+          collection(db, `Users/${uid}/DiscussionCounts`),
+          where("discussionID", "==", itemId)
+        );
+        const discussionCountsSnapshot = await getDocs(discussionCountsQuery);
+        discussionCountsSnapshot.forEach((doc) => {
+          batch.delete(doc.ref);
+          console.log(`Deleting DiscussionCount ${doc.id} for discussionId ${itemId}`);
+        });
+      }
+
+      // If deleting an ActivityLog, delete related DiscussionCounts
+      if (tableName === "Activity Log Data") {
+        const discussionCountsQuery = query(
+          collection(db, `Users/${uid}/DiscussionCounts`),
+          where("activityLogId", "==", itemId)
+        );
+        const discussionCountsSnapshot = await getDocs(discussionCountsQuery);
+        discussionCountsSnapshot.forEach((doc) => {
+          batch.delete(doc.ref);
+          console.log(`Deleting DiscussionCount ${doc.id} for activityLogId ${itemId}`);
+        });
+      }
+
+      await batch.commit();
+      console.log(`Deleted ${collectionName} ${itemId} and related data`);
+
+      // Update UI
       setTables((prevTables) =>
         prevTables.map((table) =>
           table.name === tableName
             ? { ...table, data: table.data.filter((item) => item.id !== itemId) }
+            : table.name === "Activity Log Data" && tableName === "Discussion Data"
+            ? { ...table, data: table.data.filter((item) => item.discussionId !== itemId) }
             : table
         )
       );
-      console.log(`Deleted item ${itemId} from ${collectionName}`);
-      Alert.alert("Success", "Item deleted successfully.");
+      setDiscussionCounts((prev) => prev.filter((count) => count.discussionID !== itemId && count.activityLogId !== itemId));
+      Alert.alert("Success", "Item and related data deleted successfully.");
+      fetchData(); // Refresh tables after delete
     } catch (error) {
       console.error("Error deleting item:", error);
       Alert.alert("Error", "Failed to delete item.");
     }
-  }, []);
+  }, [uid, fetchData]);
 
   const handleEdit = useCallback(async (tableName: string, itemId: string, currentDesc: string, currentCleared: string, currentTypeSay: string) => {
     setEditTableName(tableName);
@@ -523,23 +647,48 @@ const MainComponent: React.FC = () => {
           const existingLogs = activityLogSnapshot.docs
             .map((doc) => ({ id: doc.id, ...doc.data() } as ActivityLog))
             .filter((log) => log.discussionId === discussionId);
-          
+
           if (existingLogs.length === 0) {
-            const newActivityLog = await addDoc(collection(db, "ActivityLog"), {
-              discussionId: discussionId,
-              category: activityAnalysis.category,
-              description: activityAnalysis.parsedDescription,
-              timestamp: editTimestamp,
-              cleared: false,
-              uid: uid,
-              lockedCategory: false,
-              lockedDescription: false,
-            });
-            console.log(`Created new ActivityLog entry for discussionId ${discussionId}`);
+            // Check for duplicate before creating
+            const existingLog = await findDuplicateActivityLog(
+              discussionId,
+              activityAnalysis.category,
+              activityAnalysis.parsedDescription,
+              uid
+            );
+
+            let newActivityLogId: string;
+            if (existingLog) {
+              // Update existing ActivityLog entry
+              const logRef = doc(db, "ActivityLog", existingLog.id);
+              await updateDoc(logRef, {
+                timestamp: Timestamp.fromDate(editTimestamp),
+                cleared: false,
+                lockedCategory: false,
+                lockedDescription: false,
+              });
+              newActivityLogId = existingLog.id;
+              console.log(`Updated existing ActivityLog entry ${existingLog.id} for discussionId ${discussionId}`);
+            } else {
+              // Create new ActivityLog entry
+              const newActivityLog = await addDoc(collection(db, "ActivityLog"), {
+                discussionId: discussionId,
+                category: activityAnalysis.category,
+                description: activityAnalysis.parsedDescription,
+                timestamp: Timestamp.fromDate(editTimestamp),
+                cleared: false,
+                uid: uid,
+                lockedCategory: false,
+                lockedDescription: false,
+              });
+              newActivityLogId = newActivityLog.id;
+              console.log(`Created new ActivityLog entry ${newActivityLogId} for discussionId ${discussionId}`);
+            }
+
             setRelatedActivityLogs((prev) => [
               ...prev,
               {
-                id: newActivityLog.id,
+                id: newActivityLogId,
                 discussionId: discussionId,
                 category: activityAnalysis.category,
                 description: activityAnalysis.parsedDescription,
@@ -552,11 +701,11 @@ const MainComponent: React.FC = () => {
             ]);
             setActivityLogDescriptions((prev) => ({
               ...prev,
-              [newActivityLog.id]: activityAnalysis.parsedDescription,
+              [newActivityLogId]: activityAnalysis.parsedDescription,
             }));
             setActivityLogCategories((prev) => ({
               ...prev,
-              [newActivityLog.id]: activityAnalysis.category,
+              [newActivityLogId]: activityAnalysis.category,
             }));
           }
 
@@ -605,6 +754,7 @@ const MainComponent: React.FC = () => {
         discussionId: editItemId,
         category,
         description: activityLogDescriptions[selectedActivityLogId] || "",
+        uid: uid,
       });
 
       const discussionRef = doc(db, "Discussion", editItemId);
@@ -618,7 +768,7 @@ const MainComponent: React.FC = () => {
       console.error("Error updating category:", error);
       Alert.alert("Error", "Failed to update category.");
     }
-  }, [selectedActivityLogId, activityLogDescriptions, editItemId, allCategories]);
+  }, [selectedActivityLogId, activityLogDescriptions, editItemId, allCategories, uid]);
 
   const handleAddNewCategory = useCallback(() => {
     if (newCategory.trim()) {
@@ -627,6 +777,55 @@ const MainComponent: React.FC = () => {
       Alert.alert("Error", "New category cannot be empty.");
     }
   }, [newCategory, handleCategorySelect]);
+
+  const handleDeleteActivityLog = useCallback(async (activityLogId: string) => {
+    try {
+      const batch = writeBatch(db);
+      const logRef = doc(db, "ActivityLog", activityLogId);
+      batch.delete(logRef);
+      console.log(`Deleting ActivityLog ${activityLogId}`);
+
+      // Delete related DiscussionCounts
+      const discussionCountsQuery = query(
+        collection(db, `Users/${uid}/DiscussionCounts`),
+        where("activityLogId", "==", activityLogId)
+      );
+      const discussionCountsSnapshot = await getDocs(discussionCountsQuery);
+      discussionCountsSnapshot.forEach((doc) => {
+        batch.delete(doc.ref);
+        console.log(`Deleting DiscussionCount ${doc.id} for activityLogId ${activityLogId}`);
+      });
+
+      await batch.commit();
+      console.log(`Deleted ActivityLog ${activityLogId} and related DiscussionCounts`);
+
+      // Update UI
+      setRelatedActivityLogs((prev) => prev.filter((log) => log.id !== activityLogId));
+      setActivityLogDescriptions((prev) => {
+        const updated = { ...prev };
+        delete updated[activityLogId];
+        return updated;
+      });
+      setActivityLogCategories((prev) => {
+        const updated = { ...prev };
+        delete updated[activityLogId];
+        return updated;
+      });
+      setTables((prevTables) =>
+        prevTables.map((table) =>
+          table.name === "Activity Log Data"
+            ? { ...table, data: table.data.filter((item) => item.id !== activityLogId) }
+            : table
+        )
+      );
+      setDiscussionCounts((prev) => prev.filter((count) => count.activityLogId !== activityLogId));
+      Alert.alert("Success", "Activity Log entry deleted successfully.");
+      fetchData(); // Refresh tables after delete
+    } catch (error) {
+      console.error("Error deleting ActivityLog entry:", error);
+      Alert.alert("Error", `Failed to delete Activity Log entry: ${error}`);
+    }
+  }, [uid, fetchData]);
 
   const saveEdit = useCallback(async () => {
     if (!editDesc || !editDesc.trim()) {
@@ -642,19 +841,28 @@ const MainComponent: React.FC = () => {
 
     try {
       console.log("Starting saveEdit for:", { editTableName, editItemId, editDesc, editCleared, editTypeSay, editTimestamp });
+      console.log("saveEdit UID:", uid, "Document UIDs:", relatedActivityLogs.map(log => ({ id: log.id, uid: log.uid })));
 
       const batch = writeBatch(db);
       const collectionName = editTableName === "Activity Log Data" ? "ActivityLog" : "Discussion";
-      const primaryRef = doc(db, collectionName, editItemId);
-      const primaryUpdates = {
-        description: editDesc,
-        cleared: editCleared,
-        typeSay: editTypeSay,
-        timestamp: editTimestamp,
-      };
-      console.log(`Updating ${collectionName} ${editItemId}:`, primaryUpdates);
-      batch.update(primaryRef, primaryUpdates);
 
+      // Discussion Update
+      try {
+        const primaryRef = doc(db, collectionName, editItemId);
+        const primaryUpdates = {
+          description: editDesc,
+          cleared: editCleared,
+          typeSay: editTypeSay,
+          timestamp: Timestamp.fromDate(editTimestamp),
+        };
+        console.log(`Updating ${collectionName} ${editItemId}:`, primaryUpdates);
+        batch.update(primaryRef, primaryUpdates);
+      } catch (error) {
+        console.error("Error in Discussion update:", error);
+        throw error;
+      }
+
+      // ActivityLog Updates
       if (relatedActivityLogs.length > 0) {
         for (const log of relatedActivityLogs) {
           const newDescription = activityLogDescriptions[log.id]?.trim();
@@ -663,36 +871,41 @@ const MainComponent: React.FC = () => {
             description?: string;
             category?: string;
             cleared?: boolean;
-            timestamp: Date;
+            timestamp: any;
             lockedCategory?: boolean;
             lockedDescription?: boolean;
-          } = { timestamp: editTimestamp };
+          } = { timestamp: Timestamp.fromDate(editTimestamp) };
 
           if (newDescription && newDescription !== log.description) {
-            updates.description = newDescription;
-            updates.lockedDescription = true;
-            const ruleCandidateRef = doc(collection(db, "RuleCandidates"));
-            batch.set(ruleCandidateRef, {
-              discussionId: editItemId,
-              category: newCategory || log.category,
-              description: newDescription,
-            });
-            console.log(`Adding RuleCandidate for ActivityLog ${log.id}:`, {
-              discussionId: editItemId,
-              category: newCategory || log.category,
-              description: newDescription,
-            });
+            console.log(`Checking for duplicate ActivityLog: discussionId=${log.discussionId}, category=${newCategory || log.category}, description=${newDescription}`);
+            try {
+              const existingLog = await findDuplicateActivityLog(
+                log.discussionId,
+                newCategory || log.category,
+                newDescription,
+                uid
+              );
 
-            if (uid) {
-              const discussionCountRef = doc(collection(db, `Users/${uid}/DiscussionCounts`));
-              const newDiscussionCount = {
-                discussionID: editItemId,
-                activityLogId: log.id,
-                count: 1,
-                description: newDescription,
-              };
-              batch.set(discussionCountRef, newDiscussionCount);
-              console.log(`Adding DiscussionCount for ${log.id}:`, newDiscussionCount);
+              if (existingLog && existingLog.id !== log.id) {
+                console.log(`Found duplicate ActivityLog ${existingLog.id}, updating and deleting ${log.id}`);
+                const existingRef = doc(db, "ActivityLog", existingLog.id);
+                batch.update(existingRef, {
+                  timestamp: Timestamp.fromDate(editTimestamp),
+                  cleared: false,
+                  lockedCategory: false,
+                  lockedDescription: false,
+                });
+                const currentRef = doc(db, "ActivityLog", log.id);
+                batch.delete(currentRef);
+                console.log(`Replacing ActivityLog ${log.id} with existing ${existingLog.id}`);
+              } else {
+                updates.description = newDescription;
+                updates.lockedDescription = true;
+                console.log(`Skipping RuleCandidate for ActivityLog ${log.id}`);
+              }
+            } catch (error) {
+              console.error("Error in ActivityLog duplicate check:", error);
+              throw error;
             }
           }
 
@@ -702,28 +915,53 @@ const MainComponent: React.FC = () => {
           updates.lockedCategory = log.lockedCategory || false;
           updates.lockedDescription = log.lockedDescription || false;
 
-          const logRef = doc(db, "ActivityLog", log.id);
-          console.log(`Updating ActivityLog ${log.id}:`, updates);
-          batch.update(logRef, updates);
+          if (Object.keys(updates).length > 1) {
+            try {
+              const logRef = doc(db, "ActivityLog", log.id);
+              console.log(`Updating ActivityLog ${log.id}:`, updates);
+              batch.update(logRef, updates);
+            } catch (error) {
+              console.error(`Error updating ActivityLog ${log.id}:`, error);
+              throw error;
+            }
+          }
         }
 
         if (editTableName === "Discussion Data") {
-          const discussionRef = doc(db, "Discussion", editItemId);
-          batch.update(discussionRef, { cleared: true });
-          console.log(`Marking Discussion ${editItemId} as cleared`);
+          try {
+            const discussionRef = doc(db, "Discussion", editItemId);
+            console.log(`Marking Discussion ${editItemId} as cleared`);
+            batch.update(discussionRef, { cleared: true });
+          } catch (error) {
+            console.error("Error in Discussion cleared update:", error);
+            throw error;
+          }
         }
       }
 
+      // GPTResponses Update
       if (editTableName === "Discussion Data") {
-        const gptSnapshot = await getDocs(collection(db, "GPTResponses"));
-        const relatedGPT = gptSnapshot.docs.find((doc) => doc.id === editItemId);
-        if (relatedGPT) {
-          const gptRef = doc(db, "GPTResponses", editItemId);
-          batch.update(gptRef, { timestamp: editTimestamp });
-          console.log(`Updating GPTResponses ${editItemId} timestamp to ${editTimestamp}`);
+        console.log("Checking for GPTResponses entry:", editItemId);
+        try {
+          const gptSnapshot = await getDocs(collection(db, "GPTResponses"));
+          const relatedGPT = gptSnapshot.docs.find((doc) => doc.id === editItemId);
+          if (relatedGPT) {
+            const gptRef = doc(db, "GPTResponses", editItemId);
+            console.log(`Updating GPTResponses ${editItemId} timestamp to ${editTimestamp}`);
+            batch.update(gptRef, {
+              timestamp: Timestamp.fromDate(editTimestamp),
+              uid: uid // Ensure uid is set
+            });
+          } else {
+            console.log(`No GPTResponses entry found for ${editItemId}, skipping update`);
+          }
+        } catch (error) {
+          console.error("Error in GPTResponses update:", error);
+          throw error;
         }
       }
 
+      // Commit Batch
       console.log("Committing Firestore batch...");
       await batch.commit();
       console.log("Firestore batch committed successfully");
@@ -778,11 +1016,12 @@ const MainComponent: React.FC = () => {
       setActivityLogDescriptions({});
       setActivityLogCategories({});
       Alert.alert("Success", "Item and related ActivityLog entries updated successfully.");
+      fetchData(); // Refresh tables after save
     } catch (error) {
       console.error("Error in saveEdit:", error, { editTableName, editItemId, editDesc, editCleared, editTypeSay, editTimestamp, relatedActivityLogs });
       Alert.alert("Error", `Failed to save changes: ${error}`);
     }
-  }, [editDesc, editCleared, editTypeSay, editTimestamp, editTableName, editItemId, relatedActivityLogs, activityLogDescriptions, activityLogCategories, uid]);
+  }, [editDesc, editCleared, editTypeSay, editTimestamp, editTableName, editItemId, relatedActivityLogs, activityLogDescriptions, activityLogCategories, uid, fetchData]);
 
   const renderRightActions = useCallback((tableName: string, itemId: string) => (
     <TouchableOpacity
@@ -920,7 +1159,7 @@ const MainComponent: React.FC = () => {
                 </View>
                 {editTableName === "Discussion Data" && (
                   <View style={styles.switchContainer}>
-                    <Text style={styles.modalLabel}>Type: ${editTypeSay === "ask" ? "Ask" : "Tell"}</Text>
+                    <Text style={styles.modalLabel}>Type: {editTypeSay === "ask" ? "Ask" : "Tell"}</Text>
                     <Switch
                       value={editTypeSay === "ask"}
                       onValueChange={(value) => setEditTypeSay(value ? "ask" : "tell")}
@@ -939,7 +1178,7 @@ const MainComponent: React.FC = () => {
                     mode="date"
                     display="default"
                     onChange={(event, selectedDate) => {
-                      setShowDatePicker(Platform.OS === "ios");
+                      setShowDatePicker(false);
                       if (selectedDate) {
                         setEditTimestamp(selectedDate);
                       }
@@ -958,7 +1197,7 @@ const MainComponent: React.FC = () => {
                     mode="time"
                     display="default"
                     onChange={(event, selectedDate) => {
-                      setShowTimePicker(Platform.OS === "ios");
+                      setShowTimePicker(false);
                       if (selectedDate) {
                         setEditTimestamp(selectedDate);
                       }
@@ -978,6 +1217,7 @@ const MainComponent: React.FC = () => {
                           setSelectedActivityLogId(id);
                           setCategoryModalVisible(true);
                         }}
+                        onDelete={handleDeleteActivityLog}
                       />
                     ))}
                   </View>
@@ -1166,9 +1406,21 @@ const styles = StyleSheet.create({
     width: 80, 
     height: "100%" 
   },
+  modalDeleteButton: { 
+    backgroundColor: "#ff4444", 
+    justifyContent: "center", 
+    alignItems: "center", 
+    paddingVertical: 8, 
+    paddingHorizontal: 16, 
+    borderRadius: 5, 
+    height: 32, 
+    alignSelf: "flex-end", 
+    marginTop: 4 
+  },
   deleteButtonText: { 
     color: "#fff", 
-    fontWeight: "bold" 
+    fontWeight: "bold", 
+    fontSize: 12 
   },
   editButton: { 
     backgroundColor: "#007bff", 
@@ -1219,7 +1471,7 @@ const styles = StyleSheet.create({
     borderRadius: 5, 
     padding: 6, 
     marginBottom: 8, 
-    minHeight: 30 
+    minHeight: 60 
   },
   switchContainer: { 
     flexDirection: "row", 
@@ -1256,7 +1508,11 @@ const styles = StyleSheet.create({
     marginVertical: 8 
   },
   relatedLogEntry: { 
-    marginBottom: 8 
+    marginBottom: 12, 
+    padding: 8, 
+    borderWidth: 1, 
+    borderColor: "#eee", 
+    borderRadius: 5 
   },
   categoryItem: { 
     padding: 6, 
