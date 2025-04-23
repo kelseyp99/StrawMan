@@ -33,42 +33,127 @@ if ($LASTEXITCODE -eq 0) {
 
 # Build locally in WSL if -Local or -Production is specified
 if ($Local -or $Production) {
-    Write-Host "Initializing WSL with pull and doctor script for branch $Branch..."
-    Write-Host "Running WSL pull and doctor script..."
+    Write-Host "Initializing WSL with pull and build script for branch $Branch..."
+    Write-Host "Generating build_and_distribute.sh in WSL..."
+
+    # Generate build_and_distribute.sh in WSL with LF line endings
+    $scriptContent = @"
+#!/bin/bash
+# build_and_distribute.sh [--build-only | --production] [--branch <branch-name>]
+PROJECT_DIR=\"/mnt/c/Users/philk/Projects2/LifeLog\"
+WINDOWS_DEST=\"/mnt/c/Users/philk/Downloads/\"
+
+set -e
+
+BUILD_ONLY=false
+PROFILE=\"development\"
+BRANCH=\"$Branch\"
+
+# Parse command-line arguments
+while [[ \"\$#\" -gt 0 ]]; do
+    case \$1 in
+        --build-only)
+            BUILD_ONLY=true
+            shift
+            ;;
+        --production)
+            PROFILE=\"production\"
+            shift
+            ;;
+        --branch)
+            BRANCH=\"\$2\"
+            shift 2
+            ;;
+        *)
+            echo \"Error: Unknown option: \$1\"
+            echo \"Usage: \$0 [--build-only | --production] [--branch <branch-name>]\"
+            exit 1
+            ;;
+    esac
+done
+
+echo \"Setting up environment and pulling latest changes...\"
+cd \"\$PROJECT_DIR\" || { echo \"Error: Failed to change to \$PROJECT_DIR\"; exit 1; }
+git fetch origin -v
+git checkout -f \"\$BRANCH\"
+git clean -fd
+git reset --hard \"origin/\$BRANCH\"
+npx expo-doctor || echo \"Warning: expo-doctor issues\"
+
+echo \"Setting up Android environment...\"
+export ANDROID_HOME=/home/kelseyp99/Android/Sdk
+export PATH=${PATH}:${ANDROID_HOME}/platform-tools
+rm -rf ~/.gradle/caches ~/.eas/build
+
+echo \"Running EAS build for Android with profile \$PROFILE...\"
+EXPO_PUBLIC_IS_EXPO_GO=false eas build --platform android --local --profile \$PROFILE --clear-cache
+
+echo \"Locating latest build artifacts...\"
+LATEST_APK=\$(find \"\$PROJECT_DIR\" -maxdepth 1 -name \"*.apk\" -printf \"%T@ %p\\n\" | sort -nr | head -n1 | cut -d' ' -f2-)
+LATEST_AAB=\$(find \"\$PROJECT_DIR\" -maxdepth 1 -name \"*.aab\" -printf \"%T@ %p\\n\" | sort -nr | head -n1 | cut -d' ' -f2-)
+
+echo \"Latest APK: \$LATEST_APK\"
+echo \"Latest AAB: \$LATEST_AAB\"
+
+if [ -d \"\$WINDOWS_DEST\" ]; then
+    if [ -n \"\$LATEST_APK\" ]; then
+        mv \"\$LATEST_APK\" \"\$WINDOWS_DEST\"
+        if [ \$? -eq 0 ]; then
+            echo \"Successfully moved \$LATEST_APK to \$WINDOWS_DEST\"
+        else
+            echo \"Error: Failed to move \$LATEST_APK to \$WINDOWS_DEST\"
+            exit 1
+        fi
+    fi
+    if [ -n \"\$LATEST_AAB\" ]; then
+        mv \"\$LATEST_AAB\" \"\$WINDOWS_DEST\"
+        if [ \$? -eq 0 ]; then
+            echo \"Successfully moved \$LATEST_AAB to \$WINDOWS_DEST\"
+        else
+            echo \"Error: Failed to move \$LATEST_AAB to \$WINDOWS_DEST\"
+            exit 1
+        fi
+    fi
+else
+    echo \"Error: \$WINDOWS_DEST not accessible.\"
+    exit 1
+fi
+
+if [ \"\$BUILD_ONLY\" = false ]; then
+    echo \"Committing and pushing changes from WSL to origin/\$BRANCH...\"
+    git checkout \"\$BRANCH\" || { echo \"Error: Branch \$BRANCH does not exist locally\"; exit 1; }
+    git add .
+    git commit -m \"Automated commit from WSL: Build artifacts for \$PROFILE profile on \$BRANCH\" || echo \"Nothing to commit in WSL\"
+    git push origin \"\$BRANCH\" || { echo \"Error: Failed to push from WSL\"; exit 1; }
+fi
+
+echo \"Script completed successfully!\"
+"@
+
+    # Write script to WSL
     try {
-        # Check if the script exists before running
-        $scriptCheck = wsl -d Ubuntu -e bash -c "cd $wslScriptsDir && ls -la ./manage_wsl.sh" 2>&1
-        Write-Host "Script Check Output: $scriptCheck"
-        if ($LASTEXITCODE -ne 0) {
-            Write-Host "Error: manage_wsl.sh not found in $wslScriptsDir/!" -ForegroundColor Red
-            exit 1
-        }
+        # Ensure the scripts directory exists
+        wsl -d Ubuntu -e bash -c "mkdir -p $wslScriptsDir"
+        # Write the script with LF endings
+        wsl -d Ubuntu -e bash -c "echo '$scriptContent' > $wslScriptsDir/build_and_distribute.sh"
+        # Fix permissions
+        wsl -d Ubuntu -e bash -c "chmod +x $wslScriptsDir/build_and_distribute.sh"
+        Write-Host "Generated build_and_distribute.sh in WSL."
 
-        # Fix line endings and permissions for manage_wsl.sh
-        $fixScript = wsl -d Ubuntu -e bash -c "sed -i 's/\r$//' $wslScriptsDir/manage_wsl.sh && chmod +x $wslScriptsDir/manage_wsl.sh" 2>&1
-        Write-Host "Fix Script Output: $fixScript"
-        if ($LASTEXITCODE -ne 0) {
-            Write-Host "Error: Failed to fix line endings or permissions for manage_wsl.sh!" -ForegroundColor Red
-            exit 1
-        }
-
-        $pullOutput = wsl -d Ubuntu -e bash -c "cd $wslScriptsDir && ./manage_wsl.sh --branch $Branch" 2>&1
-        Write-Host "WSL Pull Output: $pullOutput"
-        if ($LASTEXITCODE -ne 0) {
-            Write-Host "Error: WSL pull and doctor script failed!" -ForegroundColor Red
-            exit 1
-        }
-
-        Write-Host "Running WSL build script..."
-        $buildFlag = if ($Production) { "--production" } else { "--build-only" }
-        $buildOutput = wsl -d Ubuntu -e bash -c "cd $wslScriptsDir && ./build_and_distribute.sh $buildFlag --branch $Branch" 2>&1
-        Write-Host "WSL Build Output: $buildOutput"
-        if ($LASTEXITCODE -ne 0) {
-            Write-Host "Error: WSL build script failed!" -ForegroundColor Red
-            exit 1
-        }
+        # Fallback: Fix line endings for all .sh files
+        wsl -d Ubuntu -e bash -c "find $wslScriptsDir -name '*.sh' -exec sed -i 's/\r$//' {} \;"
+        Write-Host "Applied line-ending fix to all .sh files."
     } catch {
-        Write-Host "Error: WSL operation failed: $_" -ForegroundColor Red
+        Write-Host "Error: Failed to generate or fix build_and_distribute.sh in WSL: $_" -ForegroundColor Red
+        exit 1
+    }
+
+    Write-Host "Running WSL build script..."
+    $buildFlag = if ($Production) { "--production" } else { "--build-only" }
+    $buildOutput = wsl -d Ubuntu -e bash -c "cd $wslScriptsDir && ./build_and_distribute.sh $buildFlag --branch $Branch" 2>&1
+    Write-Host "WSL Build Output: $buildOutput"
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "Error: WSL build script failed!" -ForegroundColor Red
         exit 1
     }
 }
@@ -154,7 +239,7 @@ if ($Local -and -not $Production) {
     taskkill /IM "node.exe" /FI "WINDOWTITLE eq *npx expo start*" /F 2>$null
     if ($LASTEXITCODE -eq 0 -or $LASTEXITCODE -eq 128) {
         Write-Host "Existing Expo instances closed (or none found)."
-    } else {f
+    } else {
         Write-Host "Warning: Failed to close Expo instances, proceeding anyway." -ForegroundColor Yellow
     }
 

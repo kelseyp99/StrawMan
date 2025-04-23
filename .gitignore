@@ -133,3 +133,7 @@ lifelog-f2904-b5d58f4dfdec.json
 # this is a temporary file for the build process
 # it may be removed after the build is done
 src/utils/scripts/build_and_distribute.sh
+
+
+# .gitattributes
+*.sh text eol=lf
