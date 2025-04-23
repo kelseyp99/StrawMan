@@ -89,8 +89,8 @@ echo \"Running EAS build for Android with profile \$PROFILE...\"
 EXPO_PUBLIC_IS_EXPO_GO=false eas build --platform android --local --profile \$PROFILE --clear-cache
 
 echo \"Locating latest build artifacts...\"
-LATEST_APK=\$(find \"\$PROJECT_DIR\" -maxdepth 1 -name \"*.apk\" -printf \"%T@ %p\\n\" | sort -nr | head -n1 | cut -d' ' -f2-)
-LATEST_AAB=\$(find \"\$PROJECT_DIR\" -maxdepth 1 -name \"*.aab\" -printf \"%T@ %p\\n\" | sort -nr | head -n1 | cut -d' ' -f2-)
+LATEST_APK=\$(find \"\$PROJECT_DIR\" -maxdepth 1 -name '*.apk' -exec stat -c '%Y %n' {} + | sort -nr | head -n1 | awk '{print \$2}')
+LATEST_AAB=\$(find \"\$PROJECT_DIR\" -maxdepth 1 -name '*.aab' -exec stat -c '%Y %n' {} + | sort -nr | head -n1 | awk '{print \$2}')
 
 echo \"Latest APK: \$LATEST_APK\"
 echo \"Latest AAB: \$LATEST_AAB\"
