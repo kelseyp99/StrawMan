@@ -13,7 +13,7 @@ import {
 } from "react-native";
 import { auth } from "../../src/firebaseConfig";
 import { signOut, onAuthStateChanged } from "firebase/auth";
-import { getModelAPIkey } from "../../src/services/apiUtils"; // Updated import
+import { getModelAPIkey } from "../../src/services/apiUtils";
 import { useRouter } from "expo-router";
 import {
   disperseQuestion,
@@ -39,7 +39,7 @@ import { analyzeActivity, ModelAPIkey } from "../../src/services/openaiAPI";
 import Icon from "react-native-vector-icons/MaterialIcons";
 import RNFS from "react-native-fs";
 import Clipboard from "@react-native-clipboard/clipboard";
-import { request, PERMISSIONS } from "react-native-permissions";
+import { check, request, PERMISSIONS, RESULTS } from "react-native-permissions";
 import { setUID } from "../../src/utils/uidManager";
 
 let captureRef: any;
@@ -119,6 +119,7 @@ export default function AskJanet() {
   const [filePath, setFilePath] = useState<string>("");
   const [currentDiscussion, setCurrentDiscussion] = useState<Discussion | null>(null);
   const [processedDiscussions, setProcessedDiscussions] = useState<string[]>([]);
+  const [destinationFolder, setDestinationFolder] = useState<string>('Downloads');
   const dialogRef = useRef<View>(null);
 
   useEffect(() => {
@@ -194,6 +195,11 @@ export default function AskJanet() {
     } catch (error) {
       console.error("Error loading initial data:", error);
     }
+  }
+
+  async function initializeUser() {
+    // Placeholder for user initialization logic
+    console.log("Initializing user...");
   }
 
   const handleSignOut = async () => {
@@ -294,28 +300,112 @@ export default function AskJanet() {
     }
   }
 
+  // Function to prompt user for destination folder
+  const selectDestinationFolder = (callback: (folder: string) => Promise<void>) => {
+    Alert.alert(
+      "Select Destination Folder",
+      "Choose where to save the file:",
+      [
+        {
+          text: "Downloads",
+          onPress: async () => {
+            setDestinationFolder('Downloads');
+            await callback('Downloads');
+          }
+        },
+        {
+          text: "Pictures",
+          onPress: async () => {
+            setDestinationFolder('Pictures');
+            await callback('Pictures');
+          }
+        },
+        {
+          text: "Custom",
+          onPress: () => {
+            Alert.prompt(
+              "Custom Folder",
+              "Enter folder name (will be created in app's external storage):",
+              async (folderName) => {
+                if (folderName) {
+                  setDestinationFolder(folderName);
+                  await callback(folderName);
+                }
+              }
+            );
+          }
+        },
+        { text: "Cancel", style: "cancel" }
+      ]
+    );
+  };
+
   const handleSaveTxt = async () => {
     if (!currentDiscussion) {
       console.error("No current discussion for saving TXT.");
       setFilePath("Error: No discussion available");
+      Alert.alert("Error", "No discussion available for saving.");
       return;
     }
-    try {
-      const content = `Question: ${dialogQuestion}\nSelected Categories: ${
-        selectedCategories.length > 0 ? selectedCategories.join(", ") : "None"
-      }\nActivityLog Description: ${await getActivityLogDescription()}`;
-      const fileName = `question_${currentDiscussion.id}_${Date.now()}.txt`;
-      const path = `${RNFS.PicturesDirectoryPath}/LifeLog/${fileName}`;
-      await RNFS.mkdir(`${RNFS.PicturesDirectoryPath}/LifeLog`);
-      await RNFS.writeFile(path, content, "utf8");
-      console.log("Text file saved at:", path);
-      setFilePath(path);
-      Clipboard.setString(`Question: ${dialogQuestion}\nFile Path: ${path}`);
-      console.log("Copied to clipboard:", path);
-    } catch (error) {
-      console.error("Error saving TXT:", error);
-      setFilePath("Error saving TXT file");
-    }
+
+    const saveTxt = async (folder: string) => {
+      try {
+        // Request storage permission
+        const permission = Platform.OS === 'android' ? PERMISSIONS.ANDROID.WRITE_EXTERNAL_STORAGE : PERMISSIONS.IOS.PHOTO_LIBRARY;
+        const result = await check(permission);
+        if (result !== RESULTS.GRANTED) {
+          const requestResult = await request(permission);
+          if (requestResult !== RESULTS.GRANTED) {
+            throw new Error("Storage permission denied");
+          }
+        }
+
+        // Generate content
+        const content = `Question: ${dialogQuestion}\nSelected Categories: ${
+          selectedCategories.length > 0 ? selectedCategories.join(", ") : "None"
+        }\nActivityLog Description: ${await getActivityLogDescription()}`;
+        const fileName = `question_${currentDiscussion.id}_${Date.now()}.txt`;
+        let path: string;
+
+        if (folder === 'Downloads') {
+          path = `${RNFS.DownloadDirectoryPath}/${fileName}`;
+        } else if (folder === 'Pictures') {
+          path = `${RNFS.PicturesDirectoryPath}/${fileName}`;
+        } else {
+          path = `${RNFS.ExternalDirectoryPath}/${folder}/${fileName}`;
+          await RNFS.mkdir(`${RNFS.ExternalDirectoryPath}/${folder}`);
+        }
+
+        // Write file
+        await RNFS.writeFile(path, content, "utf8");
+        console.log("Text file saved at:", path);
+        setFilePath(path);
+        Clipboard.setString(`Question: ${dialogQuestion}\nFile Path: ${path}`);
+        console.log("Copied to clipboard:", path);
+        Alert.alert("Success", `Text file saved to ${path}`);
+      } catch (error) {
+        console.error("Error saving TXT:", error);
+        setFilePath("Error saving TXT file");
+        // Fallback to DocumentDirectoryPath
+        try {
+          const fallbackPath = `${RNFS.DocumentDirectoryPath}/${fileName}`;
+          const content = `Question: ${dialogQuestion}\nSelected Categories: ${
+            selectedCategories.length > 0 ? selectedCategories.join(", ") : "None"
+          }\nActivityLog Description: ${await getActivityLogDescription()}`;
+          await RNFS.writeFile(fallbackPath, content, "utf8");
+          console.log("Text file saved at fallback:", fallbackPath);
+          setFilePath(fallbackPath);
+          Clipboard.setString(`Question: ${dialogQuestion}\nFile Path: ${fallbackPath}`);
+          Alert.alert("Success", `Text file saved to fallback ${fallbackPath}`);
+        } catch (fallbackError) {
+          console.error("Error saving TXT to fallback:", fallbackError);
+          setFilePath("Error saving TXT file");
+          Alert.alert("Error", `Failed to save TXT: ${error}`);
+        }
+      }
+    };
+
+    selectDestinationFolder(saveTxt);
   };
 
   const handleSaveImage = async (format: "jpg" | "png") => {
@@ -333,46 +423,63 @@ export default function AskJanet() {
       );
       return;
     }
-    try {
-      if (Platform.OS === "android") {
-        console.log("Requesting WRITE_EXTERNAL_STORAGE permission...");
-        const permissionResult = await request(PERMISSIONS.ANDROID.WRITE_EXTERNAL_STORAGE);
-        console.log("Permission result:", permissionResult);
-        if (permissionResult !== "granted") {
-          throw new Error("WRITE_EXTERNAL_STORAGE permission denied");
+
+    const saveImage = async (folder: string) => {
+      try {
+        // Request storage permission
+        const permission = Platform.OS === "android" ? PERMISSIONS.ANDROID.WRITE_EXTERNAL_STORAGE : PERMISSIONS.IOS.PHOTO_LIBRARY;
+        const result = await check(permission);
+        if (result !== RESULTS.GRANTED) {
+          const requestResult = await request(permission);
+          if (requestResult !== RESULTS.GRANTED) {
+            throw new Error("Storage permission denied");
+          }
+        }
+
+        // Capture image
+        const uri = await captureRef(dialogRef.current, { format, quality: 0.8 });
+        const fileName = `question_${currentDiscussion.id}_${Date.now()}.${format}`;
+        let galleryPath: string;
+
+        if (folder === 'Downloads') {
+          galleryPath = `${RNFS.DownloadDirectoryPath}/${fileName}`;
+        } else if (folder === 'Pictures') {
+          galleryPath = `${RNFS.PicturesDirectoryPath}/${fileName}`;
+        } else {
+          galleryPath = `${RNFS.ExternalDirectoryPath}/${folder}/${fileName}`;
+          await RNFS.mkdir(`${RNFS.ExternalDirectoryPath}/${folder}`);
+        }
+
+        // Move file
+        await RNFS.moveFile(uri, galleryPath);
+        console.log(`${format.toUpperCase()} saved at:`, galleryPath);
+        setFilePath(galleryPath);
+        Clipboard.setString(`Question: ${dialogQuestion}\nFile Path: ${galleryPath}`);
+        console.log("Copied to clipboard:", galleryPath);
+        await RNFS.scanFile(galleryPath);
+        console.log(`${format.toUpperCase()} added to gallery`);
+        Alert.alert("Success", `${format.toUpperCase()} saved to ${galleryPath}`);
+      } catch (error) {
+        console.error(`Error redeeming ${format.toUpperCase()}:`, error);
+        setFilePath(`Error saving ${format.toUpperCase()} file`);
+        // Fallback to DocumentDirectoryPath
+        try {
+          const fallbackPath = `${RNFS.DocumentDirectoryPath}/${fileName}`;
+          const uri = await captureRef(dialogRef.current, { format, quality: 0.8 });
+          await RNFS.moveFile(uri, fallbackPath);
+          console.log(`${format.toUpperCase()} saved at fallback:`, fallbackPath);
+          setFilePath(fallbackPath);
+          Clipboard.setString(`Question: ${dialogQuestion}\nFile Path: ${fallbackPath}`);
+          Alert.alert("Success", `${format.toUpperCase()} saved to fallback ${fallbackPath}`);
+        } catch (fallbackError) {
+          console.error(`Error saving ${format.toUpperCase()} to fallback:`, fallbackError);
+          setFilePath(`Error saving ${format.toUpperCase()} file`);
+          Alert.alert("Error", `Failed to save as ${format.toUpperCase()}: ${error}`);
         }
       }
-      const uri = await captureRef(dialogRef.current, { format, quality: 0.8 });
-      const fileName = `question_${currentDiscussion.id}_${Date.now()}.${format}`;
-      const galleryPath = `${RNFS.PicturesDirectoryPath}/LifeLog/${fileName}`;
-      console.log(`Attempting to create directory: ${RNFS.PicturesDirectoryPath}/LifeLog`);
-      try {
-        await RNFS.mkdir(`${RNFS.PicturesDirectoryPath}/LifeLog`);
-        console.log("Directory created successfully");
-      } catch (mkdirError) {
-        console.error("Failed to create directory:", mkdirError);
-        const fallbackPath = `${RNFS.DocumentDirectoryPath}/LifeLog/${fileName}`;
-        console.log(`Falling back to: ${RNFS.DocumentDirectoryPath}/LifeLog`);
-        await RNFS.mkdir(`${RNFS.DocumentDirectoryPath}/LifeLog`);
-        await RNFS.moveFile(uri, fallbackPath);
-        console.log(`${format.toUpperCase()} saved at fallback:`, fallbackPath);
-        setFilePath(fallbackPath);
-        Clipboard.setString(`Question: ${dialogQuestion}\nFile Path: ${fallbackPath}`);
-        console.log("Copied to clipboard:", fallbackPath);
-        return;
-      }
-      await RNFS.moveFile(uri, galleryPath);
-      console.log(`${format.toUpperCase()} saved at:`, galleryPath);
-      setFilePath(galleryPath);
-      Clipboard.setString(`Question: ${dialogQuestion}\nFile Path: ${galleryPath}`);
-      console.log("Copied to clipboard:", galleryPath);
-      await RNFS.scanFile(galleryPath);
-      console.log(`${format.toUpperCase()} added to gallery`);
-    } catch (error) {
-      console.error(`Error saving ${format.toUpperCase()}:`, error);
-      setFilePath(`Error saving ${format.toUpperCase()} file`);
-      Alert.alert("Error", `Failed to save as ${format.toUpperCase()}: ${error.message}`);
-    }
+    };
+
+    selectDestinationFolder(saveImage);
   };
 
   async function getActivityLogDescription() {
@@ -418,7 +525,6 @@ export default function AskJanet() {
         console.log("Setting responses:", newResponses);
       }
 
-      await handleSaveTxt();
       console.log("Closing dialog and fetching next discussion.");
       setDialogVisible(false);
       setCurrentDiscussion(null);

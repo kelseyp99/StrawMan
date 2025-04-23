@@ -22,7 +22,8 @@
     },
     "plugins": [
       "expo-router",
-      "expo-dev-client"
+      "expo-dev-client",
+      "react-native-permissions"
     ],
     "web": {
       "bundler": "metro",
