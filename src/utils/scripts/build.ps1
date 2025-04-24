@@ -1,18 +1,17 @@
 # build.ps1 (in src\utils\scripts\)
 
 param (
-    [switch]$Local,      # Build locally with development profile
-    [switch]$Firebase,   # Upload to Firebase (optional, auto for production)
-    [switch]$CloudMain,  # Cloud build on main branch
-    [switch]$Production, # Build local production APK (default)
-    [switch]$Dev,        # Use development profile for cloud build
-    [switch]$Android,    # Build for Android (default)
-    [switch]$Ios,        # Build for iOS (cloud only)
-    [switch]$Both        # Build for both Android and iOS (cloud only)
+    [switch]$Local,
+    [switch]$Firebase,
+    [switch]$CloudMain,
+    [switch]$Production,
+    [switch]$Dev,
+    [switch]$Android,
+    [switch]$Ios,
+    [switch]$Both
 )
 
 $projectDir = "C:\Users\philk\Projects2\LifeLog"
-# Get the current Git branch
 $Branch = git rev-parse --abbrev-ref HEAD
 $commitMessage = "Automated commit: Update and build for branch $Branch"
 $downloadsDir = "C:\Users\philk\Downloads"
@@ -21,12 +20,12 @@ $wslProjectDir = "/mnt/c/Users/philk/Projects2/LifeLog"
 $wslScriptsDir = "$wslProjectDir/src/utils/scripts"
 $firebaseAppId = "1:341732508688:android:4a8c275e1199f4e1c0e8b4"
 $releaseNotes = "New build uploaded on $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
-$testers = "werkhardor@gmail.com"  # Updated with your email
+$testers = "werkhardor@gmail.com"
 
-Set-Location -Path $projectDir
+Set-Location -Path $projectQuestions?Dir
 
 Write-Host "Current branch: $Branch"
-Write-Host "Committing and pushing changes from PowerShell to $Branch..."
+Write-Host "Committing and pushing changes..."
 git checkout $Branch
 git add .
 git commit -m $commitMessage
@@ -36,7 +35,6 @@ if ($LASTEXITCODE -eq 0) {
     Write-Host "Nothing to commit, proceeding..."
 }
 
-# Determine platforms
 $platforms = @()
 if ($Android -or -not ($Ios -or $Both)) {
     $platforms += "android"
@@ -44,7 +42,7 @@ if ($Android -or -not ($Ios -or $Both)) {
 if (($Ios -or $Both) -and $CloudMain) {
     $platforms += "ios"
 } elseif ($Ios -or $Both) {
-    Write-Host "Error: iOS builds are only supported for cloud builds (-CloudMain) until macOS is available." -ForegroundColor Red
+    Write-Host "Error: iOS builds only supported for cloud builds (-CloudMain)." -ForegroundColor Red
     exit 1
 }
 if (-not $platforms) {
@@ -52,15 +50,12 @@ if (-not $platforms) {
     $platforms += "android"
 }
 
-# Build locally or in cloud based on flags
 if ($Local -or $Production -or $CloudMain -or -not ($Local -or $Production -or $CloudMain)) {
     Write-Host "Initializing WSL with pull and build script for branch $Branch..."
     Write-Host "Generating build_and_distribute.sh in WSL..."
 
-    # Generate build_and_distribute.sh in WSL with LF line endings
     $scriptContent = @'
 #!/bin/bash
-# build_and_distribute.sh [--build-only | --production | --cloud | --dev] [--branch <branch-name>] [--android | --ios | --both]
 PROJECT_DIR="/mnt/c/Users/philk/Projects2/LifeLog"
 WINDOWS_DEST="/mnt/c/Users/philk/Downloads"
 LIFELOG_DEST="/mnt/c/Users/philk/Downloads/LifeLog"
@@ -73,7 +68,6 @@ CLOUD=false
 BRANCH="'$Branch'"
 PLATFORMS="android"
 
-# Parse command-line arguments
 while [[ "$#" -gt 0 ]]; do
     case $1 in
         --build-only)
@@ -123,21 +117,21 @@ git fetch origin -v
 git checkout -f "$BRANCH"
 git clean -fd
 git reset --hard "origin/$BRANCH"
-npx expo-doctor || echo "Warning: expo-doctor issues"
 
 echo "Setting up build environment..."
-export ANDROID_HOME=/home/kelseyp99/Android/Sdk
-export PATH=$PATH:$ANDROID_HOME/platform-tools
+export EXPO_PUBLIC_IS_EXPO_GO=false
+export EXPO_NO_PREBUILD=1
 
-rm -rf ~/.gradle/caches ~/.eas/build
+rm -rf ~/.eas/build ~/.gradle/caches ~/.metro
+npm cache clean --force
 
 echo "Running EAS build for platforms: $PLATFORMS with profile $PROFILE..."
 IFS=',' read -ra PLATFORM_ARRAY <<< "$PLATFORMS"
 for PLATFORM in "${PLATFORM_ARRAY[@]}"; do
     if [ "$CLOUD" = true ]; then
-        EXPO_PUBLIC_IS_EXPO_GO=false eas build --platform $PLATFORM --profile $PROFILE --clear-cache
+        eas build --platform $PLATFORM --profile $PROFILE --no-wait --non-interactive
     else
-        EXPO_PUBLIC_IS_EXPO_GO=false eas build --platform $PLATFORM --local --profile $PROFILE --clear-cache
+        eas build --platform $PLATFORM --local --profile $PROFILE --no-wait --non-interactive --clear-cache
     fi
 done
 
@@ -154,7 +148,6 @@ if [[ "$PLATFORMS" == *"ios"* ]]; then
 fi
 
 if [ -d "$WINDOWS_DEST" ]; then
-    # Create LifeLog directory if it doesn't exist for development builds
     if [ "$BUILD_ONLY" = true ]; then
         mkdir -p "$LIFELOG_DEST"
     fi
@@ -212,16 +205,11 @@ fi
 echo "Script completed successfully!"
 '@
 
-    # Write script to WSL
     try {
-        # Ensure the scripts directory exists
         wsl -d Ubuntu -e bash -c "mkdir -p $wslScriptsDir"
-        # Write the script with LF endings
         $scriptContent | Out-File -FilePath "$projectDir\src\utils\scripts\build_and_distribute.sh" -Encoding ASCII
-        # Fix permissions in WSL
         wsl -d Ubuntu -e bash -c "chmod +x $wslScriptsDir/build_and_distribute.sh"
         Write-Host "Generated build_and_distribute.sh in WSL."
-        # Fallback: Fix line endings for all .sh files
         wsl -d Ubuntu -e bash -c "find $wslScriptsDir -name '*.sh' -exec sed -i 's/\r$//' {} \;"
         Write-Host "Applied line-ending fix to all .sh files."
     } catch {
@@ -243,34 +231,34 @@ echo "Script completed successfully!"
             exit 1
         }
         $buildFlag = if ($Dev) { "--cloud --dev" } else { "--cloud" }
-        $Branch = "main"  # Cloud build uses main branch
+        $Branch = "main"
     } elseif ($Local) {
         $buildFlag = "--build-only"
     } else {
-        $buildFlag = "--production"  # Default to production
+        $buildFlag = "--production"
     }
     $platformFlag = ""
-    if ($Android) { 
-        $platformFlag = "--android" 
-    } elseif ($Ios -and $CloudMain) { 
-        $platformFlag = "--ios" 
-    } elseif ($Both -and $CloudMain) { 
-        $platformFlag = "--both" 
-    } else { 
-        $platformFlag = "--android"  # Default to Android
+    if ($Android) {
+        $platformFlag = "--android"
+    } elseif ($Ios -and $CloudMain) {
+        $platformFlag = "--ios"
+    } elseif ($Both -and $CloudMain) {
+        $platformFlag = "--both"
+    } else {
+        $platformFlag = "--android"
     }
     $buildOutput = wsl -d Ubuntu -e bash -c "cd $wslScriptsDir && ./build_and_distribute.sh $buildFlag $platformFlag --branch $Branch" 2>&1
-    Write-Host "WSL Build Output: $buildOutput"
+    $buildOutput = $buildOutput -replace "`r`n", "`n"
+    Write-Host "WSL Build Output:`n$buildOutput`n"
     if ($LASTEXITCODE -ne 0) {
         Write-Host "Error: WSL build script failed!" -ForegroundColor Red
         exit 1
     }
     if ($CloudMain) {
-        git checkout $Branch  # Return to original branch
+        git checkout $Branch
     }
 }
 
-# Find latest build artifacts if building locally or uploading to Firebase
 $latestApk = $null
 $latestIpa = $null
 if ($Local -or $Production -or $CloudMain -or -not ($Local -or $Production -or $CloudMain)) {
@@ -295,13 +283,10 @@ if ($Local -or $Production -or $CloudMain -or -not ($Local -or $Production -or $
     }
 }
 
-# Handle local builds: production uploads to Firebase, development moves to LifeLog folder
 if ($Local -and $latestApk) {
-    # Create LifeLog directory if it doesn't exist
     if (-not (Test-Path $lifeLogDir)) {
         New-Item -ItemType Directory -Path $lifeLogDir
     }
-    # Move APK to LifeLog folder
     Move-Item -Path $apkPath -Destination $lifeLogDir
     if ($LASTEXITCODE -eq 0) {
         Write-Host "Successfully moved $apkPath to $lifeLogDir for development build"
@@ -310,12 +295,12 @@ if ($Local -and $latestApk) {
         exit 1
     }
 } elseif ($Production -and $latestApk) {
-    # Upload to Firebase for production builds
-    Write-Host "Uploading APK to Firebase App Distribution for production build..."
+    Write-Host "Uploading production APK to Firebase App Distribution..."
     if (Test-Path "firebase.cmd") {
         firebase appdistribution:distribute $apkPath --app $firebaseAppId --release-notes $releaseNotes --testers $testers
         if ($LASTEXITCODE -eq 0) {
-            Write-Host "Upload complete!"
+            Write-Host "Upload complete! Deleting $apkPath..."
+            Remove-Item -Path $apkPath -Force
         } else {
             Write-Host "Error: Failed to upload APK to Firebase!" -ForegroundColor Red
             exit 1
@@ -325,7 +310,8 @@ if ($Local -and $latestApk) {
         npm install firebase-tools
         npx firebase appdistribution:distribute $apkPath --app $firebaseAppId --release-notes "$releaseNotes" --testers $testers
         if ($LASTEXITCODE -eq 0) {
-            Write-Host "Upload complete using npm firebase-tools!"
+            Write-Host "Upload complete using npm firebase-tools! Deleting $apkPath..."
+            Remove-Item -Path $apkPath -Force
         } else {
             Write-Host "Error: Failed to upload APK to Firebase using npm firebase-tools!" -ForegroundColor Red
             exit 1
@@ -333,7 +319,6 @@ if ($Local -and $latestApk) {
     }
 }
 
-# Handle explicit -Firebase flag for non-local builds (e.g., cloud)
 if ($Firebase -and $latestApk -and -not ($Local -or $Production)) {
     Write-Host "Uploading APK to Firebase App Distribution (explicit -Firebase flag)..."
     if (Test-Path "firebase.cmd") {
@@ -357,9 +342,7 @@ if ($Firebase -and $latestApk -and -not ($Local -or $Production)) {
     }
 }
 
-# Install APK on connected devices & emulators if -Local or -Production is specified
 if (($Local -or $Production -or $CloudMain) -and $latestApk) {
-    # Get list of connected devices (emulators + real devices)
     $deviceList = adb devices | Select-String "^(emulator-[0-9]+|\w+)\s+device" | ForEach-Object { $_.Matches.Groups[1].Value }
 
     if ($deviceList.Count -eq 0) {
@@ -373,7 +356,6 @@ if (($Local -or $Production -or $CloudMain) -and $latestApk) {
 
         if ($LASTEXITCODE -eq 0) {
             Write-Host "✅ APK installed successfully on $device."
-            # Launch the app
             $packageName = "com.anonymous.lifelog"
             $mainActivity = "com.anonymous.lifelog.MainActivity"
             adb -s $device shell am start -n "$packageName/$mainActivity"
@@ -385,7 +367,6 @@ if (($Local -or $Production -or $CloudMain) -and $latestApk) {
     Write-Host "No APK to install on devices." -ForegroundColor Yellow
 }
 
-# Run BackupScript.ps1
 Write-Host "Running BackupScript.ps1..."
 powershell -ExecutionPolicy Bypass -File "$projectDir\src\utils\scripts\BackupScript.ps1"
 

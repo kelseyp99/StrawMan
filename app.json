@@ -17,8 +17,7 @@
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#ffffff"
-      },
-      "compileSdkVersion": 33
+      }
     },
     "plugins": ["expo-router"],
     "web": {
@@ -30,12 +29,12 @@
       "eas": {
         "projectId": "a27bcb78-af2a-4ef8-adeb-7fae3e17731d"
       },
-      "googleClientIdAndroid": "341732508688-4063fe724164fa1c18f695.apps.googleusercontent.com"
+      "googleClientIdAndroid": "341732508688-o2qbbr16g2qh3e8niofee9iv4tl6krhb.apps.googleusercontent.com",
+      "react-native-google-mobile-ads": {
+        "android_app_id": "ca-app-pub-1315319831980259~1158662288"
+      }
     },
     "owner": "kelseyp99",
     "jsEngine": "hermes"
-  },
-  "react-native-google-mobile-ads": {
-    "android_app_id": "ca-app-pub-1315319831980259~1158662288"
   }
 }
