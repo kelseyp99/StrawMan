@@ -6,7 +6,7 @@ const FakeBanner = () => {
   return (
     <View style={styles.container}>
       <Image
-        source={require('../../../assets/images/WholeFoods.png')}
+        source={require('../../assets/images/WholeFoods.png')}
         style={styles.banner}
       />
     </View>
