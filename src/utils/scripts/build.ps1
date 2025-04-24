@@ -209,9 +209,6 @@ if [ "$BUILD_ONLY" = false ]; then
     git push origin "$BRANCH" || { echo "Error: Failed to push from WSL"; exit 1; }
 fi
 
-echo "Running BackupScript.ps1..."
-powershell -ExecutionPolicy Bypass -File "$PROJECT_DIR/src/utils/scripts/BackupScript.ps1"
-
 echo "Script completed successfully!"
 '@
 
@@ -324,8 +321,15 @@ if ($Local -and $latestApk) {
             exit 1
         }
     } else {
-        Write-Host "Error: Firebase CLI not found, please install with 'npm install -g firebase-tools'!" -ForegroundColor Red
-        exit 1
+        Write-Host "Firebase CLI not found, attempting to use npm firebase-tools..."
+        npm install firebase-tools
+        npx firebase appdistribution:distribute $apkPath --app $firebaseAppId --release-notes "$releaseNotes" --testers $testers
+        if ($LASTEXITCODE -eq 0) {
+            Write-Host "Upload complete using npm firebase-tools!"
+        } else {
+            Write-Host "Error: Failed to upload APK to Firebase using npm firebase-tools!" -ForegroundColor Red
+            exit 1
+        }
     }
 }
 
@@ -341,8 +345,15 @@ if ($Firebase -and $latestApk -and -not ($Local -or $Production)) {
             exit 1
         }
     } else {
-        Write-Host "Error: Firebase CLI not found, please install with 'npm install -g firebase-tools'!" -ForegroundColor Red
-        exit 1
+        Write-Host "Firebase CLI not found, attempting to use npm firebase-tools..."
+        npm install firebase-tools
+        npx firebase appdistribution:distribute $apkPath --app $firebaseAppId --release-notes "$releaseNotes" --testers $testers
+        if ($LASTEXITCODE -eq 0) {
+            Write-Host "Upload complete using npm firebase-tools!"
+        } else {
+            Write-Host "Error: Failed to upload APK to Firebase using npm firebase-tools!" -ForegroundColor Red
+            exit 1
+        }
     }
 }
 
