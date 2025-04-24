@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "LifeLog",
-    "slug": "LifeLog",
+    "slug": "lifelog",
     "version": "1.1.0",
     "orientation": "portrait",
     "icon": "./assets/images/ask-janet-icon.png",
