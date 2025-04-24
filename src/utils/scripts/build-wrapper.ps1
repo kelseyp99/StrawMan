@@ -11,8 +11,8 @@ $Profile = $null
 
 # Handle cases based on arguments
 if (-not $Arg1) {
-    # No arguments: default to local prod
-    Write-Host "No arguments provided, defaulting to local production build..."
+    # No arguments: default to local prod with Android
+    Write-Host "No arguments provided, defaulting to local production build for Android..."
     & $buildScript -Production -Android
     exit 0
 }
@@ -49,11 +49,11 @@ switch ($Environment) {
     "local" {
         switch ($Profile) {
             {$_ -in "dev", "development"} {
-                Write-Host "Running local development build..."
+                Write-Host "Running local development build for Android..."
                 & $buildScript -Local -Android
             }
             {$_ -in "prod", "production"} {
-                Write-Host "Running local production build..."
+                Write-Host "Running local production build for Android..."
                 & $buildScript -Production -Android
             }
             default {
@@ -65,11 +65,11 @@ switch ($Environment) {
     "cloud" {
         switch ($Profile) {
             {$_ -in "dev", "development"} {
-                Write-Host "Running cloud development build..."
+                Write-Host "Running cloud development build for Android..."
                 & $buildScript -CloudMain -Dev -Android
             }
             {$_ -in "prod", "production"} {
-                Write-Host "Running cloud production build..."
+                Write-Host "Running cloud production build for Android (iOS available for cloud builds)..."
                 & $buildScript -CloudMain -Android
             }
             default {

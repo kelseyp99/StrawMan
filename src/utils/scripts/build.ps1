@@ -2,13 +2,13 @@
 
 param (
     [switch]$Local,      # Build locally with development profile
-    [switch]$Firebase,   # Upload to Firebase
+    [switch]$Firebase,   # Upload to Firebase (optional, auto for production)
     [switch]$CloudMain,  # Cloud build on main branch
     [switch]$Production, # Build local production APK (default)
     [switch]$Dev,        # Use development profile for cloud build
-    [switch]$Android,    # Build for Android
-    [switch]$Ios,        # Build for iOS
-    [switch]$Both        # Build for both Android and iOS
+    [switch]$Android,    # Build for Android (default)
+    [switch]$Ios,        # Build for iOS (cloud only)
+    [switch]$Both        # Build for both Android and iOS (cloud only)
 )
 
 $projectDir = "C:\Users\philk\Projects2\LifeLog"
@@ -16,6 +16,7 @@ $projectDir = "C:\Users\philk\Projects2\LifeLog"
 $Branch = git rev-parse --abbrev-ref HEAD
 $commitMessage = "Automated commit: Update and build for branch $Branch"
 $downloadsDir = "C:\Users\philk\Downloads"
+$lifeLogDir = "$downloadsDir\LifeLog"
 $wslProjectDir = "/mnt/c/Users/philk/Projects2/LifeLog"
 $wslScriptsDir = "$wslProjectDir/src/utils/scripts"
 $firebaseAppId = "1:341732508688:android:4a8c275e1199f4e1c0e8b4"
@@ -37,11 +38,14 @@ if ($LASTEXITCODE -eq 0) {
 
 # Determine platforms
 $platforms = @()
-if ($Android -or $Both -or (-not $Ios -and -not $Both)) {
+if ($Android -or -not ($Ios -or $Both)) {
     $platforms += "android"
 }
-if ($Ios -or $Both) {
+if (($Ios -or $Both) -and $CloudMain) {
     $platforms += "ios"
+} elseif ($Ios -or $Both) {
+    Write-Host "Error: iOS builds are only supported for cloud builds (-CloudMain) until macOS is available." -ForegroundColor Red
+    exit 1
 }
 if (-not $platforms) {
     Write-Host "No platform specified, defaulting to Android..."
@@ -58,7 +62,8 @@ if ($Local -or $Production -or $CloudMain -or -not ($Local -or $Production -or $
 #!/bin/bash
 # build_and_distribute.sh [--build-only | --production | --cloud | --dev] [--branch <branch-name>] [--android | --ios | --both]
 PROJECT_DIR="/mnt/c/Users/philk/Projects2/LifeLog"
-WINDOWS_DEST="/mnt/c/Users/philk/Downloads/"
+WINDOWS_DEST="/mnt/c/Users/philk/Downloads"
+LIFELOG_DEST="/mnt/c/Users/philk/Downloads/LifeLog"
 
 set -e
 
@@ -149,13 +154,28 @@ if [[ "$PLATFORMS" == *"ios"* ]]; then
 fi
 
 if [ -d "$WINDOWS_DEST" ]; then
+    # Create LifeLog directory if it doesn't exist for development builds
+    if [ "$BUILD_ONLY" = true ]; then
+        mkdir -p "$LIFELOG_DEST"
+    fi
+
     if [ -n "$LATEST_APK" ]; then
-        mv "$LATEST_APK" "$WINDOWS_DEST"
-        if [ $? -eq 0 ]; then
-            echo "Successfully moved $LATEST_APK to $WINDOWS_DEST"
+        if [ "$BUILD_ONLY" = true ]; then
+            mv "$LATEST_APK" "$LIFELOG_DEST"
+            if [ $? -eq 0 ]; then
+                echo "Successfully moved $LATEST_APK to $LIFELOG_DEST for development build"
+            else
+                echo "Error: Failed to move $LATEST_APK to $LIFELOG_DEST"
+                exit 1
+            fi
         else
-            echo "Error: Failed to move $LATEST_APK to $WINDOWS_DEST"
-            exit 1
+            mv "$LATEST_APK" "$WINDOWS_DEST"
+            if [ $? -eq 0 ]; then
+                echo "Successfully moved $LATEST_APK to $WINDOWS_DEST for production build"
+            else
+                echo "Error: Failed to move $LATEST_APK to $WINDOWS_DEST"
+                exit 1
+            fi
         fi
     fi
     if [ -n "$LATEST_AAB" ]; then
@@ -233,10 +253,15 @@ echo "Script completed successfully!"
         $buildFlag = "--production"  # Default to production
     }
     $platformFlag = ""
-    if ($Android) { $platformFlag = "--android" }
-    elseif ($Ios) { $platformFlag = "--ios" }
-    elseif ($Both) { $platformFlag = "--both" }
-    else { $platformFlag = "--android" }  # Default to Android
+    if ($Android) { 
+        $platformFlag = "--android" 
+    } elseif ($Ios -and $CloudMain) { 
+        $platformFlag = "--ios" 
+    } elseif ($Both -and $CloudMain) { 
+        $platformFlag = "--both" 
+    } else { 
+        $platformFlag = "--android"  # Default to Android
+    }
     $buildOutput = wsl -d Ubuntu -e bash -c "cd $wslScriptsDir && ./build_and_distribute.sh $buildFlag $platformFlag --branch $Branch" 2>&1
     Write-Host "WSL Build Output: $buildOutput"
     if ($LASTEXITCODE -ne 0) {
@@ -251,9 +276,9 @@ echo "Script completed successfully!"
 # Find latest build artifacts if building locally or uploading to Firebase
 $latestApk = $null
 $latestIpa = $null
-if ($Local -or $Firebase -or $Production -or $CloudMain -or -not ($Local -or $Production -or $CloudMain)) {
+if ($Local -or $Production -or $CloudMain -or -not ($Local -or $Production -or $CloudMain)) {
     Write-Host "Finding latest build artifacts in Downloads..."
-    if ($Android -or $Both -or -not ($Ios -or $Both)) {
+    if ($platforms -contains "android") {
         $latestApk = Get-ChildItem -Path $downloadsDir -Filter "*.apk" | Sort-Object LastWriteTime -Descending | Select-Object -First 1
         if ($latestApk) {
             $apkPath = $latestApk.FullName
@@ -262,7 +287,7 @@ if ($Local -or $Firebase -or $Production -or $CloudMain -or -not ($Local -or $Pr
             Write-Host "No APK found in $downloadsDir!" -ForegroundColor Yellow
         }
     }
-    if ($Ios -or $Both) {
+    if ($platforms -contains "ios") {
         $latestIpa = Get-ChildItem -Path $downloadsDir -Filter "*.ipa" | Sort-Object LastWriteTime -Descending | Select-Object -First 1
         if ($latestIpa) {
             $ipaPath = $latestIpa.FullName
@@ -270,6 +295,54 @@ if ($Local -or $Firebase -or $Production -or $CloudMain -or -not ($Local -or $Pr
         } else {
             Write-Host "No IPA found in $downloadsDir!" -ForegroundColor Yellow
         }
+    }
+}
+
+# Handle local builds: production uploads to Firebase, development moves to LifeLog folder
+if ($Local -and $latestApk) {
+    # Create LifeLog directory if it doesn't exist
+    if (-not (Test-Path $lifeLogDir)) {
+        New-Item -ItemType Directory -Path $lifeLogDir
+    }
+    # Move APK to LifeLog folder
+    Move-Item -Path $apkPath -Destination $lifeLogDir
+    if ($LASTEXITCODE -eq 0) {
+        Write-Host "Successfully moved $apkPath to $lifeLogDir for development build"
+    } else {
+        Write-Host "Error: Failed to move $apkPath to $lifeLogDir" -ForegroundColor Red
+        exit 1
+    }
+} elseif ($Production -and $latestApk) {
+    # Upload to Firebase for production builds
+    Write-Host "Uploading APK to Firebase App Distribution for production build..."
+    if (Test-Path "firebase.cmd") {
+        firebase appdistribution:distribute $apkPath --app $firebaseAppId --release-notes $releaseNotes --testers $testers
+        if ($LASTEXITCODE -eq 0) {
+            Write-Host "Upload complete!"
+        } else {
+            Write-Host "Error: Failed to upload APK to Firebase!" -ForegroundColor Red
+            exit 1
+        }
+    } else {
+        Write-Host "Error: Firebase CLI not found, please install with 'npm install -g firebase-tools'!" -ForegroundColor Red
+        exit 1
+    }
+}
+
+# Handle explicit -Firebase flag for non-local builds (e.g., cloud)
+if ($Firebase -and $latestApk -and -not ($Local -or $Production)) {
+    Write-Host "Uploading APK to Firebase App Distribution (explicit -Firebase flag)..."
+    if (Test-Path "firebase.cmd") {
+        firebase appdistribution:distribute $apkPath --app $firebaseAppId --release-notes $releaseNotes --testers $testers
+        if ($LASTEXITCODE -eq 0) {
+            Write-Host "Upload complete!"
+        } else {
+            Write-Host "Error: Failed to upload APK to Firebase!" -ForegroundColor Red
+            exit 1
+        }
+    } else {
+        Write-Host "Error: Firebase CLI not found, please install with 'npm install -g firebase-tools'!" -ForegroundColor Red
+        exit 1
     }
 }
 
@@ -299,23 +372,6 @@ if (($Local -or $Production -or $CloudMain) -and $latestApk) {
     }
 } else {
     Write-Host "No APK to install on devices." -ForegroundColor Yellow
-}
-
-# Upload to Firebase if -Firebase is specified
-if ($Firebase -and $latestApk) {
-    Write-Host "Uploading APK to Firebase App Distribution..."
-    if (Test-Path "firebase.cmd") {
-        firebase appdistribution:distribute $apkPath --app $firebaseAppId --release-notes $releaseNotes --testers $testers
-        if ($LASTEXITCODE -eq 0) {
-            Write-Host "Upload complete!"
-        } else {
-            Write-Host "Error: Failed to upload APK to Firebase!" -ForegroundColor Red
-            exit 1
-        }
-    } else {
-        Write-Host "Error: Firebase CLI not found, please install with 'npm install -g firebase-tools'!" -ForegroundColor Red
-        exit 1
-    }
 }
 
 # Run BackupScript.ps1
