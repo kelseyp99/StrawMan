@@ -120,7 +120,7 @@ git clean -fd
 git reset --hard "origin/$BRANCH"
 npx expo-doctor || echo "Warning: expo-doctor issues"
 
-echo "Setting up Android environment..."
+echo "Setting up build environment..."
 export ANDROID_HOME=/home/kelseyp99/Android/Sdk
 export PATH=$PATH:$ANDROID_HOME/platform-tools
 
@@ -227,10 +227,10 @@ echo "Script completed successfully!"
         }
         $buildFlag = if ($Dev) { "--cloud --dev" } else { "--cloud" }
         $Branch = "main"  # Cloud build uses main branch
-    } elseif ($Production) {
-        $buildFlag = "--production"
-    } else {
+    } elseif ($Local) {
         $buildFlag = "--build-only"
+    } else {
+        $buildFlag = "--production"  # Default to production
     }
     $platformFlag = ""
     if ($Android) { $platformFlag = "--android" }
