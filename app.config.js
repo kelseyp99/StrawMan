@@ -1,4 +1,4 @@
-require("dotenv").config();
+require('dotenv').config();
 
 module.exports = ({ config }) => {
   const expoConfig = config && config.expo ? config.expo : {};
@@ -6,22 +6,26 @@ module.exports = ({ config }) => {
     ...config,
     expo: {
       ...expoConfig,
-      slug: expoConfig.slug || "lifelog",
-      scheme: "com.anonymous.lifelog",
+      slug: expoConfig.slug || 'lifelog',
+      scheme: 'com.anonymous.lifelog',
       android: {
         ...(expoConfig.android || {}),
-        package: expoConfig.android && expoConfig.android.package ? expoConfig.android.package : "com.anonymous.lifelog"
+        package:
+          expoConfig.android && expoConfig.android.package
+            ? expoConfig.android.package
+            : 'com.anonymous.lifelog',
       },
       extra: {
         ...(expoConfig.extra || {}),
-        EXPO_PUBLIC_IS_EXPO_GO: process.env.EXPO_PUBLIC_IS_EXPO_GO || "false",
-        googleClientIdAndroid: "341732508688-o2qbbr16g2qh3e8niofee9iv4tl6krhb.apps.googleusercontent.com",
+        EXPO_PUBLIC_IS_EXPO_GO: process.env.EXPO_PUBLIC_IS_EXPO_GO || 'false',
+        googleClientIdAndroid:
+          '341732508688-o2qbbr16g2qh3e8niofee9iv4tl6krhb.apps.googleusercontent.com',
         eas: {
-          projectId: "a27bcb78-af2a-4ef8-adeb-7fae3e17731d"
-        }
-      }
-    }
+          projectId: 'a27bcb78-af2a-4ef8-adeb-7fae3e17731d',
+        },
+      },
+    },
   };
-  console.log("Config:", JSON.stringify(updatedConfig, null, 2));
+  console.log('Config:', JSON.stringify(updatedConfig, null, 2));
   return updatedConfig;
 };
