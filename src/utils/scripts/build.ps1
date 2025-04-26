@@ -1,5 +1,9 @@
 # build.ps1 (in src\utils\scripts\)
-
+#https://grok.com/chat/c08b2890-7511-4f92-a020-ac6487cf8184
+#search term:  Build.ps1 with Safety Prompt
+#adb install /home/kelseyp99/projects/LifeLog/build-1745596504143.apk
+#for now run it manually in wsl with:
+#    EXPO_NO_PREBUILD=1 EXPO_DEBUG=true npx eas build --platform android --profile production --local --non-interactive
 param (
     [switch]$Local,
     [switch]$Firebase,
@@ -22,7 +26,7 @@ $firebaseAppId = "1:341732508688:android:4a8c275e1199f4e1c0e8b4"
 $releaseNotes = "New build uploaded on $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
 $testers = "werkhardor@gmail.com"
 
-Set-Location -Path $projectQuestions?Dir
+Set-Location -Path $projectDir
 
 Write-Host "Current branch: $Branch"
 Write-Host "Committing and pushing changes..."
@@ -52,6 +56,42 @@ if (-not $platforms) {
 
 if ($Local -or $Production -or $CloudMain -or -not ($Local -or $Production -or $CloudMain)) {
     Write-Host "Initializing WSL with pull and build script for branch $Branch..."
+
+    # Compare WSL and PowerShell configs
+    Write-Host "Comparing WSL and PowerShell configs..."
+    $wslDir = "\\wsl$\Ubuntu\home\kelseyp99\projects\LifeLog"
+    $psDir = "C:\Users\philk\Projects2\LifeLog"
+    $files = @("app.json", "app.config.js", "eas.json", "package.json", "package-lock.json")
+
+    $differences = $false
+    foreach ($file in $files) {
+        $wslFile = Join-Path $wslDir $file
+        $psFile = Join-Path $psDir $file
+        if (Test-Path $wslFile -and Test-Path $psFile) {
+            $wslContent = Get-Content $wslFile -Raw
+            $psContent = Get-Content $psFile -Raw
+            if ($wslContent -ne $psContent) {
+                Write-Host "Difference detected in $file"
+                Write-Host "Run 'diff $wslFile $psFile' in WSL for details"
+                $differences = $true
+            }
+        } else {
+            Write-Host "File $file missing in one repository"
+            $differences = $true
+        }
+    }
+
+    if ($differences) {
+        Write-Host "Config differences found. Proceed with Build.ps1? This may affect WSL state. (Y/N)"
+        $response = Read-Host
+        if ($response -ne "Y") {
+            Write-Host "Build cancelled. Vet changes in WSL first."
+            exit 1
+        }
+    } else {
+        Write-Host "Configs match. Proceeding with Build.ps1."
+    }
+
     Write-Host "Generating build_and_distribute.sh in WSL..."
 
     $scriptContent = @'
