@@ -13,13 +13,21 @@
     },
     "android": {
       "package": "com.anonymous.lifelog",
-      "permissions": ["WRITE_EXTERNAL_STORAGE", "READ_EXTERNAL_STORAGE"],
+      "permissions": [],
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       }
     },
-    "plugins": ["expo-router"],
+    "plugins": [
+      "expo-router",
+      [
+        "realm",
+        {
+          "sync": false
+        }
+      ]
+    ],
     "web": {
       "bundler": "metro",
       "output": "static",
