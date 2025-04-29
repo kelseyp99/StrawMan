@@ -42,7 +42,6 @@ import {
 import Header from '../../src/components/Header';
 import InputField from '../../src/components/InputField';
 import ActionButtons from '../../src/components/ActionButtons';
-import HistoryList from '../../src/components/HistoryList';
 import SettingsButton from '../../src/components/SettingsButton';
 import { analyzeActivity, ModelAPIkey } from '../../src/services/openaiAPI';
 import Icon from 'react-native-vector-icons/MaterialIcons';
@@ -52,17 +51,10 @@ import { check, request, PERMISSIONS, RESULTS } from 'react-native-permissions';
 import { setUID } from '../../src/utils/uidManager';
 import * as FileSystem from 'expo-file-system';
 
-let captureRef: any;
-try {
-  captureRef = require('react-native-view-shot').captureRef;
-} catch (error) {
-  console.warn(
-    'react-native-view-shot not installed. PNG/JPG saving disabled.'
-  );
-}
+// Log application load
+console.log('LifeLog init:', new Date().toISOString());
 
-console.log('LifeLog loaded:', new Date());
-
+// Interfaces for data structures
 interface ActivityLog {
   id: string;
   discussionId: string;
@@ -84,6 +76,7 @@ interface Discussion {
   cleared?: boolean;
 }
 
+// API key loader component
 const IndexScreen: React.FC<{
   onApiKeyLoaded: (cachedApiKey: string | null) => void;
 }> = ({ onApiKeyLoaded }) => {
@@ -92,14 +85,11 @@ const IndexScreen: React.FC<{
   useEffect(() => {
     async function loadApiKey() {
       try {
-        const key = await getModelAPIkey('owner', 'name', 'model');
+        const key = await getModelAPIkey();
         onApiKeyLoaded(key?.apiKey || null);
-        console.log(
-          'API Key loaded:',
-          key ? `${key.apiKey.slice(0, 4)}...${key.apiKey.slice(-4)}` : 'None'
-        );
+        console.log('API Key:', key ? `${key.apiKey.slice(0, 4)}...` : 'None');
       } catch (error) {
-        console.error('Failed to load API Key:', error);
+        console.error('API Key err:', error);
         onApiKeyLoaded(null);
       } finally {
         setLoading(false);
@@ -112,7 +102,9 @@ const IndexScreen: React.FC<{
   return null;
 };
 
+// Main component
 export default function AskJanet() {
+  // State variables
   const [apiKey, setApiKey] = useState<string | null>(null);
   const [input, setInput] = useState('');
   const [isQuestion, setIsQuestion] = useState(false);
@@ -151,22 +143,23 @@ export default function AskJanet() {
     useState<string>('Downloads');
   const dialogRef = useRef<View>(null);
 
+  // Authentication state listener
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       if (user) {
         setUserEmail(user.email);
-        console.log('Logged in as:', user.email, 'UID:', user.uid);
+        console.log('User:', user.email, 'UID:', user.uid);
         setUID(user.uid);
         setTimeout(async () => {
           try {
             await initializeUser();
-            loadInitialData();
+            await loadInitialData();
           } catch (error) {
-            console.error('Error initializing user:', error);
+            console.error('Init err:', error);
           }
         }, 500);
       } else {
-        console.log('No user logged in, delaying navigation to login');
+        console.log('No user, to login');
         setTimeout(() => router.replace('/login'), 500);
       }
       setLoadingAuth(false);
@@ -174,20 +167,20 @@ export default function AskJanet() {
     return () => unsubscribe();
   }, [router]);
 
+  // Load initial Firestore data
   async function loadInitialData() {
     if (!auth.currentUser?.uid) {
-      console.error('Cannot load initial data: No UID available.');
+      console.error('No UID.');
       return;
     }
     try {
       const initialDiscussion = await fetchInitialDiscussion();
       if (initialDiscussion) {
-        console.log('✅ Fetched Initial Discussion:', initialDiscussion);
+        console.log('Discussion:', initialDiscussion);
         setDiscussion({
           id: initialDiscussion.id,
           discussionId: initialDiscussion.discussionId || initialDiscussion.id,
-          description:
-            initialDiscussion.description || 'No description available',
+          description: initialDiscussion.description || 'No description',
           timestamp: initialDiscussion.timestamp,
           typeSay: initialDiscussion.typeSay || 'ask',
           cleared: initialDiscussion.cleared || false,
@@ -197,110 +190,88 @@ export default function AskJanet() {
       const uid = auth.currentUser.uid;
       const q = query(collection(db, `Users/${uid}/DiscussionCounts`));
       const querySnapshot = await getDocs(q);
-      const countsPromises = querySnapshot.docs.map(
-        async (documentSnapshot) => {
-          const activityLogRef = doc(
-            db,
-            'ActivityLog',
-            documentSnapshot.data().activityLogId as string
-          );
-          const activityLogSnap = await getDoc(activityLogRef);
-          if (activityLogSnap.exists()) {
-            const activityLogData = activityLogSnap.data() as ActivityLog;
-            return {
-              discussionID: documentSnapshot.id,
-              activityLogId: documentSnapshot.data().activityLogId as string,
-              count: documentSnapshot.data().count as number,
-              description: activityLogData.description || 'No description',
-            };
-          }
-          return null;
+      const countsPromises = querySnapshot.docs.map(async (docSnapshot) => {
+        const activityLogRef = doc(
+          db,
+          'ActivityLog',
+          docSnapshot.data().activityLogId as string
+        );
+        const activityLogSnap = await getDoc(activityLogRef);
+        if (activityLogSnap.exists()) {
+          const activityLogData = activityLogSnap.data() as ActivityLog;
+          return {
+            discussionID: docSnapshot.id,
+            activityLogId: docSnapshot.data().activityLogId as string,
+            count: docSnapshot.data().count as number,
+            description: activityLogData.description || 'No description',
+          };
         }
-      );
+        return null;
+      });
 
       const counts = (await Promise.all(countsPromises))
-        .filter(
-          (
-            count
-          ): count is {
-            discussionID: string;
-            activityLogId: string;
-            count: number;
-            description: string;
-          } => count !== null
-        )
+        .filter((count): count is NonNullable<typeof count> => count !== null)
         .sort((a, b) => b.count - a.count);
       setDiscussionCounts(counts);
-      console.log('✅ Fetched DiscussionCounts:', counts);
+      console.log('Counts:', counts);
     } catch (error) {
-      console.error('Error loading initial data:', error);
+      console.error('Data err:', error);
     }
   }
 
+  // Initialize user
   async function initializeUser() {
-    // Placeholder for user initialization logic
-    console.log('Initializing user...');
+    console.log('User init...');
   }
 
+  // Sign out handler
   const handleSignOut = async () => {
     try {
       await signOut(auth);
-      console.log('User signed out');
+      console.log('Signed out');
       setMenuVisible(false);
-      setTimeout(() => router.replace('/login'), 500);
-    } catch (err: any) {
-      console.error('Sign-out Error:', err.message);
+      router.replace('/login');
+    } catch (error: any) {
+      console.error('Sign-out err:', error.message);
     }
   };
 
+  // Input change handler
   const handleInputChange = (text: string) => {
     setInput(text);
     setIsQuestion(/\b(what|when|how|why|does|is|can)\b/i.test(text));
     setInDJ_Mode(/\b(DJ mode|dj mode|Dj mode|DJ|dj)\b/i.test(text));
   };
 
+  // Fetch discussions
   async function fetchDiscussions() {
     const uid = auth.currentUser?.uid;
     if (!uid) {
-      console.error('User ID is null, cannot fetch discussions.');
+      console.error('No user ID.');
       return;
     }
 
-    console.log('Fetching next open discussion...');
+    console.log('Fetching discussion...');
     try {
       const { snapshot, hasMore } = await getNextOpenDiscussion();
       if (snapshot && !snapshot.empty) {
-        console.log(
-          '✅ Snapshot found with',
-          snapshot.docs.length,
-          'documents:',
-          snapshot.docs.map((doc) => doc.data())
-        );
+        console.log('Docs:', snapshot.docs.length);
         const docSnapshot = snapshot.docs[0];
         const discussionTyped: Discussion = {
           id: docSnapshot.id,
           discussionId: docSnapshot.data().id || docSnapshot.id,
-          description:
-            docSnapshot.data().description || 'No description available',
+          description: docSnapshot.data().description || 'No description',
           timestamp: docSnapshot.data().timestamp?.toDate() || new Date(),
           typeSay: docSnapshot.data().typeSay || 'ask',
           cleared: docSnapshot.data().cleared || false,
         };
-        console.log(
-          'Processing Discussion:',
-          discussionTyped,
-          'Description:',
-          discussionTyped.description
-        );
+        console.log('Process:', discussionTyped.description);
 
         if (
           processedDiscussions.includes(discussionTyped.id) ||
           discussionTyped.cleared
         ) {
-          console.log(
-            'Skipping processed or cleared discussion:',
-            discussionTyped.id
-          );
+          console.log('Skip:', discussionTyped.id);
           if (hasMore) fetchDiscussions();
           return;
         }
@@ -308,96 +279,90 @@ export default function AskJanet() {
         setProcessedDiscussions((prev) => [...prev, discussionTyped.id]);
 
         if (discussionTyped.typeSay === 'ask') {
-          console.log(
-            'Triggering dialog for ask discussion, setting question:',
-            discussionTyped.description
-          );
+          console.log('Dialog:', discussionTyped.description);
           try {
             const categories = await getDistinctCategories();
-            console.log('Categories fetched:', categories);
+            console.log('Cats:', categories);
             setDistinctCategories(categories);
-            setDialogQuestion(
-              discussionTyped.description || 'No question available'
-            );
+            setDialogQuestion(discussionTyped.description || 'No question');
             setCurrentDiscussion(discussionTyped);
             setSelectedCategories([]);
             setFilePath('');
             setDialogVisible(true);
           } catch (error) {
-            console.error('Error setting up dialog:', error);
-            setDialogQuestion('Error loading question');
+            console.error('Dialog err:', error);
+            setDialogQuestion('Error');
             setDialogVisible(false);
             setCurrentDiscussion(null);
             if (hasMore) fetchDiscussions();
           }
         } else {
-          console.log(
-            'Processing non-ask discussion:',
-            discussionTyped.description
-          );
+          console.log('Non-ask:', discussionTyped.description);
           if (apiKey) {
             try {
-              const distinctCategories = await getDistinctCategories();
+              const categories = await getDistinctCategories();
               const description = await expandFromAbbreviation(
                 discussionTyped.description
               );
-              const activityAnalysis = await analyzeActivity({
-                categories: distinctCategories,
+              const analysis = await analyzeActivity({
+                categories,
                 description,
               });
               await addOrUpdateGPTResponse(
                 discussionTyped.id,
-                JSON.stringify(activityAnalysis),
+                JSON.stringify(analysis),
                 'updateDB'
               );
             } catch (error) {
-              console.error('Error analyzing non-ask discussion:', error);
+              console.error('Analysis err:', error);
             }
           } else {
-            console.warn('Skipping OpenAI analysis due to missing API key.');
+            console.warn('No API key.');
           }
-          console.log('Clearing non-ask discussion:', discussionTyped.id);
+          console.log('Clear:', discussionTyped.id);
           try {
             await clearDiscussion(discussionTyped.id);
             await processUnclearedGPTResponses();
             if (hasMore) fetchDiscussions();
           } catch (error) {
-            console.error('Error clearing non-ask discussion:', error);
+            console.error('Clear err:', error);
             if (hasMore) fetchDiscussions();
           }
         }
       } else {
-        console.log('No open discussions found.');
+        console.log('No discussions.');
       }
     } catch (error) {
-      console.error('Error fetching discussions:', error);
+      console.error('Fetch err:', error);
     }
   }
 
+  // Check unique ActivityLog
   const checkUniqueActivityLog = async (
     discussionId: string,
     category: string,
     description: string
   ) => {
     try {
-      const activityLogQuery = query(
+      const q = query(
         collection(db, 'ActivityLog'),
         where('discussionId', '==', discussionId),
         where('category', '==', category),
         where('description', '==', description)
       );
-      const activityLogSnapshot = await getDocs(activityLogQuery);
-      return activityLogSnapshot.empty; // True if unique, false if duplicate
+      const snapshot = await getDocs(q);
+      return snapshot.empty;
     } catch (error) {
-      console.error('Error checking unique Activity Log:', error);
+      console.error('Unique err:', error);
       return false;
     }
   };
 
+  // Add ActivityLog
   const handleAddActivityLog = async () => {
     if (!currentDiscussion || !auth.currentUser?.uid) {
-      console.error('No current discussion or user for adding Activity Log.');
-      Alert.alert('Error', 'No discussion or user available for adding.');
+      console.error('No discussion/user.');
+      Alert.alert('Error', 'No discussion/user.');
       return;
     }
 
@@ -412,10 +377,7 @@ export default function AskJanet() {
         description
       );
       if (!isUnique) {
-        Alert.alert(
-          'Error',
-          'An Activity Log entry with this discussion ID, category, and description already exists.'
-        );
+        Alert.alert('Error', 'Duplicate.');
         return;
       }
 
@@ -429,56 +391,54 @@ export default function AskJanet() {
         cleared: false,
         uid: auth.currentUser.uid,
       });
-      console.log('Activity Log added:', activityLogDoc.id);
-      Alert.alert('Success', 'Activity Log entry added.');
+      console.log('Added:', activityLogDoc.id);
+      Alert.alert('Success', 'Added.');
       setDialogVisible(false);
       setCurrentDiscussion(null);
       fetchDiscussions();
     } catch (error) {
-      console.error('Error adding Activity Log:', error);
-      Alert.alert('Error', 'Failed to add Activity Log entry.');
+      console.error('Add err:', error);
+      Alert.alert('Error', 'Failed.');
     }
   };
 
+  // Delete ActivityLog
   const handleDeleteActivityLog = async () => {
     if (!currentDiscussion) {
-      console.error('No current discussion for deleting Activity Log.');
-      Alert.alert('Error', 'No discussion available for deletion.');
+      console.error('No discussion.');
+      Alert.alert('Error', 'No discussion.');
       return;
     }
 
     try {
-      const activityLogQuery = query(
+      const q = query(
         collection(db, 'ActivityLog'),
         where('discussionId', '==', currentDiscussion.id)
       );
-      const activityLogSnapshot = await getDocs(activityLogQuery);
-      if (!activityLogSnapshot.empty) {
-        const activityLogDoc = activityLogSnapshot.docs[0];
-        await deleteDoc(doc(db, 'ActivityLog', activityLogDoc.id));
-        console.log('Activity Log deleted:', activityLogDoc.id);
-        Alert.alert('Success', 'Activity Log entry deleted.');
+      const snapshot = await getDocs(q);
+      if (!snapshot.empty) {
+        const docRef = doc(db, 'ActivityLog', snapshot.docs[0].id);
+        await deleteDoc(docRef);
+        console.log('Deleted:', snapshot.docs[0].id);
+        Alert.alert('Success', 'Deleted.');
       } else {
-        console.log(
-          'No Activity Log found for discussion:',
-          currentDiscussion.id
-        );
-        Alert.alert('Info', 'No Activity Log entry found to delete.');
+        console.log('No entry:', currentDiscussion.id);
+        Alert.alert('Info', 'No entry.');
       }
       setDialogVisible(false);
       setCurrentDiscussion(null);
       fetchDiscussions();
     } catch (error) {
-      console.error('Error deleting Activity Log:', error);
-      Alert.alert('Error', 'Failed to delete Activity Log entry.');
+      console.error('Delete err:', error);
+      Alert.alert('Error', 'Failed.');
     }
   };
 
-  // Function to prompt user for destination folder
+  // Select save folder
   const selectDestinationFolder = (
     callback: (folder: string) => Promise<void>
   ) => {
-    Alert.alert('Select Destination Folder', 'Choose where to save the file:', [
+    Alert.alert('Select Folder', 'Choose save location:', [
       {
         text: 'Downloads',
         onPress: async () => {
@@ -498,7 +458,7 @@ export default function AskJanet() {
         onPress: () => {
           Alert.prompt(
             'Custom Folder',
-            "Enter folder name (will be created in app's external storage):",
+            'Enter folder name:',
             async (folderName) => {
               if (folderName) {
                 setDestinationFolder(folderName);
@@ -512,234 +472,150 @@ export default function AskJanet() {
     ]);
   };
 
+  // Save text file
   const handleSaveTxt = async () => {
     if (!currentDiscussion) {
-      console.error('No current discussion for saving TXT.');
-      setFilePath('Error: No discussion available');
-      Alert.alert('Error', 'No discussion available for saving.');
+      console.error('No discussion.');
+      setFilePath('Error');
+      Alert.alert('Error', 'No discussion.');
       return;
     }
 
-    try {
-      const fileName = `question_${currentDiscussion.id}_${Date.now()}.txt`;
-      const content = `Question: ${dialogQuestion}\nSelected Categories: ${
-        selectedCategories.length > 0 ? selectedCategories.join(', ') : 'None'
-      }\nActivityLog Description: ${await getActivityLogDescription()}`;
-      const path = `${FileSystem.documentDirectory}${fileName}`;
-      await RNFS.writeFile(path, content, 'utf8');
-      //await FileSystem.writeAsStringAsync(path, content);
-      console.log('Text file saved at:', path);
-
-      setFilePath(path);
-      Clipboard.setString(`Question: ${dialogQuestion}\nFile Path: ${path}`);
-      Alert.alert(
-        'Success',
-        `Text file saved to app storage: ${path}\nPath copied to clipboard. Use a file explorer to access.`
-      );
-    } catch (error) {
-      console.error('Error saving TXT:', error);
-      setFilePath('Error saving TXT file');
-      Alert.alert('Error', `Failed to save TXT: ${error.message}`);
-    }
-
-    // Padding to maintain exact line count of 1093 lines
-    // The original handleSaveTxt function included a nested saveTxt function
-    // and permissions logic that spanned approximately 94 lines. The new
-    // function is shorter, so these comments ensure the file remains exactly
-    // 1093 lines to match your working version.
-    // This padding preserves the rendering behavior of the app.
-    // Do not remove these comments unless you intend to adjust the line count.
-    // Additional padding lines follow to compensate for the difference.
-    //
-    //
-    //
-    //
-    //
-    //
-    //
-    //
-    //
-    //
-    //
-    //
-    //
-    //
-    //
-    //
-    //
-    //
-    //
-    //
-    //
-    //
-    //
-    //
-    //
-    //
-    //
-    //
-    //
-    //
-    //
-    //
-    //
-    //
-    //
-    //
-    //
-    //
-    //
-    //
-    //
-    //
-    //
-    //
-    //
-    //
-    //
-    //
-    //
-    //
-    //
-    //
-    //
-    //
-    //
-    //
-    //
-    //
-    //
-    //
-  };
-
-  const handleSaveImage = async (format: 'jpg' | 'png') => {
-    if (!dialogRef.current || !currentDiscussion) {
-      console.error('No dialog ref or discussion for saving image.');
-      setFilePath('Error: No dialog available');
-      Alert.alert(
-        'Error',
-        `Cannot save as ${format.toUpperCase()}: No dialog or discussion available.`
-      );
-      return;
-    }
-    if (!captureRef) {
-      console.error(
-        `react-native-view-shot not installed for ${format.toUpperCase()} saving.`
-      );
-      Alert.alert(
-        'Error',
-        `Cannot save as ${format.toUpperCase()}: react-native-view-shot is not installed. Run 'npm install react-native-view-shot' and rebuild.`
-      );
-      return;
-    }
-
-    const saveImage = async (folder: string) => {
+    const saveFile = async (folder: string) => {
       try {
         // Request storage permission
         const permission =
           Platform.OS === 'android'
             ? PERMISSIONS.ANDROID.WRITE_EXTERNAL_STORAGE
-            : PERMISSIONS.IOS.PHOTO_LIBRARY;
-        const result = await check(permission);
-        if (result !== RESULTS.GRANTED) {
-          const requestResult = await request(permission);
-          if (requestResult !== RESULTS.GRANTED) {
-            throw new Error('Storage permission denied');
+            : null;
+        let permissionGranted = true;
+        if (permission) {
+          const result = await check(permission);
+          console.log('Permission check:', result);
+          if (result !== RESULTS.GRANTED) {
+            const requestResult = await request(permission);
+            console.log('Permission request:', requestResult);
+            if (requestResult !== RESULTS.GRANTED) {
+              permissionGranted = false;
+              console.warn('Storage permission denied.');
+            }
           }
         }
 
-        // Capture image
-        const uri = await captureRef(dialogRef.current, {
-          format,
-          quality: 0.8,
-        });
-        const fileName = `question_${
-          currentDiscussion.id
-        }_${Date.now()}.${format}`;
-        let galleryPath: string;
+        const fileName = `question_${currentDiscussion.id}_${Date.now()}.txt`;
+        const content = `Question: ${dialogQuestion}\nCategories: ${
+          selectedCategories.length > 0 ? selectedCategories.join(', ') : 'None'
+        }\nDescription: ${await getActivityLogDescription()}`;
+        const tempPath = `${FileSystem.documentDirectory}${fileName}`;
 
+        // Write to temporary file
+        await FileSystem.writeAsStringAsync(tempPath, content);
+        console.log('Temp saved:', tempPath);
+
+        if (
+          !permissionGranted ||
+          (Platform.OS === 'android' && Platform.Version >= 30)
+        ) {
+          // Fallback to app storage for Android 11+ or denied permissions
+          setFilePath(tempPath);
+          Clipboard.setString(`Question: ${dialogQuestion}\nPath: ${tempPath}`);
+          Alert.alert(
+            'Saved',
+            `Saved to app storage due to Android storage restrictions: ${tempPath}\nPath copied to clipboard. To save to Downloads, update the app with legacy storage enabled (see settings or contact support).`
+          );
+          return;
+        }
+
+        // Determine destination path
+        let destPath: string;
         if (folder === 'Downloads') {
-          galleryPath = `${RNFS.DownloadDirectoryPath}/${fileName}`;
+          destPath = `${RNFS.DownloadDirectoryPath}/${fileName}`;
         } else if (folder === 'Pictures') {
-          galleryPath = `${RNFS.PicturesDirectoryPath}/${fileName}`;
+          destPath = `${RNFS.PicturesDirectoryPath}/${fileName}`;
         } else {
-          galleryPath = `${RNFS.ExternalDirectoryPath}/${folder}/${fileName}`;
+          destPath = `${RNFS.ExternalDirectoryPath}/${folder}/${fileName}`;
           await RNFS.mkdir(`${RNFS.ExternalDirectoryPath}/${folder}`);
         }
 
-        // Move file
-        await RNFS.moveFile(uri, galleryPath);
-        console.log(`${format.toUpperCase()} saved at:`, galleryPath);
-        setFilePath(galleryPath);
-        Clipboard.setString(
-          `Question: ${dialogQuestion}\nFile Path: ${galleryPath}`
-        );
-        console.log('Copied to clipboard:', galleryPath);
-        await RNFS.scanFile(galleryPath);
-        console.log(`${format.toUpperCase()} added to gallery`);
+        // Try moving file to destination
+        try {
+          await RNFS.moveFile(tempPath, destPath);
+          console.log('Saved:', destPath);
+        } catch (moveError) {
+          console.warn(
+            'Initial move failed, retrying with alternative path:',
+            moveError
+          );
+          // Retry with alternative path
+          destPath = `${RNFS.ExternalStorageDirectoryPath}/Download/${fileName}`;
+          await RNFS.mkdir(`${RNFS.ExternalStorageDirectoryPath}/Download`);
+          await RNFS.moveFile(tempPath, destPath);
+          console.log('Saved after retry:', destPath);
+        }
+
+        setFilePath(destPath);
+        Clipboard.setString(`Question: ${dialogQuestion}\nPath: ${destPath}`);
         Alert.alert(
           'Success',
-          `${format.toUpperCase()} saved to ${galleryPath}`
+          `Saved to ${folder} as ${fileName}\nPath copied to clipboard.`
         );
-      } catch (error) {
-        console.error(`Error redeeming ${format.toUpperCase()}:`, error);
-        setFilePath(`Error saving ${format.toUpperCase()} file`);
-        // Fallback to DocumentDirectoryPath
+
+        // Clean up temp file
         try {
-          const fallbackPath = `${RNFS.DocumentDirectoryPath}/${fileName}`;
-          const uri = await captureRef(dialogRef.current, {
-            format,
-            quality: 0.8,
-          });
-          await RNFS.moveFile(uri, fallbackPath);
-          console.log(
-            `${format.toUpperCase()} saved at fallback:`,
-            fallbackPath
-          );
-          setFilePath(fallbackPath);
-          Clipboard.setString(
-            `Question: ${dialogQuestion}\nFile Path: ${fallbackPath}`
-          );
-          Alert.alert(
-            'Success',
-            `${format.toUpperCase()} saved to fallback ${fallbackPath}`
-          );
-        } catch (fallbackError) {
-          console.error(
-            `Error saving ${format.toUpperCase()} to fallback:`,
-            fallbackError
-          );
-          setFilePath(`Error saving ${format.toUpperCase()} file`);
+          await FileSystem.deleteAsync(tempPath);
+        } catch (e) {
+          console.warn('Temp cleanup failed:', e);
+        }
+      } catch (error) {
+        console.error('Save TXT err:', error);
+        // Fallback to app storage
+        try {
+          await FileSystem.writeAsStringAsync(tempPath, content);
+          setFilePath(tempPath);
+          Clipboard.setString(`Question: ${dialogQuestion}\nPath: ${tempPath}`);
           Alert.alert(
             'Error',
-            `Failed to save as ${format.toUpperCase()}: ${error}`
+            `Failed to save to ${folder}. Saved to app storage: ${tempPath}\nPath copied. To save to Downloads, update the app with legacy storage enabled (see settings or contact support).`
           );
+        } catch (fallbackError) {
+          console.error('Fallback save err:', fallbackError);
+          setFilePath('Error');
+          Alert.alert('Error', `Failed to save: ${error.message}`);
         }
       }
     };
 
-    selectDestinationFolder(saveImage);
+    // Prompt for folder selection
+    selectDestinationFolder(saveFile);
   };
 
+  // Save image (disabled)
+  const handleSaveImage = async (format: 'jpg' | 'png') => {
+    Alert.alert(
+      'Error',
+      `Image saving (${format.toUpperCase()}) is disabled in this version.`
+    );
+  };
+
+  // Get ActivityLog description
   async function getActivityLogDescription() {
     try {
-      if (!currentDiscussion) return 'No ActivityLog description available';
-      const activityLogSnapshot = await getDocs(collection(db, 'ActivityLog'));
-      const relatedLog = activityLogSnapshot.docs.find(
+      if (!currentDiscussion) return 'None';
+      const snapshot = await getDocs(collection(db, 'ActivityLog'));
+      const relatedLog = snapshot.docs.find(
         (doc) => doc.data().discussionId === currentDiscussion.id
       );
-      return relatedLog
-        ? relatedLog.data().description || 'No description'
-        : 'No ActivityLog description available';
+      return relatedLog ? relatedLog.data().description || 'None' : 'None';
     } catch (error) {
-      console.error('Error fetching ActivityLog:', error);
-      return 'No ActivityLog description available';
+      console.error('Desc err:', error);
+      return 'None';
     }
   }
 
+  // Confirm dialog
   const handleDialogConfirm = async () => {
     if (!currentDiscussion) {
-      console.error('No current discussion set.');
+      console.error('No discussion.');
       setDialogVisible(false);
       setCurrentDiscussion(null);
       fetchDiscussions();
@@ -747,18 +623,14 @@ export default function AskJanet() {
     }
 
     try {
-      console.log('Confirming dialog for discussion:', currentDiscussion.id);
-      // Check unique key before proceeding
+      console.log('Confirm:', currentDiscussion.id);
       const isUnique = await checkUniqueActivityLog(
         currentDiscussion.id,
         selectedCategories.join(', ') || 'uncategorized',
         dialogQuestion || 'No question'
       );
       if (!isUnique) {
-        Alert.alert(
-          'Error',
-          'An Activity Log entry with this discussion ID, category, and description already exists.'
-        );
+        Alert.alert('Error', 'Duplicate.');
         return;
       }
 
@@ -770,7 +642,7 @@ export default function AskJanet() {
         currentDiscussion.id,
         gptResponseId
       );
-      console.log('Clearing discussion:', currentDiscussion.id);
+      console.log('Clear:', currentDiscussion.id);
       const cleared = await clearDiscussion(currentDiscussion.id);
 
       if (cleared && parsedResponses) {
@@ -786,16 +658,15 @@ export default function AskJanet() {
           })),
         ]);
         setResponses(newResponses);
-        console.log('Setting responses:', newResponses);
+        console.log('Resp:', newResponses);
       }
 
-      console.log('Closing dialog and fetching next discussion.');
       setDialogVisible(false);
       setCurrentDiscussion(null);
       setResponses([]);
-      fetchDiscussions();
+      Saad(fetchDiscussions());
     } catch (error) {
-      console.error('Error in dialog confirmation:', error);
+      console.error('Confirm err:', error);
       setDialogVisible(false);
       setCurrentDiscussion(null);
       setResponses([]);
@@ -803,19 +674,15 @@ export default function AskJanet() {
     }
   };
 
+  // Cancel dialog
   const handleDialogCancel = async () => {
     if (currentDiscussion) {
-      console.log(
-        'Canceling dialog, clearing discussion:',
-        currentDiscussion.id
-      );
+      console.log('Cancel:', currentDiscussion.id);
       try {
         await clearDiscussion(currentDiscussion.id);
       } catch (error) {
-        console.error('Error clearing discussion on cancel:', error);
+        console.error('Cancel err:', error);
       }
-    } else {
-      console.log('No current discussion to clear.');
     }
     setDialogVisible(false);
     setCurrentDiscussion(null);
@@ -823,6 +690,7 @@ export default function AskJanet() {
     fetchDiscussions();
   };
 
+  // Toggle category
   const toggleCategory = (category: string) => {
     setSelectedCategories((prev) =>
       prev.includes(category)
@@ -831,26 +699,102 @@ export default function AskJanet() {
     );
   };
 
+  // Check for existing discussion
+  const findExistingDiscussion = async (description: string, uid: string) => {
+    try {
+      console.log('Searching for existing discussion:', description);
+      const q = query(
+        collection(db, `Users/${uid}/Discussions`),
+        where('description', '==', description),
+        where('typeSay', '==', 'ask')
+      );
+      const snapshot = await getDocs(q);
+      if (!snapshot.empty) {
+        const doc = snapshot.docs[0];
+        console.log('Found existing discussion ID:', doc.id);
+        return {
+          id: doc.id,
+          ...doc.data(),
+        } as Discussion;
+      }
+      console.log('No existing discussion found for:', description);
+      return null;
+    } catch (error) {
+      console.error('Error checking existing discussion:', error);
+      return null;
+    }
+  };
+
+  // Handle resubmitting a previous question
+  const handleResubmitQuestion = async (question: string) => {
+    console.log('Resubmitting question:', question);
+    const uid = auth.currentUser?.uid;
+    if (!uid) {
+      console.error('No user ID for resubmission.');
+      return;
+    }
+
+    // Check for existing discussion
+    const existingDiscussion = await findExistingDiscussion(question, uid);
+    if (existingDiscussion) {
+      console.log('Reusing existing discussion:', existingDiscussion.id);
+      // Update timestamp and ensure cleared is false
+      try {
+        await setDoc(
+          doc(db, `Users/${uid}/Discussions`, existingDiscussion.id),
+          {
+            ...existingDiscussion,
+            timestamp: new Date(),
+            cleared: false,
+          },
+          { merge: true }
+        );
+        console.log('Updated existing discussion:', existingDiscussion.id);
+        setInput(question);
+        setIsQuestion(true);
+        setDialogQuestion(question);
+        setCurrentDiscussion(existingDiscussion);
+        setDialogVisible(true);
+      } catch (error) {
+        console.error('Error updating existing discussion:', error);
+        Alert.alert('Error', 'Failed to resubmit question.');
+      }
+    } else {
+      // No existing discussion, proceed with new submission
+      console.log('No existing discussion, creating new one for:', question);
+      handleInputChange(question);
+      handleSubmit();
+    }
+  };
+
+  // Submit input
   const handleSubmit = async () => {
     try {
       const currentInput = input.trim();
-      if (currentInput === '') return;
+      if (!currentInput) {
+        console.log('No input to submit');
+        return;
+      }
 
-      console.log('Submitting input:', currentInput);
+      console.log('Submitting:', currentInput);
       const transformedInput = transformInput(currentInput);
       const newEntry = {
         text: transformedInput,
         type: isQuestion ? 'question' : 'fact',
       };
-      setHistory((prev) => [...prev, newEntry]);
+      setHistory((prev) => {
+        console.log('Adding to history:', newEntry);
+        return [...prev, newEntry];
+      });
 
-      await addOrUpdateDiscussion(
+      const discussionId = await addOrUpdateDiscussion(
         transformedInput,
         isQuestion ? 'ask' : 'tell'
       );
+      console.log('Discussion saved with ID:', discussionId || 'undefined');
       setInput('');
       fetchDiscussions();
-      console.log('Input processed:', transformedInput);
+      console.log('Submission complete:', transformedInput);
 
       if (isQuestion) {
         const aiResponse =
@@ -867,28 +811,63 @@ export default function AskJanet() {
         );
       }
     } catch (error: any) {
-      console.error('Error in handleSubmit:', error);
+      console.error('Submit err:', error);
     }
   };
 
+  // Toggle menu
   const toggleMenu = () => setMenuVisible(!menuVisible);
 
+  // Loading state
   if (loadingAuth) return <ActivityIndicator size="large" color="#0000ff" />;
 
+  // Render UI
   return (
-    <View
-      style={{
-        flex: 1,
-        backgroundColor: '#f5f5f5',
-        padding: 20,
-        width: '100%',
-      }}
-    >
+    <View style={styles.container}>
       <IndexScreen onApiKeyLoaded={setApiKey} />
       <Header />
       <InputField input={input} onChange={handleInputChange} />
       <ActionButtons isQuestion={isQuestion} onSubmit={handleSubmit} />
-      <HistoryList history={history} />
+      <FlatList
+        data={history}
+        keyExtractor={(item, index) => `${item.text}-${index}`}
+        renderItem={({ item }) => (
+          <TouchableOpacity
+            style={[
+              styles.historyItem,
+              item.type === 'question' ? styles.questionItem : styles.factItem,
+            ]}
+            onPress={() => {
+              console.log(
+                'FlatList: Pressed item:',
+                item.text,
+                'Type:',
+                item.type
+              );
+              if (item.type === 'question') {
+                handleResubmitQuestion(item.text);
+              } else {
+                console.log('FlatList: Ignoring click: Not a question');
+              }
+            }}
+            disabled={item.type !== 'question'}
+          >
+            <Text
+              style={[
+                styles.historyText,
+                item.type === 'question'
+                  ? styles.questionText
+                  : styles.factText,
+              ]}
+            >
+              {item.text}
+            </Text>
+            {item.aiResponse && (
+              <Text style={styles.aiResponse}>{item.aiResponse}</Text>
+            )}
+          </TouchableOpacity>
+        )}
+      />
       <View style={styles.bottomContainer}>
         <Pressable onPress={toggleMenu} style={styles.hamburger}>
           <Icon name="menu" size={24} color="#333" />
@@ -897,43 +876,36 @@ export default function AskJanet() {
       </View>
       <Modal
         visible={menuVisible}
-        transparent={true}
+        transparent
         animationType="slide"
         onRequestClose={toggleMenu}
       >
         <View style={styles.modalOverlay}>
           <View style={styles.menu}>
+            <Text style={styles.menuItem}>User: {userEmail || 'Loading'}</Text>
             <Text style={styles.menuItem}>
-              Logged in as: {userEmail || 'Loading...'}
-            </Text>
-            <Text style={styles.menuItem}>
-              Stored API Key:{' '}
-              {apiKey
-                ? `${apiKey.slice(0, 4)}...${apiKey.slice(-4)}`
-                : 'No API key found'}
+              Key: {apiKey ? `${apiKey.slice(0, 4)}...` : 'None'}
             </Text>
             <Pressable onPress={handleSignOut} style={styles.menuButton}>
               <Text style={styles.menuButtonText}>Sign Out</Text>
             </Pressable>
             <Pressable onPress={toggleMenu} style={styles.menuButton}>
-              <Text style={styles.menuButtonText}>Close Menu</Text>
+              <Text style={styles.menuButtonText}>Close</Text>
             </Pressable>
           </View>
         </View>
       </Modal>
       <Modal
         visible={dialogVisible}
-        transparent={true}
+        transparent
         animationType="slide"
         onRequestClose={handleDialogCancel}
       >
         <View style={styles.modalOverlay}>
           <View ref={dialogRef} style={styles.dialogContainer}>
-            <Text style={styles.modalTitle}>Question Details</Text>
-            <Text style={styles.modalLabel}>
-              Question: {dialogQuestion || 'No question available'}
-            </Text>
-            <Text style={styles.modalLabel}>Select Categories:</Text>
+            <Text style={styles.modalTitle}>Details</Text>
+            <Text style={styles.modalLabel}>Q: {dialogQuestion || 'None'}</Text>
+            <Text style={styles.modalLabel}>Cats:</Text>
             <FlatList
               data={distinctCategories}
               keyExtractor={(item) => item}
@@ -947,27 +919,25 @@ export default function AskJanet() {
                 </TouchableOpacity>
               )}
             />
-            <Text style={styles.modalLabel}>
-              Saved File: {filePath || 'No file saved yet'}
-            </Text>
+            <Text style={styles.modalLabel}>File: {filePath || 'None'}</Text>
             <View style={styles.saveButtons}>
               <TouchableOpacity
                 style={styles.saveButton}
                 onPress={handleSaveTxt}
               >
-                <Text style={styles.saveButtonText}>Save as TXT</Text>
+                <Text style={styles.saveButtonText}>TXT</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.saveButton}
                 onPress={() => handleSaveImage('png')}
               >
-                <Text style={styles.saveButtonText}>Save as PNG</Text>
+                <Text style={styles.saveButtonText}>PNG</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.saveButton}
                 onPress={() => handleSaveImage('jpg')}
               >
-                <Text style={styles.saveButtonText}>Save as JPG</Text>
+                <Text style={styles.saveButtonText}>JPG</Text>
               </TouchableOpacity>
             </View>
             <View style={styles.modalButtons}>
@@ -1003,7 +973,14 @@ export default function AskJanet() {
   );
 }
 
+// Styles
 const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#f5f5f5',
+    padding: 20,
+    width: '100%',
+  },
   bottomContainer: {
     width: '100%',
     flexDirection: 'row',
@@ -1015,8 +992,12 @@ const styles = StyleSheet.create({
     left: 0,
     backgroundColor: '#f5f5f5',
   },
-  hamburger: { padding: 10 },
-  settingsButton: { marginRight: 10 },
+  hamburger: {
+    padding: 10,
+  },
+  settingsButton: {
+    marginRight: 10,
+  },
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
@@ -1029,7 +1010,11 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 10,
     width: '100%',
   },
-  menuItem: { fontSize: 16, marginBottom: 10, color: '#333' },
+  menuItem: {
+    fontSize: 16,
+    marginBottom: 10,
+    color: '#333',
+  },
   menuButton: {
     paddingVertical: 10,
     backgroundColor: '#007AFF',
@@ -1037,7 +1022,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginTop: 10,
   },
-  menuButtonText: { color: '#fff', fontSize: 16, fontWeight: '600' },
+  menuButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
   dialogContainer: {
     backgroundColor: '#fff',
     padding: 20,
@@ -1046,8 +1035,16 @@ const styles = StyleSheet.create({
     width: '100%',
     maxHeight: '80%',
   },
-  modalTitle: { fontSize: 18, fontWeight: 'bold', marginBottom: 10 },
-  modalLabel: { fontSize: 16, marginBottom: 10, color: '#333' },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 10,
+  },
+  modalLabel: {
+    fontSize: 16,
+    marginBottom: 10,
+    color: '#333',
+  },
   categoryItem: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -1055,7 +1052,9 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#ccc',
   },
-  categoryText: { fontSize: 16 },
+  categoryText: {
+    fontSize: 16,
+  },
   modalButtons: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -1066,13 +1065,22 @@ const styles = StyleSheet.create({
     padding: 10,
     borderRadius: 5,
     backgroundColor: '#ddd',
-    width: '22%', // Adjusted for four buttons
+    width: '22%',
     alignItems: 'center',
   },
-  confirmButton: { backgroundColor: '#007bff' },
-  deleteButton: { backgroundColor: '#dc3545' },
-  addButton: { backgroundColor: '#28a745' },
-  modalButtonText: { color: '#fff', fontWeight: 'bold' },
+  confirmButton: {
+    backgroundColor: '#007bff',
+  },
+  deleteButton: {
+    backgroundColor: '#dc3545',
+  },
+  addButton: {
+    backgroundColor: '#28a745',
+  },
+  modalButtonText: {
+    color: '#fff',
+    fontWeight: 'bold',
+  },
   saveButtons: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -1087,5 +1095,37 @@ const styles = StyleSheet.create({
     width: '30%',
     alignItems: 'center',
   },
-  saveButtonText: { color: '#fff', fontSize: 14, fontWeight: '600' },
+  saveButtonText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  historyItem: {
+    padding: 10,
+    marginVertical: 5,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#ccc',
+  },
+  questionItem: {
+    backgroundColor: 'rgba(0, 122, 255, 0.1)', // Light blue background for questions
+  },
+  factItem: {
+    backgroundColor: 'rgba(40, 167, 69, 0.1)', // Light green background for facts
+  },
+  historyText: {
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  questionText: {
+    color: '#007AFF', // Blue for questions
+  },
+  factText: {
+    color: '#28A745', // Green for facts
+  },
+  aiResponse: {
+    fontSize: 14,
+    color: '#666',
+    marginTop: 5,
+  },
 });

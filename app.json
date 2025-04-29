@@ -13,7 +13,7 @@
     },
     "android": {
       "package": "com.anonymous.lifelog",
-      "permissions": [],
+      "permissions": ["android.permission.WRITE_EXTERNAL_STORAGE"],
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#ffffff"
