@@ -1,8 +1,8 @@
 # build.ps1 (in src\utils\scripts\)
-#https://grok.com/chat/c08b2890-7511-4f92-a020-ac6487cf8184
-#search term:  Build.ps1 with Safety Prompt
-#adb install /home/kelseyp99/projects/LifeLog/build-1745596504143.apk
-#for now run it manually in wsl with:
+# https://grok.com/chat/c08b2890-7511-4f92-a020-ac6487cf8184
+# search term: Build.ps1 with Safety Prompt
+# adb install /home/kelseyp99/projects/LifeLog/build-1745596504143.apk
+# for now run it manually in wsl with:
 #    EXPO_NO_PREBUILD=1 EXPO_DEBUG=true npx eas build --platform android --profile production --local --non-interactive
 param (
     [switch]$Local,
