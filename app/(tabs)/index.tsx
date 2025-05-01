@@ -9,7 +9,6 @@ import {
   FlatList,
   TouchableOpacity,
   Alert,
-  Platform,
 } from 'react-native';
 import { auth } from '../../src/firebaseConfig';
 import { signOut, onAuthStateChanged } from 'firebase/auth';
@@ -19,13 +18,9 @@ import {
   disperseQuestion,
   addQuestionDiscussion,
   addOrUpdateDiscussion,
-  addOrUpdateGPTResponse,
   getDistinctCategories,
-  expandFromAbbreviation,
-  processUnclearedGPTResponses,
   getNextOpenDiscussion,
   fetchInitialDiscussion,
-  clearDiscussion,
 } from '../../src/services/databaseService';
 import { transformInput } from '../../src/services/phraseProcessor';
 import { db } from '../../src/firebaseConfig';
@@ -43,11 +38,8 @@ import Header from '../../src/components/Header';
 import InputField from '../../src/components/InputField';
 import ActionButtons from '../../src/components/ActionButtons';
 import SettingsButton from '../../src/components/SettingsButton';
-import { analyzeActivity, ModelAPIkey } from '../../src/services/openaiAPI';
 import Icon from 'react-native-vector-icons/MaterialIcons';
-import RNFS from 'react-native-fs';
 import Clipboard from '@react-native-clipboard/clipboard';
-import { check, request, PERMISSIONS, RESULTS } from 'react-native-permissions';
 import { setUID } from '../../src/utils/uidManager';
 import * as FileSystem from 'expo-file-system';
 
@@ -139,8 +131,6 @@ export default function AskJanet() {
   const [processedDiscussions, setProcessedDiscussions] = useState<string[]>(
     []
   );
-  const [destinationFolder, setDestinationFolder] =
-    useState<string>('Downloads');
   const dialogRef = useRef<View>(null);
 
   // Authentication state listener
@@ -278,62 +268,29 @@ export default function AskJanet() {
 
         setProcessedDiscussions((prev) => [...prev, discussionTyped.id]);
 
-        if (discussionTyped.typeSay === 'ask') {
-          console.log('Dialog:', discussionTyped.description);
-          try {
-            const categories = await getDistinctCategories();
-            console.log('Cats:', categories);
-            setDistinctCategories(categories);
-            setDialogQuestion(discussionTyped.description || 'No question');
-            setCurrentDiscussion(discussionTyped);
-            setSelectedCategories([]);
-            setFilePath('');
-            setDialogVisible(true);
-          } catch (error) {
-            console.error('Dialog err:', error);
-            setDialogQuestion('Error');
-            setDialogVisible(false);
-            setCurrentDiscussion(null);
-            if (hasMore) fetchDiscussions();
-          }
-        } else {
-          console.log('Non-ask:', discussionTyped.description);
-          if (apiKey) {
-            try {
-              const categories = await getDistinctCategories();
-              const description = await expandFromAbbreviation(
-                discussionTyped.description
-              );
-              const analysis = await analyzeActivity({
-                categories,
-                description,
-              });
-              await addOrUpdateGPTResponse(
-                discussionTyped.id,
-                JSON.stringify(analysis),
-                'updateDB'
-              );
-            } catch (error) {
-              console.error('Analysis err:', error);
-            }
-          } else {
-            console.warn('No API key.');
-          }
-          console.log('Clear:', discussionTyped.id);
-          try {
-            await clearDiscussion(discussionTyped.id);
-            await processUnclearedGPTResponses();
-            if (hasMore) fetchDiscussions();
-          } catch (error) {
-            console.error('Clear err:', error);
-            if (hasMore) fetchDiscussions();
-          }
+        // Open modal for both 'ask' and 'tell'
+        console.log('Dialog:', discussionTyped.description);
+        try {
+          const categories = await getDistinctCategories();
+          console.log('Cats:', categories);
+          setDistinctCategories(categories);
+          setDialogQuestion(discussionTyped.description || 'No description');
+          setCurrentDiscussion(discussionTyped);
+          setSelectedCategories([]);
+          setFilePath('');
+          setDialogVisible(true);
+        } catch (error) {
+          console.error('Dialog err:', error.message, error.code);
+          setDialogQuestion('Error');
+          setDialogVisible(false);
+          setCurrentDiscussion(null);
+          if (hasMore) fetchDiscussions();
         }
       } else {
         console.log('No discussions.');
       }
     } catch (error) {
-      console.error('Fetch err:', error);
+      console.error('Fetch err:', error.message, error.code);
     }
   }
 
@@ -434,44 +391,6 @@ export default function AskJanet() {
     }
   };
 
-  // Select save folder
-  const selectDestinationFolder = (
-    callback: (folder: string) => Promise<void>
-  ) => {
-    Alert.alert('Select Folder', 'Choose save location:', [
-      {
-        text: 'Downloads',
-        onPress: async () => {
-          setDestinationFolder('Downloads');
-          await callback('Downloads');
-        },
-      },
-      {
-        text: 'Pictures',
-        onPress: async () => {
-          setDestinationFolder('Pictures');
-          await callback('Pictures');
-        },
-      },
-      {
-        text: 'Custom',
-        onPress: () => {
-          Alert.prompt(
-            'Custom Folder',
-            'Enter folder name:',
-            async (folderName) => {
-              if (folderName) {
-                setDestinationFolder(folderName);
-                await callback(folderName);
-              }
-            }
-          );
-        },
-      },
-      { text: 'Cancel', style: 'cancel' },
-    ]);
-  };
-
   // Save text file
   const handleSaveTxt = async () => {
     if (!currentDiscussion) {
@@ -481,112 +400,25 @@ export default function AskJanet() {
       return;
     }
 
-    const saveFile = async (folder: string) => {
-      try {
-        // Request storage permission
-        const permission =
-          Platform.OS === 'android'
-            ? PERMISSIONS.ANDROID.WRITE_EXTERNAL_STORAGE
-            : null;
-        let permissionGranted = true;
-        if (permission) {
-          const result = await check(permission);
-          console.log('Permission check:', result);
-          if (result !== RESULTS.GRANTED) {
-            const requestResult = await request(permission);
-            console.log('Permission request:', requestResult);
-            if (requestResult !== RESULTS.GRANTED) {
-              permissionGranted = false;
-              console.warn('Storage permission denied.');
-            }
-          }
-        }
+    try {
+      const content = `Question: ${dialogQuestion}\nCategories: ${
+        selectedCategories.length > 0 ? selectedCategories.join(', ') : 'None'
+      }\nDescription: ${await getActivityLogDescription()}`;
+      const fileName = `question_${currentDiscussion.id}_${Date.now()}.txt`;
+      const tempPath = `${FileSystem.documentDirectory}${fileName}`;
 
-        const fileName = `question_${currentDiscussion.id}_${Date.now()}.txt`;
-        const content = `Question: ${dialogQuestion}\nCategories: ${
-          selectedCategories.length > 0 ? selectedCategories.join(', ') : 'None'
-        }\nDescription: ${await getActivityLogDescription()}`;
-        const tempPath = `${FileSystem.documentDirectory}${fileName}`;
-
-        // Write to temporary file
-        await FileSystem.writeAsStringAsync(tempPath, content);
-        console.log('Temp saved:', tempPath);
-
-        if (
-          !permissionGranted ||
-          (Platform.OS === 'android' && Platform.Version >= 30)
-        ) {
-          // Fallback to app storage for Android 11+ or denied permissions
-          setFilePath(tempPath);
-          Clipboard.setString(`Question: ${dialogQuestion}\nPath: ${tempPath}`);
-          Alert.alert(
-            'Saved',
-            `Saved to app storage due to Android storage restrictions: ${tempPath}\nPath copied to clipboard. To save to Downloads, update the app with legacy storage enabled (see settings or contact support).`
-          );
-          return;
-        }
-
-        // Determine destination path
-        let destPath: string;
-        if (folder === 'Downloads') {
-          destPath = `${RNFS.DownloadDirectoryPath}/${fileName}`;
-        } else if (folder === 'Pictures') {
-          destPath = `${RNFS.PicturesDirectoryPath}/${fileName}`;
-        } else {
-          destPath = `${RNFS.ExternalDirectoryPath}/${folder}/${fileName}`;
-          await RNFS.mkdir(`${RNFS.ExternalDirectoryPath}/${folder}`);
-        }
-
-        // Try moving file to destination
-        try {
-          await RNFS.moveFile(tempPath, destPath);
-          console.log('Saved:', destPath);
-        } catch (moveError) {
-          console.warn(
-            'Initial move failed, retrying with alternative path:',
-            moveError
-          );
-          // Retry with alternative path
-          destPath = `${RNFS.ExternalStorageDirectoryPath}/Download/${fileName}`;
-          await RNFS.mkdir(`${RNFS.ExternalStorageDirectoryPath}/Download`);
-          await RNFS.moveFile(tempPath, destPath);
-          console.log('Saved after retry:', destPath);
-        }
-
-        setFilePath(destPath);
-        Clipboard.setString(`Question: ${dialogQuestion}\nPath: ${destPath}`);
-        Alert.alert(
-          'Success',
-          `Saved to ${folder} as ${fileName}\nPath copied to clipboard.`
-        );
-
-        // Clean up temp file
-        try {
-          await FileSystem.deleteAsync(tempPath);
-        } catch (e) {
-          console.warn('Temp cleanup failed:', e);
-        }
-      } catch (error) {
-        console.error('Save TXT err:', error);
-        // Fallback to app storage
-        try {
-          await FileSystem.writeAsStringAsync(tempPath, content);
-          setFilePath(tempPath);
-          Clipboard.setString(`Question: ${dialogQuestion}\nPath: ${tempPath}`);
-          Alert.alert(
-            'Error',
-            `Failed to save to ${folder}. Saved to app storage: ${tempPath}\nPath copied. To save to Downloads, update the app with legacy storage enabled (see settings or contact support).`
-          );
-        } catch (fallbackError) {
-          console.error('Fallback save err:', fallbackError);
-          setFilePath('Error');
-          Alert.alert('Error', `Failed to save: ${error.message}`);
-        }
-      }
-    };
-
-    // Prompt for folder selection
-    selectDestinationFolder(saveFile);
+      await FileSystem.writeAsStringAsync(tempPath, content);
+      setFilePath(tempPath);
+      Clipboard.setString(`Question: ${dialogQuestion}\nPath: ${tempPath}`);
+      Alert.alert(
+        'Success',
+        `Saved to app storage: ${tempPath}\nPath copied to clipboard.`
+      );
+    } catch (error) {
+      console.error('Save TXT err:', error.message, error.code);
+      setFilePath('Error');
+      Alert.alert('Error', `Failed to save: ${error.message}`);
+    }
   };
 
   // Save image (disabled)
@@ -634,37 +466,51 @@ export default function AskJanet() {
         return;
       }
 
-      const gptResponseId = await addQuestionDiscussion(
-        input,
-        currentDiscussion.id
-      );
-      const parsedResponses = await disperseQuestion(
-        currentDiscussion.id,
-        gptResponseId
-      );
-      console.log('Clear:', currentDiscussion.id);
-      const cleared = await clearDiscussion(currentDiscussion.id);
-
-      if (cleared && parsedResponses) {
-        const newResponses = parsedResponses.map((response) => ({
-          responseType: 'gpt response',
-          text: response.toString(),
-        }));
-        setHistory((prev) => [
-          ...prev,
-          ...newResponses.map((response) => ({
-            text: response.text,
-            type: 'answer',
-          })),
-        ]);
-        setResponses(newResponses);
-        console.log('Resp:', newResponses);
+      if (currentDiscussion.typeSay === 'ask') {
+        const gptResponseId = await addQuestionDiscussion(
+          input,
+          currentDiscussion.id
+        );
+        const parsedResponses = await disperseQuestion(
+          currentDiscussion.id,
+          gptResponseId
+        );
+        if (parsedResponses) {
+          const newResponses = parsedResponses.map((response) => ({
+            responseType: 'gpt response',
+            text: response.toString(),
+          }));
+          setHistory((prev) => [
+            ...prev,
+            ...newResponses.map((response) => ({
+              text: response.text,
+              type: 'answer',
+            })),
+          ]);
+          setResponses(newResponses);
+          console.log('Resp:', newResponses);
+        }
+      } else if (currentDiscussion.typeSay === 'tell') {
+        // Handle 'tell' submission: save to ActivityLog
+        const category = selectedCategories.join(', ') || 'uncategorized';
+        const description = dialogQuestion || 'No question';
+        const activityLogDoc = doc(collection(db, 'ActivityLog'));
+        await setDoc(activityLogDoc, {
+          id: activityLogDoc.id,
+          discussionId: currentDiscussion.id,
+          description,
+          category,
+          timestamp: new Date(),
+          cleared: false,
+          uid: auth.currentUser?.uid,
+        });
+        console.log('ActivityLog added for tell:', activityLogDoc.id);
       }
 
       setDialogVisible(false);
       setCurrentDiscussion(null);
       setResponses([]);
-      Saad(fetchDiscussions());
+      fetchDiscussions();
     } catch (error) {
       console.error('Confirm err:', error);
       setDialogVisible(false);
@@ -676,14 +522,7 @@ export default function AskJanet() {
 
   // Cancel dialog
   const handleDialogCancel = async () => {
-    if (currentDiscussion) {
-      console.log('Cancel:', currentDiscussion.id);
-      try {
-        await clearDiscussion(currentDiscussion.id);
-      } catch (error) {
-        console.error('Cancel err:', error);
-      }
-    }
+    console.log('Cancel dialog, no clearing');
     setDialogVisible(false);
     setCurrentDiscussion(null);
     setResponses([]);
@@ -903,9 +742,15 @@ export default function AskJanet() {
       >
         <View style={styles.modalOverlay}>
           <View ref={dialogRef} style={styles.dialogContainer}>
-            <Text style={styles.modalTitle}>Details</Text>
-            <Text style={styles.modalLabel}>Q: {dialogQuestion || 'None'}</Text>
-            <Text style={styles.modalLabel}>Cats:</Text>
+            <Text style={styles.modalTitle}>
+              {currentDiscussion?.typeSay === 'ask'
+                ? 'Question Details'
+                : 'Fact Details'}
+            </Text>
+            <Text style={styles.modalLabel}>
+              Entry: {dialogQuestion || 'None'}
+            </Text>
+            <Text style={styles.modalLabel}>Categories:</Text>
             <FlatList
               data={distinctCategories}
               keyExtractor={(item) => item}
