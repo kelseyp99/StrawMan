@@ -1,4 +1,4 @@
-{
+﻿{
   "cli": {
     "version": ">= 16.3.2",
     "appVersionSource": "remote"
@@ -42,10 +42,7 @@
       "env": {
         "EXPO_PUBLIC_GIT_BRANCH": "main",
         "EXPO_PUBLIC_IS_EXPO_GO": "false"
-      },
-      "node": "18.19.1",
-      "npm": "10.2.4",
-      "plugins": ["expo-router"]
+      }
     },
     "beta": {
       "distribution": "store",

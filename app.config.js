@@ -6,7 +6,7 @@ module.exports = ({ config }) => {
     ...config,
     expo: {
       ...expoConfig,
-      slug: expoConfig.slug || 'lifelog',
+      slug: expoConfig.slug || 'LifeLog',
       scheme: 'com.anonymous.lifelog',
       android: {
         ...(expoConfig.android || {}),
