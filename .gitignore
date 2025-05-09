@@ -82,3 +82,19 @@ lifelog-f2904-b5d58f4dfdec.json
 
 # ✅ Ensure shell scripts use LF line endings
 *.sh text eol=lf
+
+# Ignore override config file
+/config-overrides.js
+
+# Ignore junk folder
+/junk/
+
+# Ignore these folders in src
+/src/assets/
+/src/components/
+/src/css/
+/src/js/
+/src/scripts/
+
+# Ignore JS files anywhere in src
+/src/**/*.js
