@@ -16,6 +16,10 @@ module.exports = ({ config }) => {
             ? expoConfig.android.package
             : 'com.anonymous.lifelog',
       },
+      plugins: [
+        ...(expoConfig.plugins || []),
+        './withAdMob.js'
+      ],
       extra: {
         ...(expoConfig.extra || {}),
         EXPO_PUBLIC_IS_EXPO_GO: process.env.EXPO_PUBLIC_IS_EXPO_GO || 'false',
