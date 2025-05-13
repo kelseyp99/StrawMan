@@ -1,48 +1,53 @@
-{
-  "expo": {
-    "name": "LifeLog",
-    "slug": "LifeLog",
-    "version": "1.1.0",
-    "orientation": "portrait",
-    "icon": "./assets/images/ask-janet-icon.png",
-    "scheme": "com.anonymous.lifelog",
-    "userInterfaceStyle": "automatic",
-    "ios": {
-      "supportsTablet": true,
-      "usesAppTrackingTransparency": true
+﻿{
+  \"expo\": {
+    \"name\": \"LifeLog\",
+    \"slug\": \"LifeLog\",
+    \"version\": \"1.1.0\",
+    \"orientation\": \"portrait\",
+    \"icon\": \"src/assets/images/ask-janet-icon.png\",
+    \"scheme\": \"lifelog\",
+    \"userInterfaceStyle\": \"automatic\",
+    \"ios\": {
+      \"supportsTablet\": true,
+      \"usesAppTrackingTransparency\": true
     },
-    "android": {
-      "package": "com.anonymous.lifelog",
-      "permissions": ["android.permission.WRITE_EXTERNAL_STORAGE"],
-      "adaptiveIcon": {
-        "foregroundImage": "./assets/images/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
-      }
+    \"android\": {
+      \"adaptiveIcon\": {
+        \"foregroundImage\": \"./assets/images/adaptive-icon.png\",
+        \"backgroundColor\": \"#ffffff\"
+      },
+      \"package\": \"com.anonymous.lifelog\"
     },
-    "plugins": [
-      "expo-router",
+    \"plugins\": [
+      \"expo-router\",
       [
-        "realm",
+        \"realm\",
         {
-          "sync": false
+          \"sync\": false
         }
       ]
     ],
-    "web": {
-      "bundler": "metro",
-      "output": "static",
-      "favicon": "./assets/images/favicon.png"
+    \"web\": {
+      \"bundler\": \"metro\",
+      \"output\": \"static\",
+      \"favicon\": \"./assets/images/favicon.png\"
     },
-    "extra": {
-      "eas": {
-        "projectId": "a27bcb78-af2a-4ef8-adeb-7fae3e17731d"
+    \"extra\": {
+      \"eas\": {
+        \"projectId\": \"a27bcb78-af2a-4ef8-adeb-7fae3e17731d\"
       },
-      "googleClientIdAndroid": "341732508688-o2qbbr16g2qh3e8niofee9iv4tl6krhb.apps.googleusercontent.com",
-      "react-native-google-mobile-ads": {
-        "android_app_id": "ca-app-pub-1315319831980259~1158662288"
+      \"firebase\": {
+        \"apiKey\": \"\",
+        \"authDomain\": \"\",
+        \"projectId\": \"\",
+        \"storageBucket\": \"\",
+        \"messagingSenderId\": \"\",
+        \"appId\": \"\"
       }
     },
-    "owner": "kelseyp99",
-    "jsEngine": "hermes"
+    \"owner\": \"kelseyp99\"
+  },
+  \"react-native-google-mobile-ads\": {
+    \"android_app_id\": \"\"
   }
 }

@@ -1,62 +1,55 @@
 ﻿{
-  "cli": {
-    "version": ">= 16.3.2",
-    "appVersionSource": "remote"
+  \"cli\": {
+    \"version\": \">= 15.0.10\",
+    \"appVersionSource\": \"remote\"
   },
-  "build": {
-    "development": {
-      "developmentClient": true,
-      "distribution": "internal",
-      "channel": "development",
-      "android": {
-        "buildType": "apk"
+  \"build\": {
+    \"development\": {
+      \"developmentClient\": true,
+      \"distribution\": \"internal\",
+      \"channel\": \"development\",
+      \"android\": {
+        \"buildType\": \"apk\"
       },
-      "ios": {
-        "simulator": true
-      },
-      "env": {
-        "EXPO_PUBLIC_GIT_BRANCH": "main",
-        "EXPO_PUBLIC_IS_EXPO_GO": "false"
+      \"ios\": {
+        \"simulator\": true
       }
     },
-    "preview": {
-      "distribution": "internal",
-      "channel": "preview",
-      "android": {
-        "buildType": "apk"
+    \"preview\": {
+      \"distribution\": \"internal\",
+      \"channel\": \"preview\",
+      \"android\": {
+        \"buildType\": \"apk\"
       },
-      "ios": {
-        "simulator": true
+      \"ios\": {
+        \"simulator\": true
       }
     },
-    "production": {
-      "developmentClient": false,
-      "distribution": "store",
-      "channel": "production",
-      "android": {
-        "buildType": "apk"
+    \"production\": {
+      \"env\": {
+        \"EXPO_PUBLIC_GIT_BRANCH\": \"main\"
       },
-      "ios": {
-        "simulator": false
+      \"channel\": \"production\",
+      \"android\": {
+        \"buildType\": \"app-bundle\"
       },
-      "env": {
-        "EXPO_PUBLIC_GIT_BRANCH": "main",
-        "EXPO_PUBLIC_IS_EXPO_GO": "false"
+      \"ios\": {
+        \"simulator\": false
       }
     },
-    "beta": {
-      "distribution": "store",
-      "channel": "beta",
-      "android": {
-        "buildType": "app-bundle"
+    \"beta\": {
+      \"distribution\": \"store\",
+      \"channel\": \"beta\",
+      \"android\": {
+        \"buildType\": \"app-bundle\"
       }
     }
   },
-  "submit": {
-    "production": {},
-    "beta": {
-      "android": {
-        "track": "beta"
+  \"submit\": {
+    \"production\": {},
+    \"beta\": {
+      \"android\": {
+        \"track\": \"beta\"
       }
     }
   }

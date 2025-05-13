@@ -18,7 +18,7 @@ module.exports = ({ config }) => {
       },
       extra: {
         ...(expoConfig.extra || {}),
-        EXPO_PUBLIC_IS_EXPO_GO: process.env.EXPO_PUBLIC_IS_EXPO_GO || 'false',
+        EXPO_PUBLIC_IS_EXPO_GO: process.env.EXPO_PUBLIC_IS_EXPO_GO || 'true',
         googleClientIdAndroid:
           '341732508688-o2qbbr16g2qh3e8niofee9iv4tl6krhb.apps.googleusercontent.com',
         eas: {
