@@ -1,53 +1,58 @@
 ﻿{
-  \"expo\": {
-    \"name\": \"LifeLog\",
-    \"slug\": \"LifeLog\",
-    \"version\": \"1.1.0\",
-    \"orientation\": \"portrait\",
-    \"icon\": \"src/assets/images/ask-janet-icon.png\",
-    \"scheme\": \"lifelog\",
-    \"userInterfaceStyle\": \"automatic\",
-    \"ios\": {
-      \"supportsTablet\": true,
-      \"usesAppTrackingTransparency\": true
+  "expo": {
+    "name": "LifeLog",
+    "slug": "LifeLog",
+    "version": "1.1.0",
+    "orientation": "portrait",
+    "icon": "src/assets/images/ask-janet-icon.png",
+    "scheme": "lifelog",
+    "userInterfaceStyle": "automatic",
+    "ios": {
+      "supportsTablet": true,
+      "usesAppTrackingTransparency": true
     },
-    \"android\": {
-      \"adaptiveIcon\": {
-        \"foregroundImage\": \"./assets/images/adaptive-icon.png\",
-        \"backgroundColor\": \"#ffffff\"
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "src/assets/images/adaptive-icon.png",
+        "backgroundColor": "#ffffff"
       },
-      \"package\": \"com.anonymous.lifelog\"
+      "package": "com.anonymous.lifelog"
     },
-    \"plugins\": [
-      \"expo-router\",
+    "plugins": [
+      "expo-router",
       [
-        \"realm\",
+        "realm",
         {
-          \"sync\": false
+          "sync": false
         }
       ]
     ],
-    \"web\": {
-      \"bundler\": \"metro\",
-      \"output\": \"static\",
-      \"favicon\": \"./assets/images/favicon.png\"
+    "web": {
+      "bundler": "metro",
+      "output": "static",
+      "favicon": "./assets/images/favicon.png"
     },
-    \"extra\": {
-      \"eas\": {
-        \"projectId\": \"a27bcb78-af2a-4ef8-adeb-7fae3e17731d\"
+    "extra": {
+      "eas": {
+        "projectId": "a27bcb78-af2a-4ef8-adeb-7fae3e17731d"
       },
-      \"firebase\": {
-        \"apiKey\": \"\",
-        \"authDomain\": \"\",
-        \"projectId\": \"\",
-        \"storageBucket\": \"\",
-        \"messagingSenderId\": \"\",
-        \"appId\": \"\"
+      "firebase": {
+        "apiKey": "${env.EXPO_PUBLIC_FIREBASE_API_KEY}",
+        "authDomain": "${env.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN}",
+        "projectId": "${env.EXPO_PUBLIC_FIREBASE_PROJECT_ID}",
+        "storageBucket": "${env.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET}",
+        "messagingSenderId": "${env.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID}",
+        "appId": "${env.EXPO_PUBLIC_FIREBASE_APP_ID}"
       }
     },
-    \"owner\": \"kelseyp99\"
+    "owner": "kelseyp99",
+    "jsEngine": "hermes",
+    "androidCompileSdkVersion": 33,
+    "androidBuildToolsVersion": "33.0.0",
+    "androidMinSdkVersion": 21,
+    "androidTargetSdkVersion": 33
   },
-  \"react-native-google-mobile-ads\": {
-    \"android_app_id\": \"\"
+  "react-native-google-mobile-ads": {
+    "android_app_id": "${env.EXPO_PUBLIC_ANDROID_ADMOB_APP_ID}"
   }
 }
