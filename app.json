@@ -16,7 +16,10 @@
         "foregroundImage": "src/assets/images/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "package": "com.anonymous.lifelog"
+      "package": "com.anonymous.lifelog",
+      "config": {
+        "googleMobileAdsAppId": "${env.EXPO_PUBLIC_ANDROID_ADMOB_APP_ID}"
+      }
     },
     "plugins": [
       "expo-router",
@@ -51,8 +54,5 @@
     "androidBuildToolsVersion": "33.0.0",
     "androidMinSdkVersion": 21,
     "androidTargetSdkVersion": 33
-  },
-  "react-native-google-mobile-ads": {
-    "android_app_id": "${env.EXPO_PUBLIC_ANDROID_ADMOB_APP_ID}"
   }
 }
