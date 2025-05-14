@@ -16,10 +16,7 @@
         "foregroundImage": "src/assets/images/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "package": "com.anonymous.lifelog",
-      "config": {
-        "googleMobileAdsAppId": "${env.EXPO_PUBLIC_ANDROID_ADMOB_APP_ID}"
-      }
+      "package": "com.anonymous.lifelog"
     },
     "plugins": [
       "expo-router",
@@ -38,21 +35,12 @@
     "extra": {
       "eas": {
         "projectId": "a27bcb78-af2a-4ef8-adeb-7fae3e17731d"
-      },
-      "firebase": {
-        "apiKey": "${env.EXPO_PUBLIC_FIREBASE_API_KEY}",
-        "authDomain": "${env.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN}",
-        "projectId": "${env.EXPO_PUBLIC_FIREBASE_PROJECT_ID}",
-        "storageBucket": "${env.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET}",
-        "messagingSenderId": "${env.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID}",
-        "appId": "${env.EXPO_PUBLIC_FIREBASE_APP_ID}"
       }
     },
     "owner": "kelseyp99",
-    "jsEngine": "hermes",
-    "androidCompileSdkVersion": 33,
-    "androidBuildToolsVersion": "33.0.0",
-    "androidMinSdkVersion": 21,
-    "androidTargetSdkVersion": 33
+    "jsEngine": "hermes"
+  },
+  "react-native-google-mobile-ads": {
+    "android_app_id": "ca-app-pub-3940256099942544~3347511713"
   }
 }
