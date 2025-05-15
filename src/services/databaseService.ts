@@ -21,33 +21,33 @@ import {
   DocumentData,
   DocumentReference,
   DocumentSnapshot,
-} from "firebase/firestore";
-import { auth,  db } from "../firebaseConfig";
-import { format } from "date-fns";
-import { getUID } from "../utils/uidManager";
-import { sendQuestion, sendQuestionForParsing } from "./openaiAPI";
+} from 'firebase/firestore';
+import { auth, db } from '../firebaseConfig';
+import { format } from 'date-fns';
+import { getUID } from '../utils/uidManager';
+import { sendQuestion, sendQuestionForParsing } from './openaiAPI';
 
-const APP_VERSION = "1.1.0";
-const APP_ID = "com.anonymous.lifelog";
+const APP_VERSION = '1.1.0';
+const APP_ID = 'com.anonymous.lifelog';
 
 export async function initializeUser() {
   const user = auth.currentUser;
   if (!user) {
-    throw new Error("No user signed in");
+    throw new Error('No user signed in');
   }
   try {
     console.log(`Initializing user document for UID: ${user.uid}`);
     const userRef = doc(db, `Users/${user.uid}`);
     const userData = {
-      appVersion: "1.1.0",
-      appId: "com.anonymous.lifelog",
+      appVersion: '1.1.0',
+      appId: 'com.anonymous.lifelog',
       timestamp: new Date().toISOString(),
     };
     console.log(`Writing to Firestore path: Users/${user.uid}`, userData);
     await setDoc(userRef, userData, { merge: true });
-    console.log("User document initialized successfully");
+    console.log('User document initialized successfully');
   } catch (error) {
-    console.error("Error initializing user document:", error);
+    console.error('Error initializing user document:', error);
     throw error;
   }
 }
@@ -55,7 +55,7 @@ export async function initializeUser() {
 export const createDocument = async (data: any) => {
   const uid = await getUID();
   if (!uid) {
-    throw new Error("No UID available for create operation");
+    throw new Error('No UID available for create operation');
   }
   try {
     const docRef = await addDoc(collection(db, `Users/${uid}/Documents`), {
@@ -63,10 +63,10 @@ export const createDocument = async (data: any) => {
       uid,
       timestamp: new Date(),
     });
-    console.log("Document created with ID:", docRef.id);
+    console.log('Document created with ID:', docRef.id);
     return docRef.id;
   } catch (error) {
-    console.error("Error creating document:", error);
+    console.error('Error creating document:', error);
     throw error;
   }
 };
@@ -74,16 +74,22 @@ export const createDocument = async (data: any) => {
 export const readDocuments = async () => {
   const uid = await getUID();
   if (!uid) {
-    throw new Error("No UID available for read operation");
+    throw new Error('No UID available for read operation');
   }
   try {
-    const q = query(collection(db, `Users/${uid}/Documents`), where("uid", "==", uid));
+    const q = query(
+      collection(db, `Users/${uid}/Documents`),
+      where('uid', '==', uid)
+    );
     const querySnapshot = await getDocs(q);
-    const documents = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-    console.log("Documents retrieved:", documents);
+    const documents = querySnapshot.docs.map((doc) => ({
+      id: doc.id,
+      ...doc.data(),
+    }));
+    console.log('Documents retrieved:', documents);
     return documents;
   } catch (error) {
-    console.error("Error reading documents:", error);
+    console.error('Error reading documents:', error);
     throw error;
   }
 };
@@ -91,14 +97,14 @@ export const readDocuments = async () => {
 export const updateDocument = async (docId: string, data: any) => {
   const uid = await getUID();
   if (!uid) {
-    throw new Error("No UID available for update operation");
+    throw new Error('No UID available for update operation');
   }
   try {
     const docRef = doc(db, `Users/${uid}/Documents`, docId);
     await updateDoc(docRef, data);
-    console.log("Document updated with ID:", docId);
+    console.log('Document updated with ID:', docId);
   } catch (error) {
-    console.error("Error updating document:", error);
+    console.error('Error updating document:', error);
     throw error;
   }
 };
@@ -106,14 +112,14 @@ export const updateDocument = async (docId: string, data: any) => {
 export const deleteDocument = async (docId: string) => {
   const uid = await getUID();
   if (!uid) {
-    throw new Error("No UID available for delete operation");
+    throw new Error('No UID available for delete operation');
   }
   try {
     const docRef = doc(db, `Users/${uid}/Documents`, docId);
     await deleteDoc(docRef);
-    console.log("Document deleted with ID:", docId);
+    console.log('Document deleted with ID:', docId);
   } catch (error) {
-    console.error("Error deleting document:", error);
+    console.error('Error deleting document:', error);
     throw error;
   }
 };
@@ -123,14 +129,14 @@ export const deleteDocument = async (docId: string) => {
 //////////////////////////////////////////
 
 export async function getDistinctCategories(): Promise<string[]> {
-  console.log("Fetching distinct categories from Firestore...");
+  console.log('Fetching distinct categories from Firestore...');
   const uid = await getUID();
   try {
-    const snapshot = await getDocs(collection(db, "ActivityLog"));
+    const snapshot = await getDocs(collection(db, 'ActivityLog'));
     const categoriesSet = new Set<string>();
 
     try {
-      snapshot.forEach((doc: { data: () => any; }) => {
+      snapshot.forEach((doc: { data: () => any }) => {
         const data = doc.data();
         if (data.category) {
           categoriesSet.add(data.category);
@@ -138,9 +144,9 @@ export async function getDistinctCategories(): Promise<string[]> {
       });
       if (categoriesSet.has('Uncategorized')) {
         categoriesSet.delete('Uncategorized');
-      }    
+      }
       if (categoriesSet.size === 0) {
-        categoriesSet.add("diet");
+        categoriesSet.add('diet');
       }
     } catch (error) {
       console.error('Error processing GPT responses:', error);
@@ -148,7 +154,7 @@ export async function getDistinctCategories(): Promise<string[]> {
 
     return Array.from(categoriesSet);
   } catch (error) {
-    console.error("Error fetching categories:", error);
+    console.error('Error fetching categories:', error);
     return [];
   }
 }
@@ -156,11 +162,11 @@ export async function getDistinctCategories(): Promise<string[]> {
 export async function insertJsonFile(jsonData: any): Promise<void> {
   const uid = await getUID();
   if (!uid) {
-    throw new Error("No UID available for insert operation");
+    throw new Error('No UID available for insert operation');
   }
   try {
     for (const item of jsonData) {
-      const docRef = doc(collection(db, "ActivityLog"), String(Date.now()));
+      const docRef = doc(collection(db, 'ActivityLog'), String(Date.now()));
       const newEntry = {
         category: item.category,
         value: item.value,
@@ -169,25 +175,35 @@ export async function insertJsonFile(jsonData: any): Promise<void> {
       };
       await setDoc(docRef, newEntry);
     }
-    console.log("Data inserted successfully!");
+    console.log('Data inserted successfully!');
   } catch (error) {
-    console.error("Error inserting data:", error);
+    console.error('Error inserting data:', error);
   }
 }
 
-export async function queryAllFieldsByCategories(categories: string[]): Promise<any[]> {
-  console.log("Querying Firestore for categories:", categories);
+export async function queryAllFieldsByCategories(
+  categories: string[]
+): Promise<any[]> {
+  console.log('Querying Firestore for categories:', categories);
   const uid = await getUID();
   try {
-    const q = query(collection(db, "ActivityLog"), where("category", "in", categories));
+    const q = query(
+      collection(db, 'ActivityLog'),
+      where('category', 'in', categories)
+    );
     const snapshot = await getDocs(q);
-    return snapshot.docs.map((doc: { data: () => any; }) => {
+    return snapshot.docs.map((doc: { data: () => any }) => {
       const timestamp = new Date(doc.data().timestamp.toDate());
-      const formattedTimestamp = `${timestamp.getMonth() + 1}/${timestamp.getDate()}/${timestamp.getFullYear()} ${timestamp.getHours()}:${timestamp.getMinutes().toString().padStart(2, '0')}`;
+      const formattedTimestamp = `${
+        timestamp.getMonth() + 1
+      }/${timestamp.getDate()}/${timestamp.getFullYear()} ${timestamp.getHours()}:${timestamp
+        .getMinutes()
+        .toString()
+        .padStart(2, '0')}`;
       return `${formattedTimestamp} ${doc.data().description}`;
     });
   } catch (error) {
-    console.error("Error querying Firestore:", error);
+    console.error('Error querying Firestore:', error);
     return [];
   }
 }
@@ -198,48 +214,58 @@ export async function queryAllFieldsByCategories(categories: string[]): Promise<
 
 export async function addOrUpdateDiscussion(
   description: string,
-  typeSay: string = "tell",
+  typeSay: string = 'tell',
   id?: string
 ): Promise<void> {
-  console.log("Entering addOrUpdateDiscussion");
+  console.log('Entering addOrUpdateDiscussion');
   const uid = await getUID();
   if (!uid) {
-    throw new Error("No UID available for discussion operation");
+    throw new Error('No UID available for discussion operation');
   }
-  console.log(`Adding or updating discussion with description: ${description}, uid: ${uid}, typeSay: ${typeSay}`);
+  console.log(
+    `Adding or updating discussion with description: ${description}, uid: ${uid}, typeSay: ${typeSay}`
+  );
   try {
-    console.log("Creating the document reference");
-    const docRef = id 
-      ? doc(db, `Users/${uid}/Discussions`, String(id)) 
-      : doc(collection(db, `Users/${uid}/Discussions`));
-    const discussionData = { 
-      description, 
-      typeSay, 
-      cleared: false, 
+    console.log('Creating the document reference');
+    const docRef = id
+      ? doc(db, `Users/${uid}/Discussion`, String(id))
+      : doc(collection(db, `Users/${uid}/Discussion`));
+    const discussionData = {
+      description,
+      typeSay,
+      cleared: false,
       timestamp: new Date(),
       uid,
       appVersion: APP_VERSION,
       appId: APP_ID,
     };
-    console.log(`Writing to Firestore path: Users/${uid}/Discussions/${docRef.id}`, discussionData);
+    console.log(
+      `Writing to Firestore path: Users/${uid}/Discussion/${docRef.id}`,
+      discussionData
+    );
     await setDoc(docRef, discussionData, { merge: true });
-    console.log(`Discussion ${id ? "updated" : "added"} successfully: ${docRef.id}`);
+    console.log(
+      `Discussion ${id ? 'updated' : 'added'} successfully: ${docRef.id}`
+    );
   } catch (error) {
-    console.error("Error adding/updating discussion:", error);
+    console.error('Error adding/updating discussion:', error);
     throw error;
   }
 }
 
-export async function getDiscussions(lastX?: number, discussionId?: string): Promise<any[]> {
+export async function getDiscussions(
+  lastX?: number,
+  discussionId?: string
+): Promise<any[]> {
   const uid = await getUID();
   if (!uid) {
-    throw new Error("No UID available for get discussions operation");
+    throw new Error('No UID available for get discussions operation');
   }
   try {
     let discussionsQuery = query(
       collection(db, `Users/${uid}/Discussions`),
-      where("uid", "==", uid),
-      orderBy("timestamp", "desc")
+      where('uid', '==', uid),
+      orderBy('timestamp', 'desc')
     );
     if (discussionId) {
       const discussionRef = doc(db, `Users/${uid}/Discussions`, discussionId);
@@ -254,15 +280,15 @@ export async function getDiscussions(lastX?: number, discussionId?: string): Pro
       discussionsQuery = query(discussionsQuery, limit(lastX));
     }
     const discussionSnapshot = await getDocs(discussionsQuery);
-    return discussionSnapshot.docs.map(doc => ({
+    return discussionSnapshot.docs.map((doc) => ({
       id: doc.id,
       ...doc.data(),
       timestamp: doc.data().timestamp
-        ? format(new Date(doc.data().timestamp.toDate()), "M/d/yy \n h:mm a")
-        : "N/A"
+        ? format(new Date(doc.data().timestamp.toDate()), 'M/d/yy \n h:mm a')
+        : 'N/A',
     }));
   } catch (error) {
-    console.error("Error getting discussions:", error);
+    console.error('Error getting discussions:', error);
     return [];
   }
 }
@@ -270,7 +296,7 @@ export async function getDiscussions(lastX?: number, discussionId?: string): Pro
 export async function deleteDiscussion(id: string): Promise<void> {
   const uid = await getUID();
   if (!uid) {
-    throw new Error("No UID available for delete discussion operation");
+    throw new Error('No UID available for delete discussion operation');
   }
   try {
     const discussionRef = doc(db, `Users/${uid}/Discussions`, id);
@@ -281,7 +307,9 @@ export async function deleteDiscussion(id: string): Promise<void> {
         await deleteDoc(discussionRef);
         console.log(`Discussion with ID ${id} deleted.`);
       } else {
-        console.error(`You cannot delete a discussion that doesn't belong to you.`);
+        console.error(
+          `You cannot delete a discussion that doesn't belong to you.`
+        );
       }
     } else {
       console.error(`Discussion with ID ${id} does not exist.`);
@@ -294,13 +322,13 @@ export async function deleteDiscussion(id: string): Promise<void> {
 export const fetchInitialDiscussion = async () => {
   const uid = await getUID();
   if (!uid) {
-    throw new Error("No UID available for fetch initial discussion operation");
+    throw new Error('No UID available for fetch initial discussion operation');
   }
   try {
-    console.log("Fetching initial discussion with UID:", uid);
+    console.log('Fetching initial discussion with UID:', uid);
     const discussionsQuery = query(
       collection(db, `Users/${uid}/Discussions`),
-      where("uid", "==", uid)
+      where('uid', '==', uid)
     );
     const discussionSnapshot = await getDocs(discussionsQuery);
     if (!discussionSnapshot.empty) {
@@ -311,13 +339,13 @@ export const fetchInitialDiscussion = async () => {
         discussionId: data.discussionId || docSnapshot.id,
         description: data.description,
         timestamp: data.timestamp ? data.timestamp.toDate() : new Date(),
-        typeSay: data.typeSay || "ask",
+        typeSay: data.typeSay || 'ask',
         cleared: data.cleared || false,
       };
     }
     return null;
   } catch (error) {
-    console.error("🔥 Error fetching discussion:", error);
+    console.error('🔥 Error fetching discussion:', error);
     return null;
   }
 };
@@ -325,54 +353,68 @@ export const fetchInitialDiscussion = async () => {
 export const getNextOpenDiscussion = async (lastVisibleDoc?: any) => {
   const uid = await getUID();
   if (!uid) {
-    throw new Error("No UID available for get next open discussion operation");
+    throw new Error('No UID available for get next open discussion operation');
   }
   try {
     console.log(`getNextOpenDiscussion: UID=${uid}`);
     let discussionsQuery = query(
       collection(db, `Users/${uid}/Discussions`),
-      where("cleared", "in", [false, null]),
-      where("uid", "==", uid),
+      where('cleared', 'in', [false, null]),
+      where('uid', '==', uid),
       limit(1)
     );
     if (lastVisibleDoc) {
       discussionsQuery = query(discussionsQuery, startAfter(lastVisibleDoc));
     }
     const snapshot = await getDocs(discussionsQuery);
-    console.log(`getNextOpenDiscussion: Found ${snapshot.docs.length} documents`, snapshot.docs.map(doc => doc.data()));
+    console.log(
+      `getNextOpenDiscussion: Found ${snapshot.docs.length} documents`,
+      snapshot.docs.map((doc) => doc.data())
+    );
     return {
       snapshot,
       hasMore: snapshot.docs.length > 0,
       lastVisibleDoc: snapshot.docs[snapshot.docs.length - 1] || null,
     };
   } catch (error) {
-    console.error("🔥 Error fetching discussion:", error);
+    console.error('🔥 Error fetching discussion:', error);
     return { snapshot: null, hasMore: false, lastVisibleDoc: null };
   }
 };
 
-export async function addQuestionDiscussion(question: string, discussionId: string): Promise<string> {
+export async function addQuestionDiscussion(
+  question: string,
+  discussionId: string
+): Promise<string> {
   const uid = await getUID();
   if (!uid) {
-    throw new Error("No UID available for add question discussion operation");
+    throw new Error('No UID available for add question discussion operation');
   }
   try {
-    console.log(`Adding question: ${question} to discussionId: ${discussionId}`);
+    console.log(
+      `Adding question: ${question} to discussionId: ${discussionId}`
+    );
     await addOrUpdateDiscussion(question, 'ask', discussionId);
     console.log(`Successfully added question to discussion`);
-    const gpts_names_string = '["openAI", "Gemini", "ChatGPT", "Claude", "DeepSeek"]';
+    const gpts_names_string =
+      '["openAI", "Gemini", "ChatGPT", "Claude", "DeepSeek"]';
     const gpts_names = JSON.parse(gpts_names_string);
     console.log(`GPT names:`, gpts_names);
     const categories = await getDistinctCategories();
     console.log(`Categories:`, categories);
-    const response = await sendQuestionForParsing({ categories, gpts_names, question, discussionId });
+    const response = await sendQuestionForParsing({
+      categories,
+      gpts_names,
+      question,
+      discussionId,
+    });
     console.log(`Parsed response received:`, response);
-    const docRef = await addDoc(collection(db, "GPTResponses"), {
+    const docRef = await addDoc(collection(db, 'GPTResponses'), {
       timestamp: new Date(),
       discussionId,
       prompt: question,
       response: JSON.stringify(response),
-      responseType: "parsed question",
+      responseType: 'parsed question',
       cleared: false,
       uid,
     });
@@ -388,14 +430,16 @@ export async function processUnclearedGPTResponses() {
   let hasMoreDocuments = true;
   const uid = await getUID();
   if (!uid) {
-    throw new Error("No UID available for process uncleared GPT responses operation");
+    throw new Error(
+      'No UID available for process uncleared GPT responses operation'
+    );
   }
   while (hasMoreDocuments) {
     const q = query(
-      collection(db, "GPTResponses"),
-      where("cleared", "==", false),
-      where("responseType", "==", "updateDB"),
-      where("uid", "==", uid),
+      collection(db, 'GPTResponses'),
+      where('cleared', '==', false),
+      where('responseType', '==', 'updateDB'),
+      where('uid', '==', uid),
       limit(1)
     );
     const gptQuerySnapshot = await getDocs(q);
@@ -411,27 +455,27 @@ export async function processUnclearedGPTResponses() {
       timestamp: docSnapshot.data().timestamp?.toDate() || new Date(),
       cleared: docSnapshot.data().cleared,
     };
-    console.log("Processing GPT Response:", gptResponseTyped.id);
+    console.log('Processing GPT Response:', gptResponseTyped.id);
     const responseJson = JSON.parse(gptResponseTyped.response);
     const { category, parsedDescription } = responseJson;
     const { discussionId, timestamp } = gptResponseTyped;
-    const activityLogRef = collection(db, "ActivityLog");
-    const qq = query(activityLogRef, where("discussionId", "==", discussionId));
+    const activityLogRef = collection(db, 'ActivityLog');
+    const qq = query(activityLogRef, where('discussionId', '==', discussionId));
     const querySnapshot = await getDocs(qq);
     const activityLog = !querySnapshot.empty ? querySnapshot.docs[0] : null;
     if (activityLog) {
-      console.log("Updating existing activity log...");
-      const existingActivityLogRef = doc(db, "ActivityLog", activityLog.id);
+      console.log('Updating existing activity log...');
+      const existingActivityLogRef = doc(db, 'ActivityLog', activityLog.id);
       await updateDoc(existingActivityLogRef, {
         category,
         description: parsedDescription,
-        responseType: "tell",
+        responseType: 'tell',
         cleared: true,
         uid,
       });
     } else {
-      console.log("Creating new activity log...");
-      await addDoc(collection(db, "ActivityLog"), {
+      console.log('Creating new activity log...');
+      await addDoc(collection(db, 'ActivityLog'), {
         discussionId,
         category,
         parsedDescription,
@@ -440,37 +484,39 @@ export async function processUnclearedGPTResponses() {
         uid,
       });
     }
-    const gptResponseRef = doc(db, "GPTResponses", gptResponseTyped.id);
+    const gptResponseRef = doc(db, 'GPTResponses', gptResponseTyped.id);
     await updateDoc(gptResponseRef, { cleared: true });
-    console.log("Processed and cleared GPTResponse:", gptResponseTyped.id);
+    console.log('Processed and cleared GPTResponse:', gptResponseTyped.id);
     const success = await clearDiscussion(discussionId);
     if (!success) {
-      console.error("Failed to clear discussion. Exiting process.");
+      console.error('Failed to clear discussion. Exiting process.');
       return;
     }
   }
-  console.log("All GPTResponses have been cleared.");
+  console.log('All GPTResponses have been cleared.');
 }
 
 export const markDiscussionAsCleared = async (discussionId: string) => {
   console.log(`Attempting to mark discussion ${discussionId} as cleared...`);
   const uid = await getUID();
   if (!uid) {
-    throw new Error("No UID available for mark discussion as cleared operation");
+    throw new Error(
+      'No UID available for mark discussion as cleared operation'
+    );
   }
   try {
     const discussionRef = doc(db, `Users/${uid}/Discussions`, discussionId);
     await updateDoc(discussionRef, { cleared: true });
     console.log(`✅ Discussion ${discussionId} marked as cleared.`);
   } catch (error) {
-    console.error("🔥 Error marking discussion as cleared:", error);
+    console.error('🔥 Error marking discussion as cleared:', error);
   }
 };
 
 export async function clearDiscussion(discussionId: string): Promise<boolean> {
   const uid = await getUID();
   if (!uid) {
-    throw new Error("No UID available for clear discussion operation");
+    throw new Error('No UID available for clear discussion operation');
   }
   try {
     const discussionRef = doc(db, `Users/${uid}/Discussions`, discussionId);
@@ -493,7 +539,9 @@ export async function clearDiscussion(discussionId: string): Promise<boolean> {
 export async function addOrUpdateActivityLog(): Promise<void> {
   const uid = await getUID();
   if (!uid) {
-    throw new Error("No UID available for add or update activity log operation");
+    throw new Error(
+      'No UID available for add or update activity log operation'
+    );
   }
   try {
     interface GPTResponseJSONData {
@@ -501,10 +549,10 @@ export async function addOrUpdateActivityLog(): Promise<void> {
       parsedDescription: string;
     }
     const q = query(
-      collection(db, "GPTResponses"),
-      where("cleared", "==", false),
-      where("responseType", "==", "updateDB"),
-      where("uid", "==", uid)
+      collection(db, 'GPTResponses'),
+      where('cleared', '==', false),
+      where('responseType', '==', 'updateDB'),
+      where('uid', '==', uid)
     );
     const gptQuerySnapshot = await getDocs(q);
     for (const docSnapshot of gptQuerySnapshot.docs) {
@@ -516,31 +564,44 @@ export async function addOrUpdateActivityLog(): Promise<void> {
         cleared: docSnapshot.data().cleared,
         uid,
       };
-      console.log("Raw GPT response JSON:", gptResponseTyped.response);
-      const responseJson = JSON.parse(gptResponseTyped.response) as GPTResponseJSONData;
-      console.log("Parsed category:", responseJson.category);
-      console.log("Parsed description:", responseJson.parsedDescription);
+      console.log('Raw GPT response JSON:', gptResponseTyped.response);
+      const responseJson = JSON.parse(
+        gptResponseTyped.response
+      ) as GPTResponseJSONData;
+      console.log('Parsed category:', responseJson.category);
+      console.log('Parsed description:', responseJson.parsedDescription);
       const category = responseJson.category;
       const parsedDescription = responseJson.parsedDescription;
       const discussionId = gptResponseTyped.discussionId;
       const timestamp = gptResponseTyped.timestamp;
-      const activityLogRef = collection(db, "ActivityLog");
-      const qq = query(activityLogRef, where("discussionId", "==", discussionId));
+      const activityLogRef = collection(db, 'ActivityLog');
+      const qq = query(
+        activityLogRef,
+        where('discussionId', '==', discussionId)
+      );
       const querySnapshot = await getDocs(qq);
-      const activityLog = !querySnapshot.empty ? querySnapshot.docs[0].data() : null;
+      const activityLog = !querySnapshot.empty
+        ? querySnapshot.docs[0].data()
+        : null;
       if (activityLog) {
-        console.log("Updating existing response...");
-        const existingActivityLogRef = doc(db, "ActivityLog", querySnapshot.docs[0].id);
+        console.log('Updating existing response...');
+        const existingActivityLogRef = doc(
+          db,
+          'ActivityLog',
+          querySnapshot.docs[0].id
+        );
         await updateDoc(existingActivityLogRef, {
           category: category,
           description: parsedDescription,
-          responseType: "tell",
+          responseType: 'tell',
           cleared: true,
           uid,
         });
       } else {
-        console.log("No existing activity log found. Creating new activity log...");
-        await addDoc(collection(db, "ActivityLog"), {
+        console.log(
+          'No existing activity log found. Creating new activity log...'
+        );
+        await addDoc(collection(db, 'ActivityLog'), {
           id: new Date().getTime(),
           discussionId,
           category,
@@ -549,20 +610,20 @@ export async function addOrUpdateActivityLog(): Promise<void> {
           cleared: true,
           uid,
         });
-        console.log("New response created.");
+        console.log('New response created.');
       }
-      const gptResponseRef = doc(db, "GPTResponses", gptResponseTyped.id);
+      const gptResponseRef = doc(db, 'GPTResponses', gptResponseTyped.id);
       await updateDoc(gptResponseRef, { cleared: true });
     }
   } catch (error) {
-    console.error("Error adding or updating GPT response:", error);
+    console.error('Error adding or updating GPT response:', error);
   }
 }
 
 export const renameFieldToCleared = async () => {
   const uid = await getUID();
   if (!uid) {
-    throw new Error("No UID available for rename field to cleared operation");
+    throw new Error('No UID available for rename field to cleared operation');
   }
   try {
     const discussionCollection = collection(db, `Users/${uid}/Discussions`);
@@ -571,9 +632,9 @@ export const renameFieldToCleared = async () => {
       const docRef = doc(db, `Users/${uid}/Discussions`, document.id);
       const data = document.data();
       const fieldName = Object.keys(data).find(
-        (key) => key.toLowerCase() === "cleared"
+        (key) => key.toLowerCase() === 'cleared'
       );
-      if (fieldName && fieldName !== "cleared") {
+      if (fieldName && fieldName !== 'cleared') {
         await updateDoc(docRef, {
           cleared: data[fieldName],
           [fieldName]: deleteField(),
@@ -582,9 +643,9 @@ export const renameFieldToCleared = async () => {
         console.log(`Updated document ${document.id}`);
       }
     });
-    console.log("All documents updated successfully!");
+    console.log('All documents updated successfully!');
   } catch (error) {
-    console.error("Error updating documents: ", error);
+    console.error('Error updating documents: ', error);
   }
 };
 
@@ -600,7 +661,7 @@ export async function getLastOpenDiscussion(): Promise<lastOpenDiscussion> {
   const currentTime = new Date();
   const uid = await getUID();
   if (!uid) {
-    throw new Error("No UID available for get last open discussion operation");
+    throw new Error('No UID available for get last open discussion operation');
   }
   try {
     /* 
@@ -620,18 +681,33 @@ export async function getLastOpenDiscussion(): Promise<lastOpenDiscussion> {
         ],
       });
     */
-    const querySnapshot = await getDocs(collection(db, `Users/${uid}/Discussions`));
-    const discussions = querySnapshot.docs.map(doc => ({
+    const querySnapshot = await getDocs(
+      collection(db, `Users/${uid}/Discussions`)
+    );
+    const discussions = querySnapshot.docs.map((doc) => ({
       id: doc.id,
-      ...doc.data() as { timestamp: Timestamp; description: string; cleared: boolean },
+      ...(doc.data() as {
+        timestamp: Timestamp;
+        description: string;
+        cleared: boolean;
+      }),
     }));
     const lastOpenDiscussion = discussions
-      .filter(discussion => !discussion.cleared && discussion.description !== "" && discussion.description !== null)
-      .sort((a, b) => new Date(b.timestamp.toDate()).getTime() - new Date(a.timestamp.toDate()).getTime())[0];
+      .filter(
+        (discussion) =>
+          !discussion.cleared &&
+          discussion.description !== '' &&
+          discussion.description !== null
+      )
+      .sort(
+        (a, b) =>
+          new Date(b.timestamp.toDate()).getTime() -
+          new Date(a.timestamp.toDate()).getTime()
+      )[0];
     console.log('Last open discussion:', lastOpenDiscussion?.description);
     return {
       id: lastOpenDiscussion.id,
-      description: lastOpenDiscussion.description
+      description: lastOpenDiscussion.description,
     };
   } catch (error) {
     console.error('Error getting last open discussion:', error);
@@ -643,7 +719,10 @@ export async function getLastOpenDiscussion(): Promise<lastOpenDiscussion> {
   }
 }
 
-async function waitForDocument(ref: DocumentReference<unknown, DocumentData>, timeout = 5000) {
+async function waitForDocument(
+  ref: DocumentReference<unknown, DocumentData>,
+  timeout = 5000
+) {
   return new Promise((resolve, reject) => {
     const unsubscribe = onSnapshot(
       ref,
@@ -660,45 +739,68 @@ async function waitForDocument(ref: DocumentReference<unknown, DocumentData>, ti
     );
     setTimeout(() => {
       unsubscribe();
-      reject(new Error('Document did not become available within the specified timeout.'));
+      reject(
+        new Error(
+          'Document did not become available within the specified timeout.'
+        )
+      );
     }, timeout);
   });
 }
 
-export async function disperseQuestion(discussionId: string, GPT_ResponseId: string): Promise<string[] | undefined> {
+export async function disperseQuestion(
+  discussionId: string,
+  GPT_ResponseId: string
+): Promise<string[] | undefined> {
   const uid = await getUID();
   if (!uid) {
-    throw new Error("No UID available for disperse question operation");
+    throw new Error('No UID available for disperse question operation');
   }
   try {
-    console.log("Attempting to disperse question and get answers...");
+    console.log('Attempting to disperse question and get answers...');
     const discussionRef = doc(db, `Users/${uid}/Discussions`, discussionId);
     const discussionDoc = await getDoc(discussionRef);
     if (!discussionDoc.exists()) {
       console.log(`No discussion found with ID: ${discussionId}`);
       return;
     }
-    const gptResponseRef = doc(db, "GPTResponses", GPT_ResponseId);
-    console.log("Waiting for GPT Response to be ready...");
+    const gptResponseRef = doc(db, 'GPTResponses', GPT_ResponseId);
+    console.log('Waiting for GPT Response to be ready...');
     const gptResponseDoc = await waitForDocument(gptResponseRef);
-    console.log("GPT Response is ready.");
+    console.log('GPT Response is ready.');
     if (!gptResponseDoc) {
-      console.error("GPT Response not found");
+      console.error('GPT Response not found');
       return undefined;
     }
-    console.log("GPT Response found:", JSON.parse((gptResponseDoc as DocumentSnapshot).get('response')));
-    const parsedQuestion = JSON.parse((gptResponseDoc as DocumentSnapshot).get('response'));
+    console.log(
+      'GPT Response found:',
+      JSON.parse((gptResponseDoc as DocumentSnapshot).get('response'))
+    );
+    const parsedQuestion = JSON.parse(
+      (gptResponseDoc as DocumentSnapshot).get('response')
+    );
     let responses: string[] = [];
     for (const part of parsedQuestion.parts) {
       const { gpt, category, parsedDescription: question } = part;
-      console.log(`Sending question to GPT ${gpt} for category(s) ${category}:`, question);
-      const response = await sendQuestion({ category, gpt, question, discussionId });
-      console.log(`Got response from GPT ${gpt} for category(s) ${category}:`, response);
-      await addDoc(collection(db, "GPTResponses"), {
+      console.log(
+        `Sending question to GPT ${gpt} for category(s) ${category}:`,
+        question
+      );
+      const response = await sendQuestion({
+        category,
+        gpt,
+        question,
+        discussionId,
+      });
+      console.log(
+        `Got response from GPT ${gpt} for category(s) ${category}:`,
+        response
+      );
+      await addDoc(collection(db, 'GPTResponses'), {
         timestamp: new Date(),
         prompt: question,
         response: response,
-        responseType: "gpt response",
+        responseType: 'gpt response',
         discussionId,
         cleared: false,
         uid,
@@ -707,33 +809,49 @@ export async function disperseQuestion(discussionId: string, GPT_ResponseId: str
     }
     return responses;
   } catch (error) {
-    console.error("Error dispersing question:", error);
+    console.error('Error dispersing question:', error);
     return undefined;
   }
 }
 
-export async function disperseQuestionOLD(discussionId: string, GPT_ResponseId: string): Promise<string[] | undefined> {
+export async function disperseQuestionOLD(
+  discussionId: string,
+  GPT_ResponseId: string
+): Promise<string[] | undefined> {
   const uid = await getUID();
   if (!uid) {
-    throw new Error("No UID available for disperse question old operation");
+    throw new Error('No UID available for disperse question old operation');
   }
   try {
     const discussionRef = doc(db, `Users/${uid}/Discussions`, discussionId);
     const discussionDoc = await getDoc(discussionRef);
     if (discussionDoc.exists()) {
-      const gptResponseRef = doc(db, "GPTResponses", GPT_ResponseId);
+      const gptResponseRef = doc(db, 'GPTResponses', GPT_ResponseId);
       const gptResponseDoc = await getDoc(gptResponseRef);
       if (gptResponseDoc.exists()) {
-        const parsedQuestion = JSON.parse(gptResponseDoc.data()!.response as string);
+        const parsedQuestion = JSON.parse(
+          gptResponseDoc.data()!.response as string
+        );
         let responses: string[] = [];
         for (const part of parsedQuestion.parts) {
           const gpt = part.gpt;
           const category = part.category;
           const question = part.parsedDescription;
-          console.log(`Sending question to GPT ${gpt} for category ${category}:`, question);
-          const response = await sendQuestion({ category, gpt, question, discussionId });
-          console.log(`Got response from GPT ${gpt} for category ${category}:`, response);
-          await addDoc(collection(db, "GPTResponses"), {
+          console.log(
+            `Sending question to GPT ${gpt} for category ${category}:`,
+            question
+          );
+          const response = await sendQuestion({
+            category,
+            gpt,
+            question,
+            discussionId,
+          });
+          console.log(
+            `Got response from GPT ${gpt} for category ${category}:`,
+            response
+          );
+          await addDoc(collection(db, 'GPTResponses'), {
             id: new Date().getTime(),
             timestamp: new Date(),
             prompt: question,
@@ -766,14 +884,16 @@ export async function addOrUpdateGPTResponse(
   discussionId: string,
   response: string,
   responseType: string,
-  cleared: boolean = false,
+  cleared: boolean = false
 ): Promise<void> {
   const uid = await getUID();
   if (!uid) {
-    throw new Error("No UID available for add or update GPT response operation");
+    throw new Error(
+      'No UID available for add or update GPT response operation'
+    );
   }
   try {
-    const docRef = doc(collection(db, "GPTResponses"), String(Date.now()));
+    const docRef = doc(collection(db, 'GPTResponses'), String(Date.now()));
     await setDoc(docRef, {
       discussionId,
       response,
@@ -782,31 +902,37 @@ export async function addOrUpdateGPTResponse(
       cleared,
       uid,
     });
-    console.log("GPT Response saved.");
+    console.log('GPT Response saved.');
   } catch (error) {
-    console.error("Error adding/updating GPT response:", error);
+    console.error('Error adding/updating GPT response:', error);
   }
 }
 
 export async function getGPTResponses(discussionId: string): Promise<any[]> {
   const uid = await getUID();
   if (!uid) {
-    throw new Error("No UID available for get GPT responses operation");
+    throw new Error('No UID available for get GPT responses operation');
   }
   try {
-    const q = query(collection(db, "GPTResponses"), where("discussionId", "==", discussionId), where("uid", "==", uid));
+    const q = query(
+      collection(db, 'GPTResponses'),
+      where('discussionId', '==', discussionId),
+      where('uid', '==', uid)
+    );
     const snapshot = await getDocs(q);
-    return snapshot.docs.map((doc: { data: () => any; }) => doc.data());
+    return snapshot.docs.map((doc: { data: () => any }) => doc.data());
   } catch (error) {
-    console.error("Error getting GPT responses:", error);
+    console.error('Error getting GPT responses:', error);
     return [];
   }
 }
 
-export async function getParsedGPTResponses(discussionId: string): Promise<string[]> {
+export async function getParsedGPTResponses(
+  discussionId: string
+): Promise<string[]> {
   const uid = await getUID();
   if (!uid) {
-    throw new Error("No UID available for get parsed GPT responses operation");
+    throw new Error('No UID available for get parsed GPT responses operation');
   }
   try {
     const parsedResponses: string[] = [];
@@ -814,10 +940,10 @@ export async function getParsedGPTResponses(discussionId: string): Promise<strin
     const batchSize = 10;
     do {
       let q = query(
-        collection(db, "GPTResponses"),
-        where("discussionId", "==", discussionId),
-        where("responseType", "==", "parsed answer"),
-        where("uid", "==", uid),
+        collection(db, 'GPTResponses'),
+        where('discussionId', '==', discussionId),
+        where('responseType', '==', 'parsed answer'),
+        where('uid', '==', uid),
         limit(batchSize)
       );
       if (lastVisible) {
@@ -825,9 +951,9 @@ export async function getParsedGPTResponses(discussionId: string): Promise<strin
       }
       const snapshot = await getDocs(q);
       if (!snapshot.empty) {
-        snapshot.docs.forEach(doc => {
+        snapshot.docs.forEach((doc) => {
           const data = doc.data();
-          if (data.responseType === "parsed answer") {
+          if (data.responseType === 'parsed answer') {
             parsedResponses.push(data.response);
           }
         });
@@ -838,7 +964,7 @@ export async function getParsedGPTResponses(discussionId: string): Promise<strin
     } while (lastVisible);
     return parsedResponses;
   } catch (error) {
-    console.error("Error getting parsed GPT responses:", error);
+    console.error('Error getting parsed GPT responses:', error);
     return [];
   }
 }
@@ -858,22 +984,33 @@ export const getAIResponse = async (question: string) => {
 export async function syncToCloud(
   tableName: string,
   payload: any,
-  method: "POST" | "PUT" | "DELETE"
+  method: 'POST' | 'PUT' | 'DELETE'
 ): Promise<void> {
   const uid = await getUID();
   if (!uid) {
-    throw new Error("No UID available for sync to cloud operation");
+    throw new Error('No UID available for sync to cloud operation');
   }
   const url = `http://localhost:5155/api/${tableName.toLowerCase()}`;
   try {
-    const config = { headers: { "Content-Type": "application/json" } };
+    const config = { headers: { 'Content-Type': 'application/json' } };
     let response;
-    if (method === "POST") {
-      response = await fetch(url, { method, headers: config.headers, body: JSON.stringify(payload) });
-    } else if (method === "PUT") {
-      response = await fetch(url, { method, headers: config.headers, body: JSON.stringify(payload) });
-    } else if (method === "DELETE") {
-      response = await fetch(`${url}/${payload.id}`, { method, headers: config.headers });
+    if (method === 'POST') {
+      response = await fetch(url, {
+        method,
+        headers: config.headers,
+        body: JSON.stringify(payload),
+      });
+    } else if (method === 'PUT') {
+      response = await fetch(url, {
+        method,
+        headers: config.headers,
+        body: JSON.stringify(payload),
+      });
+    } else if (method === 'DELETE') {
+      response = await fetch(`${url}/${payload.id}`, {
+        method,
+        headers: config.headers,
+      });
     }
     console.log(`${tableName} synced successfully.`);
   } catch (error) {
@@ -888,14 +1025,18 @@ export async function syncToCloud(
 export async function getNextActiveAlert(): Promise<any | null> {
   const uid = await getUID();
   if (!uid) {
-    throw new Error("No UID available for get next active alert operation");
+    throw new Error('No UID available for get next active alert operation');
   }
   try {
-    const q = query(collection(db, "Alert"), where("isActive", "==", true), where("uid", "==", uid));
+    const q = query(
+      collection(db, 'Alert'),
+      where('isActive', '==', true),
+      where('uid', '==', uid)
+    );
     const snapshot = await getDocs(q);
     return snapshot.docs.length ? snapshot.docs[0].data() : null;
   } catch (error) {
-    console.error("Error fetching active alert:", error);
+    console.error('Error fetching active alert:', error);
     return null;
   }
 }
@@ -903,16 +1044,20 @@ export async function getNextActiveAlert(): Promise<any | null> {
 export async function addOrUpdateAlert(alertData: any): Promise<void> {
   const uid = await getUID();
   if (!uid) {
-    throw new Error("No UID available for add or update alert operation");
+    throw new Error('No UID available for add or update alert operation');
   }
   try {
-    const docRef = alertData._id 
-      ? doc(db, "Alert", alertData._id) 
-      : doc(collection(db, "Alert"));
-    await setDoc(docRef, { ...alertData, createdAt: new Date(), uid }, { merge: true });
-    console.log(`Alert ${alertData._id ? "updated" : "added"} successfully.`);
+    const docRef = alertData._id
+      ? doc(db, 'Alert', alertData._id)
+      : doc(collection(db, 'Alert'));
+    await setDoc(
+      docRef,
+      { ...alertData, createdAt: new Date(), uid },
+      { merge: true }
+    );
+    console.log(`Alert ${alertData._id ? 'updated' : 'added'} successfully.`);
   } catch (error) {
-    console.error("Error adding/updating alert:", error);
+    console.error('Error adding/updating alert:', error);
   }
 }
 
@@ -920,32 +1065,41 @@ export async function addOrUpdateAlert(alertData: any): Promise<void> {
 // Database functions for GPT Specialties //
 //////////////////////////////////////////
 
-export async function getURLofGPT(gpt_name: string): Promise<{ url: string; apiKey: string } | null> {
+export async function getURLofGPT(
+  gpt_name: string
+): Promise<{ url: string; apiKey: string } | null> {
   const uid = await getUID();
   if (!uid) {
-    throw new Error("No UID available for get URL of GPT operation");
+    throw new Error('No UID available for get URL of GPT operation');
   }
   try {
-    const q = query(collection(db, "GPTSpecialties"), where("name", "==", gpt_name));
+    const q = query(
+      collection(db, 'GPTSpecialties'),
+      where('name', '==', gpt_name)
+    );
     const snapshot = await getDocs(q);
-    return snapshot.docs.length ? snapshot.docs[0].data() as { url: string; apiKey: string } : null;
+    return snapshot.docs.length
+      ? (snapshot.docs[0].data() as { url: string; apiKey: string })
+      : null;
   } catch (error) {
-    console.error("Error fetching GPT specialty:", error);
+    console.error('Error fetching GPT specialty:', error);
     return null;
   }
 }
 
-export async function expandFromAbbreviation(discussion: string): Promise<string> {
+export async function expandFromAbbreviation(
+  discussion: string
+): Promise<string> {
   console.log(`Attempting to expand abbreviation '${discussion}'`);
   const uid = await getUID();
   if (!uid) {
-    throw new Error("No UID available for expand abbreviation operation");
+    throw new Error('No UID available for expand abbreviation operation');
   }
   const abbreviationMap = new Map<string, string>([
     ['1', 'i urinated'],
     ['11', 'i had a high volume of urination'],
     ['2', 'i had a regular size poop'],
-    ['22', 'i had a large poop']
+    ['22', 'i had a large poop'],
   ]);
   const expandedForm = abbreviationMap.get(discussion);
   console.log(`Expanded '${discussion}' to '${expandedForm}'`);
@@ -983,30 +1137,106 @@ updateDiscussions(); */
 
 // Data to restore
 const lostData = [
-  { id: "1738367528606", typeSay: "tell", timestamp: 1738367528606, description: "1" },
-  { id: "1738374105437", typeSay: "tell", timestamp: 1738374105437, description: "I ate salmon couscous and 2 slices of avocado" },
-  { id: "1738382525048", typeSay: "tell", timestamp: 1738382525048, description: "Took 5 mg Staten" },
-  { id: "7vukcCfVaBApZaAv6PoU", typeSay: "tell", timestamp: 1738374105437, description: "I'm feeling anxious and frustrated" },
-  { id: "92JlMF1EHheU8uPMLBMi", typeSay: "tell", timestamp: 1738382525048, description: "1" },
-  { id: "ArZ5Z0pQN1RKVb3kWuVh", typeSay: "tell", timestamp: 1738374105437, description: "Ate Cheese omelet 3 out of 4 yolks removed with mustard leaf onions" },
-  { id: "BA5UcSPVyWjPUHCMNiwM", typeSay: "tell", timestamp: 1738382525048, description: "I ate banana" },
-  { id: "Du7Py4BgHvrAxmY9IK7l", typeSay: "tell", timestamp: 1738374105437, description: "I weigh 198 pounds" },
-  { id: "FiXuBOhnBeEAttEsR6gu", typeSay: "tell", timestamp: 1738374105437, description: "Took NATtokinase 4000 fu 3 tabs" },
-  { id: "FpXSZiDfKRVoyPvHlFNm", typeSay: "tell", timestamp: 1738374105437, description: "My Blood Pressure was 139 over 77 heart rate 79" },
-  { id: "GVaBSIODW1Mwu7zlQKOn", typeSay: "tell", timestamp: 1738382525048, description: "1" },
-  { id: "XraDybqXtDXAZV6zzdEJ", typeSay: "tell", timestamp: 1738374105437, description: "I slept about 8 hours" },
-  { id: "pMkrwd6YHnd5rp0haNl4", typeSay: "tell", timestamp: 1738374105437, description: "Drank two cups of coffee with creamer" },
-  { id: "sij7LXj17QS9h5K1boPa", typeSay: "tell", timestamp: 1738374105437, description: "Last night I had a lettuce salad with dressing with sardines" },
-  { id: "vk1N3fkTLJyYyFU5XNw0", typeSay: "tell", timestamp: 1738374105437, description: "Planted several new tomato bushes in the garden" },
+  {
+    id: '1738367528606',
+    typeSay: 'tell',
+    timestamp: 1738367528606,
+    description: '1',
+  },
+  {
+    id: '1738374105437',
+    typeSay: 'tell',
+    timestamp: 1738374105437,
+    description: 'I ate salmon couscous and 2 slices of avocado',
+  },
+  {
+    id: '1738382525048',
+    typeSay: 'tell',
+    timestamp: 1738382525048,
+    description: 'Took 5 mg Staten',
+  },
+  {
+    id: '7vukcCfVaBApZaAv6PoU',
+    typeSay: 'tell',
+    timestamp: 1738374105437,
+    description: "I'm feeling anxious and frustrated",
+  },
+  {
+    id: '92JlMF1EHheU8uPMLBMi',
+    typeSay: 'tell',
+    timestamp: 1738382525048,
+    description: '1',
+  },
+  {
+    id: 'ArZ5Z0pQN1RKVb3kWuVh',
+    typeSay: 'tell',
+    timestamp: 1738374105437,
+    description:
+      'Ate Cheese omelet 3 out of 4 yolks removed with mustard leaf onions',
+  },
+  {
+    id: 'BA5UcSPVyWjPUHCMNiwM',
+    typeSay: 'tell',
+    timestamp: 1738382525048,
+    description: 'I ate banana',
+  },
+  {
+    id: 'Du7Py4BgHvrAxmY9IK7l',
+    typeSay: 'tell',
+    timestamp: 1738374105437,
+    description: 'I weigh 198 pounds',
+  },
+  {
+    id: 'FiXuBOhnBeEAttEsR6gu',
+    typeSay: 'tell',
+    timestamp: 1738374105437,
+    description: 'Took NATtokinase 4000 fu 3 tabs',
+  },
+  {
+    id: 'FpXSZiDfKRVoyPvHlFNm',
+    typeSay: 'tell',
+    timestamp: 1738374105437,
+    description: 'My Blood Pressure was 139 over 77 heart rate 79',
+  },
+  {
+    id: 'GVaBSIODW1Mwu7zlQKOn',
+    typeSay: 'tell',
+    timestamp: 1738382525048,
+    description: '1',
+  },
+  {
+    id: 'XraDybqXtDXAZV6zzdEJ',
+    typeSay: 'tell',
+    timestamp: 1738374105437,
+    description: 'I slept about 8 hours',
+  },
+  {
+    id: 'pMkrwd6YHnd5rp0haNl4',
+    typeSay: 'tell',
+    timestamp: 1738374105437,
+    description: 'Drank two cups of coffee with creamer',
+  },
+  {
+    id: 'sij7LXj17QS9h5K1boPa',
+    typeSay: 'tell',
+    timestamp: 1738374105437,
+    description: 'Last night I had a lettuce salad with dressing with sardines',
+  },
+  {
+    id: 'vk1N3fkTLJyYyFU5XNw0',
+    typeSay: 'tell',
+    timestamp: 1738374105437,
+    description: 'Planted several new tomato bushes in the garden',
+  },
 ];
 
 // Function to restore data
 async function restoreLostData() {
   const uid = await getUID();
   if (!uid) {
-    throw new Error("No UID available for restore lost data operation");
+    throw new Error('No UID available for restore lost data operation');
   }
-  const collectionRef = collection(db, "ActivityLog");
+  const collectionRef = collection(db, 'ActivityLog');
   for (const entry of lostData) {
     try {
       const docRef = doc(collectionRef, entry.id);
@@ -1021,19 +1251,23 @@ async function restoreLostData() {
       console.error(`Failed to restore document ${entry.id}:`, error);
     }
   }
-  console.log("Data restoration completed!");
+  console.log('Data restoration completed!');
 }
 
 export async function getRules() {
   const uid = await getUID();
   if (!uid) {
-    throw new Error("No UID available for get rules operation");
+    throw new Error('No UID available for get rules operation');
   }
   try {
-    const rulesRef = collection(db, "Rules");
-    const q = query(rulesRef, orderBy('isRegex', 'desc'), orderBy('priority', 'asc'));
+    const rulesRef = collection(db, 'Rules');
+    const q = query(
+      rulesRef,
+      orderBy('isRegex', 'desc'),
+      orderBy('priority', 'asc')
+    );
     const snapshot = await getDocs(q);
-    const rules = snapshot.docs.map(doc => doc.data());
+    const rules = snapshot.docs.map((doc) => doc.data());
     return rules;
   } catch (error) {
     console.error('Error fetching rules:', error);
