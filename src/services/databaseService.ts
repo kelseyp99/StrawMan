@@ -30,6 +30,31 @@ import { sendQuestion, sendQuestionForParsing } from './openaiAPI';
 const APP_VERSION = '1.1.0';
 const APP_ID = 'com.anonymous.lifelog';
 
+// Toggle for synchronization (set to false to disable later)
+const ENABLE_DISCUSSION_SYNC = false;
+const ENABLE_ACTIVITYLOG_SYNC = false;
+
+interface Discussion {
+  id: string;
+  discussionId: string;
+  description: string;
+  timestamp: any;
+  typeSay: string;
+  cleared?: boolean;
+  uid?: string;
+}
+
+interface ActivityLog {
+  id: string;
+  discussionId: string;
+  description: string;
+  category: string;
+  timestamp: any;
+  cleared: boolean;
+  uid: string;
+  responseType?: string;
+}
+
 export async function initializeUser() {
   const user = auth.currentUser;
   if (!user) {
@@ -131,8 +156,12 @@ export const deleteDocument = async (docId: string) => {
 export async function getDistinctCategories(): Promise<string[]> {
   console.log('Fetching distinct categories from Firestore...');
   const uid = await getUID();
+  if (!uid) {
+    console.error('No UID available.');
+    return [];
+  }
   try {
-    const snapshot = await getDocs(collection(db, 'ActivityLog'));
+    const snapshot = await getDocs(collection(db, `Users/${uid}/ActivityLog`));
     const categoriesSet = new Set<string>();
 
     try {
@@ -166,7 +195,10 @@ export async function insertJsonFile(jsonData: any): Promise<void> {
   }
   try {
     for (const item of jsonData) {
-      const docRef = doc(collection(db, 'ActivityLog'), String(Date.now()));
+      const docRef = doc(
+        collection(db, `Users/${uid}/ActivityLog`),
+        String(Date.now())
+      );
       const newEntry = {
         category: item.category,
         value: item.value,
@@ -186,26 +218,261 @@ export async function queryAllFieldsByCategories(
 ): Promise<any[]> {
   console.log('Querying Firestore for categories:', categories);
   const uid = await getUID();
+  if (!uid) {
+    console.error('No UID available.');
+    return [];
+  }
   try {
     const q = query(
-      collection(db, 'ActivityLog'),
-      where('category', 'in', categories)
+      collection(db, `Users/${uid}/ActivityLog`),
+      where(
+        'category',
+        'in',
+        categories.length > 0 ? categories : ['uncategorized']
+      )
     );
     const snapshot = await getDocs(q);
-    return snapshot.docs.map((doc: { data: () => any }) => {
-      const timestamp = new Date(doc.data().timestamp.toDate());
+    return snapshot.docs.map((doc) => {
+      const data = doc.data() as ActivityLog;
+      const timestamp = new Date(data.timestamp.toDate());
       const formattedTimestamp = `${
         timestamp.getMonth() + 1
       }/${timestamp.getDate()}/${timestamp.getFullYear()} ${timestamp.getHours()}:${timestamp
         .getMinutes()
         .toString()
         .padStart(2, '0')}`;
-      return `${formattedTimestamp} ${doc.data().description}`;
+      return `${formattedTimestamp} ${data.description}`;
     });
   } catch (error) {
     console.error('Error querying Firestore:', error);
     return [];
   }
+}
+
+export async function synchronizeActivityLog(
+  appVersion: string
+): Promise<void> {
+  if (!ENABLE_ACTIVITYLOG_SYNC) {
+    console.log('ActivityLog synchronization disabled.');
+    return;
+  }
+
+  try {
+    // TEMP: Bypass version check for testing
+    // if (!compareVersions(appVersion, '1.1.0')) {
+    //   console.log('Skipping ActivityLog sync for version >= 1.1.0');
+    //   return;
+    // }
+    console.log(`Starting ActivityLog sync with appVersion: ${appVersion}`);
+
+    const uid = auth.currentUser?.uid;
+    if (!uid) {
+      console.error('No user ID for ActivityLog synchronization.');
+      return;
+    }
+
+    console.log(`Synchronizing ActivityLog for UID: ${uid}`);
+    const batch = writeBatch(db);
+    let operations = 0;
+
+    // Copy from /ActivityLog to Users/{uid}/ActivityLog
+    const globalActivityLogQuery = query(collection(db, 'ActivityLog'));
+    const globalSnapshot = await getDocs(globalActivityLogQuery);
+    console.log(
+      `Found ${globalSnapshot.docs.length} global ActivityLog entries`
+    );
+
+    for (const globalDoc of globalSnapshot.docs) {
+      const globalData = globalDoc.data() as ActivityLog;
+      // Skip if document has a uid and it doesn't match the current user
+      if (globalData.uid && globalData.uid !== uid) {
+        console.log(
+          `Skipping ActivityLog ${globalDoc.id} (owned by ${globalData.uid})`
+        );
+        continue;
+      }
+
+      const userActivityLogRef = doc(
+        db,
+        `Users/${uid}/ActivityLog`,
+        globalDoc.id
+      );
+      const userDoc = await getDoc(userActivityLogRef);
+      if (!userDoc.exists()) {
+        batch.set(userActivityLogRef, {
+          ...globalData,
+          id: globalDoc.id,
+          uid, // Ensure uid is set
+          timestamp: globalData.timestamp || Timestamp.fromDate(new Date()),
+        });
+        console.log(
+          `Queued copy of ActivityLog ${globalDoc.id} to Users/${uid}/ActivityLog`
+        );
+        operations++;
+      } else {
+        console.log(
+          `ActivityLog ${globalDoc.id} already exists in Users/${uid}/ActivityLog`
+        );
+      }
+    }
+
+    // Copy from Users/{uid}/ActivityLog to /ActivityLog
+    const userActivityLogQuery = query(
+      collection(db, `Users/${uid}/ActivityLog`)
+    );
+    const userSnapshot = await getDocs(userActivityLogQuery);
+    console.log(`Found ${userSnapshot.docs.length} user ActivityLog entries`);
+
+    for (const userDoc of userSnapshot.docs) {
+      const userData = userDoc.data() as ActivityLog;
+      // Ensure userData has a uid
+      if (!userData.uid) {
+        console.warn(
+          `ActivityLog ${userDoc.id} in Users/${uid}/ActivityLog missing uid, skipping`
+        );
+        continue;
+      }
+      const globalActivityLogRef = doc(db, 'ActivityLog', userDoc.id);
+      const globalDoc = await getDoc(globalActivityLogRef);
+      if (!globalDoc.exists()) {
+        batch.set(globalActivityLogRef, {
+          ...userData,
+          id: userDoc.id,
+          uid, // Ensure uid is set
+          timestamp: userData.timestamp || Timestamp.fromDate(new Date()),
+        });
+        console.log(`Queued copy of ActivityLog ${userDoc.id} to /ActivityLog`);
+        operations++;
+      } else {
+        console.log(`ActivityLog ${userDoc.id} already exists in /ActivityLog`);
+      }
+    }
+
+    if (operations === 0) {
+      console.log('No ActivityLog entries to synchronize.');
+      return;
+    }
+
+    console.log(`Committing batch with ${operations} operations...`);
+    await batch.commit();
+    console.log(
+      `ActivityLog synchronization completed successfully with ${operations} operations.`
+    );
+  } catch (error) {
+    console.error('Error synchronizing ActivityLog:', error);
+    if (error.code === 'permission-denied') {
+      console.error(
+        'Permission denied. Check Firestore security rules for /ActivityLog and Users/{uid}/ActivityLog.'
+      );
+    }
+    throw error;
+  }
+}
+
+export async function synchronizeDiscussions(
+  appVersion: string
+): Promise<void> {
+  if (!ENABLE_DISCUSSION_SYNC) {
+    console.log('Discussion synchronization disabled.');
+    return;
+  }
+
+  try {
+    if (!compareVersions(appVersion, '1.1.0')) {
+      console.log('Skipping sync for version >= 1.1.0');
+      return;
+    }
+
+    const uid = auth.currentUser?.uid;
+    if (!uid) {
+      console.error('No user ID for synchronization.');
+      return;
+    }
+
+    console.log('Starting discussion synchronization...');
+    const batch = writeBatch(db);
+
+    const globalDiscussionsQuery = query(collection(db, 'Discussions'));
+    const globalSnapshot = await getDocs(globalDiscussionsQuery);
+
+    for (const globalDoc of globalSnapshot.docs) {
+      const globalData = globalDoc.data() as Discussion;
+      if (globalData.uid && globalData.uid !== uid) {
+        console.log(
+          `Skipping discussion ${globalDoc.id} (owned by ${globalData.uid})`
+        );
+        continue;
+      }
+
+      const userDiscussionRef = doc(
+        db,
+        `Users/${uid}/Discussions`,
+        globalDoc.id
+      );
+      const userDoc = await getDoc(userDiscussionRef);
+      if (!userDoc.exists()) {
+        batch.set(userDiscussionRef, {
+          ...globalData,
+          id: globalDoc.id,
+          discussionId: globalDoc.id,
+          uid,
+          timestamp: globalData.timestamp || new Date(),
+        });
+        console.log(
+          `Queued copy of discussion ${globalDoc.id} to Users/${uid}/Discussions`
+        );
+      } else {
+        console.log(
+          `Discussion ${globalDoc.id} already exists in Users/${uid}/Discussions`
+        );
+      }
+    }
+
+    const userDiscussionsQuery = query(
+      collection(db, `Users/${uid}/Discussions`)
+    );
+    const userSnapshot = await getDocs(userDiscussionsQuery);
+
+    for (const userDoc of userSnapshot.docs) {
+      const userData = userDoc.data() as Discussion;
+      const globalDiscussionRef = doc(db, 'Discussions', userDoc.id);
+      const globalDoc = await getDoc(globalDiscussionRef);
+      if (!globalDoc.exists()) {
+        batch.set(globalDiscussionRef, {
+          ...userData,
+          id: userDoc.id,
+          discussionId: userDoc.id,
+          timestamp: userData.timestamp || new Date(),
+        });
+        console.log(`Queued copy of discussion ${userDoc.id} to /Discussions`);
+      } else {
+        console.log(`Discussion ${userDoc.id} already exists in /Discussions`);
+      }
+    }
+
+    await batch.commit();
+    console.log('Discussion synchronization completed.');
+  } catch (error) {
+    console.error('Error synchronizing discussions:', error);
+  }
+}
+
+// Helper function to compare versions
+function compareVersions(
+  currentVersion: string,
+  targetVersion: string
+): boolean {
+  const parseVersion = (version: string) => version.split('.').map(Number);
+  const current = parseVersion(currentVersion);
+  const target = parseVersion(targetVersion);
+
+  for (let i = 0; i < Math.max(current.length, target.length); i++) {
+    const c = current[i] || 0;
+    const t = target[i] || 0;
+    if (c < t) return true;
+    if (c > t) return false;
+  }
+  return false;
 }
 
 //////////////////////////////////////////
@@ -228,8 +495,8 @@ export async function addOrUpdateDiscussion(
   try {
     console.log('Creating the document reference');
     const docRef = id
-      ? doc(db, `Users/${uid}/Discussion`, String(id))
-      : doc(collection(db, `Users/${uid}/Discussion`));
+      ? doc(db, `Users/${uid}/Discussions`, String(id))
+      : doc(collection(db, `Users/${uid}/Discussions`));
     const discussionData = {
       description,
       typeSay,
@@ -240,7 +507,7 @@ export async function addOrUpdateDiscussion(
       appId: APP_ID,
     };
     console.log(
-      `Writing to Firestore path: Users/${uid}/Discussion/${docRef.id}`,
+      `Writing to Firestore path: Users/${uid}/Discussions/${docRef.id}`,
       discussionData
     );
     await setDoc(docRef, discussionData, { merge: true });
@@ -288,7 +555,7 @@ export async function getDiscussions(
         : 'N/A',
     }));
   } catch (error) {
-    console.error('Error getting discussions:', error);
+    console.error('Error getting Discussions:', error);
     return [];
   }
 }
@@ -328,7 +595,9 @@ export const fetchInitialDiscussion = async () => {
     console.log('Fetching initial discussion with UID:', uid);
     const discussionsQuery = query(
       collection(db, `Users/${uid}/Discussions`),
-      where('uid', '==', uid)
+      where('uid', '==', uid),
+      orderBy('timestamp', 'desc'),
+      limit(1)
     );
     const discussionSnapshot = await getDocs(discussionsQuery);
     if (!discussionSnapshot.empty) {
@@ -459,13 +728,17 @@ export async function processUnclearedGPTResponses() {
     const responseJson = JSON.parse(gptResponseTyped.response);
     const { category, parsedDescription } = responseJson;
     const { discussionId, timestamp } = gptResponseTyped;
-    const activityLogRef = collection(db, 'ActivityLog');
+    const activityLogRef = collection(db, `Users/${uid}/ActivityLog`);
     const qq = query(activityLogRef, where('discussionId', '==', discussionId));
     const querySnapshot = await getDocs(qq);
     const activityLog = !querySnapshot.empty ? querySnapshot.docs[0] : null;
     if (activityLog) {
       console.log('Updating existing activity log...');
-      const existingActivityLogRef = doc(db, 'ActivityLog', activityLog.id);
+      const existingActivityLogRef = doc(
+        db,
+        `Users/${uid}/ActivityLog`,
+        activityLog.id
+      );
       await updateDoc(existingActivityLogRef, {
         category,
         description: parsedDescription,
@@ -475,10 +748,10 @@ export async function processUnclearedGPTResponses() {
       });
     } else {
       console.log('Creating new activity log...');
-      await addDoc(collection(db, 'ActivityLog'), {
+      await addDoc(collection(db, `Users/${uid}/ActivityLog`), {
         discussionId,
         category,
-        parsedDescription,
+        description: parsedDescription,
         timestamp: Timestamp.fromDate(timestamp),
         cleared: true,
         uid,
@@ -574,7 +847,7 @@ export async function addOrUpdateActivityLog(): Promise<void> {
       const parsedDescription = responseJson.parsedDescription;
       const discussionId = gptResponseTyped.discussionId;
       const timestamp = gptResponseTyped.timestamp;
-      const activityLogRef = collection(db, 'ActivityLog');
+      const activityLogRef = collection(db, `Users/${uid}/ActivityLog`);
       const qq = query(
         activityLogRef,
         where('discussionId', '==', discussionId)
@@ -587,7 +860,7 @@ export async function addOrUpdateActivityLog(): Promise<void> {
         console.log('Updating existing response...');
         const existingActivityLogRef = doc(
           db,
-          'ActivityLog',
+          `Users/${uid}/ActivityLog`,
           querySnapshot.docs[0].id
         );
         await updateDoc(existingActivityLogRef, {
@@ -601,8 +874,8 @@ export async function addOrUpdateActivityLog(): Promise<void> {
         console.log(
           'No existing activity log found. Creating new activity log...'
         );
-        await addDoc(collection(db, 'ActivityLog'), {
-          id: new Date().getTime(),
+        await addDoc(collection(db, `Users/${uid}/ActivityLog`), {
+          id: new Date().getTime().toString(),
           discussionId,
           category,
           description: parsedDescription,
@@ -649,38 +922,18 @@ export const renameFieldToCleared = async () => {
   }
 };
 
-// Call the function to rename the field
-// renameFieldToCleared();
-
-interface lastOpenDiscussion {
+interface LastOpenDiscussion {
   id: string;
   description: string;
 }
 
-export async function getLastOpenDiscussion(): Promise<lastOpenDiscussion> {
+export async function getLastOpenDiscussion(): Promise<LastOpenDiscussion> {
   const currentTime = new Date();
   const uid = await getUID();
   if (!uid) {
     throw new Error('No UID available for get last open discussion operation');
   }
   try {
-    /* 
-    let realm: Realm | null = null;
-    try {
-      realm = await Realm.open({
-        schema: [
-          {
-            name: 'Discussion',
-            properties: {
-              id: 'int',
-              timestamp: 'date',
-              description: 'string',
-              cleared: 'bool',
-            },
-          },
-        ],
-      });
-    */
     const querySnapshot = await getDocs(
       collection(db, `Users/${uid}/Discussions`)
     );
@@ -712,10 +965,6 @@ export async function getLastOpenDiscussion(): Promise<lastOpenDiscussion> {
   } catch (error) {
     console.error('Error getting last open discussion:', error);
     return Promise.reject(error);
-  } finally {
-    /* if (realm && realm.close) {
-      realm.close();
-    } */
   }
 }
 
@@ -852,7 +1101,7 @@ export async function disperseQuestionOLD(
             response
           );
           await addDoc(collection(db, 'GPTResponses'), {
-            id: new Date().getTime(),
+            id: new Date().getTime().toString(),
             timestamp: new Date(),
             prompt: question,
             response: response,
@@ -1117,25 +1366,23 @@ export async function expandFromAbbreviation(
 //////////////////////////////////////////
 
 /* async function updateDiscussions() {
-    const discussionsSnapshot = await getDocs(collection(db, 'Discussion'));
+    const discussionsSnapshot = await getDocs(collection(db, 'Discussions'));
     const batch = writeBatch(db);
     
     discussionsSnapshot.forEach((discussionDoc) => {
-      const docRef = doc(db, 'Discussion', discussionDoc.id);
+      const docRef = doc(db, 'Discussions', discussionDoc.id);
       batch.update(docRef, { Cleared: false });
     });
     
     await batch.commit(); 
 
-    const snapshot = await getDocs(collection(db, "Discussion"));
+    const snapshot = await getDocs(collection(db, "Discussions"));
     snapshot.forEach(doc => {
         console.log(doc.id, " => ", doc.data());
     });   
 }
+*/
 
-updateDiscussions(); */
-
-// Data to restore
 const lostData = [
   {
     id: '1738367528606',
@@ -1180,63 +1427,14 @@ const lostData = [
     timestamp: 1738382525048,
     description: 'I ate banana',
   },
-  {
-    id: 'Du7Py4BgHvrAxmY9IK7l',
-    typeSay: 'tell',
-    timestamp: 1738374105437,
-    description: 'I weigh 198 pounds',
-  },
-  {
-    id: 'FiXuBOhnBeEAttEsR6gu',
-    typeSay: 'tell',
-    timestamp: 1738374105437,
-    description: 'Took NATtokinase 4000 fu 3 tabs',
-  },
-  {
-    id: 'FpXSZiDfKRVoyPvHlFNm',
-    typeSay: 'tell',
-    timestamp: 1738374105437,
-    description: 'My Blood Pressure was 139 over 77 heart rate 79',
-  },
-  {
-    id: 'GVaBSIODW1Mwu7zlQKOn',
-    typeSay: 'tell',
-    timestamp: 1738382525048,
-    description: '1',
-  },
-  {
-    id: 'XraDybqXtDXAZV6zzdEJ',
-    typeSay: 'tell',
-    timestamp: 1738374105437,
-    description: 'I slept about 8 hours',
-  },
-  {
-    id: 'pMkrwd6YHnd5rp0haNl4',
-    typeSay: 'tell',
-    timestamp: 1738374105437,
-    description: 'Drank two cups of coffee with creamer',
-  },
-  {
-    id: 'sij7LXj17QS9h5K1boPa',
-    typeSay: 'tell',
-    timestamp: 1738374105437,
-    description: 'Last night I had a lettuce salad with dressing with sardines',
-  },
-  {
-    id: 'vk1N3fkTLJyYyFU5XNw0',
-    typeSay: 'tell',
-    timestamp: 1738374105437,
-    description: 'Planted several new tomato bushes in the garden',
-  },
 ];
 
-// Function to restore data
-async function restoreLostData() {
+async function restoreLostData(): Promise<void> {
   const uid = await getUID();
   if (!uid) {
     throw new Error('No UID available for restore lost data operation');
   }
-  const collectionRef = collection(db, 'ActivityLog');
+  const collectionRef = collection(db, `Users/${uid}/ActivityLog`);
   for (const entry of lostData) {
     try {
       const docRef = doc(collectionRef, entry.id);
@@ -1244,7 +1442,7 @@ async function restoreLostData() {
         typeSay: entry.typeSay,
         description: entry.description,
         timestamp: Timestamp.fromMillis(entry.timestamp),
-        uid,
+        uid: uid,
       });
       console.log(`Restored document: ${entry.id}`);
     } catch (error) {

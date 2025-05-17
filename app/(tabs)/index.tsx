@@ -23,6 +23,7 @@ import {
   getNextOpenDiscussion,
   fetchInitialDiscussion,
   synchronizeDiscussions,
+  synchronizeActivityLog,
 } from '../../src/services/databaseService';
 import { transformInput } from '../../src/services/phraseProcessor';
 import {
@@ -131,7 +132,7 @@ export default function AskJanet() {
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
   const [filePath, setFilePath] = useState<string>('');
   const [selectedFile, setSelectedFile] =
-    useState<DocumentPicker.DocumentResult | null>(null);
+    useState<DocumentPicker.DocumentPickerResult | null>(null);
   const [currentDiscussion, setCurrentDiscussion] = useState<Discussion | null>(
     null
   );
@@ -140,6 +141,7 @@ export default function AskJanet() {
   );
   const [destinationFolder, setDestinationFolder] =
     useState<string>('Downloads');
+  const [activityLogEntries, setActivityLogEntries] = useState<string[]>([]);
   const dialogRef = useRef<View>(null);
   const [fetchAttempts, setFetchAttempts] = useState(0);
   const MAX_FETCH_ATTEMPTS = 5;
@@ -152,8 +154,9 @@ export default function AskJanet() {
         setUID(user.uid);
         setTimeout(async () => {
           try {
-            // Synchronize discussion on startup
-            await synchronizeDiscussions(APP_VERSION);
+            // Synchronize discussions and activity logs on startup
+            await synchronizeDiscussions('1.1.0');
+            await synchronizeActivityLog('1.1.0');
             await initializeUser();
             await loadInitialData();
           } catch (error) {
@@ -166,8 +169,40 @@ export default function AskJanet() {
       }
       setLoadingAuth(false);
     });
+
+    // Fallback: Check current user immediately if listener doesn't fire
+    if (auth.currentUser) {
+      console.log('Fallback: Detected signed-in user on startup');
+      setUserEmail(auth.currentUser.email);
+      setUID(auth.currentUser.uid);
+      setTimeout(async () => {
+        try {
+          await synchronizeDiscussions('1.1.0');
+          await synchronizeActivityLog('1.1.0');
+          await initializeUser();
+          await loadInitialData();
+        } catch (error) {
+          console.error('Fallback init err:', error);
+        }
+        setLoadingAuth(false);
+      }, 500);
+    }
+
     return () => unsubscribe();
   }, [router]);
+
+  useEffect(() => {
+    if (dialogVisible && selectedCategories.length > 0) {
+      const fetchEntries = async () => {
+        const entries = await getActivityLogEntries();
+        console.log('Fetched ActivityLog entries:', entries);
+        setActivityLogEntries(entries);
+      };
+      fetchEntries();
+    } else {
+      setActivityLogEntries([]);
+    }
+  }, [dialogVisible, selectedCategories]);
 
   async function loadInitialData() {
     if (!auth.currentUser?.uid) {
@@ -194,7 +229,7 @@ export default function AskJanet() {
       const countsPromises = querySnapshot.docs.map(async (docSnapshot) => {
         const activityLogRef = doc(
           db,
-          'ActivityLog',
+          `Users/${uid}/ActivityLog`,
           docSnapshot.data().activityLogId as string
         );
         const activityLogSnap = await getDoc(activityLogRef);
@@ -293,7 +328,7 @@ export default function AskJanet() {
           setDistinctCategories(categories);
           setDialogQuestion(discussionTyped.description || 'No description');
           setCurrentDiscussion(discussionTyped);
-          setSelectedCategories([]);
+          setSelectedCategories([]); // Clear categories on modal open
           setFilePath('');
           setSelectedFile(null);
           setDialogVisible(true);
@@ -325,8 +360,13 @@ export default function AskJanet() {
     description: string
   ) => {
     try {
+      const uid = auth.currentUser?.uid;
+      if (!uid) {
+        console.error('No UID.');
+        return false;
+      }
       const q = query(
-        collection(db, 'ActivityLog'),
+        collection(db, `Users/${uid}/ActivityLog`),
         where('discussionId', '==', discussionId),
         where('category', '==', category),
         where('description', '==', description)
@@ -361,7 +401,8 @@ export default function AskJanet() {
         return;
       }
 
-      const activityLogDoc = doc(collection(db, 'ActivityLog'));
+      const uid = auth.currentUser.uid;
+      const activityLogDoc = doc(collection(db, `Users/${uid}/ActivityLog`));
       await setDoc(activityLogDoc, {
         id: activityLogDoc.id,
         discussionId,
@@ -369,9 +410,11 @@ export default function AskJanet() {
         category,
         timestamp: new Date(),
         cleared: false,
-        uid: auth.currentUser.uid,
+        uid,
         attachedFile:
-          selectedFile?.type === 'success' ? selectedFile.uri : null,
+          selectedFile?.assets && selectedFile?.assets[0]?.uri
+            ? selectedFile?.assets[0]?.uri
+            : null,
       });
       console.log('Added:', activityLogDoc.id);
       Alert.alert('Success', 'Added.');
@@ -392,13 +435,18 @@ export default function AskJanet() {
     }
 
     try {
+      const uid = auth.currentUser?.uid;
+      if (!uid) {
+        console.error('No UID.');
+        return;
+      }
       const q = query(
-        collection(db, 'ActivityLog'),
+        collection(db, `Users/${uid}/ActivityLog`),
         where('discussionId', '==', currentDiscussion.id)
       );
       const snapshot = await getDocs(q);
       if (!snapshot.empty) {
-        const docRef = doc(db, 'ActivityLog', snapshot.docs[0].id);
+        const docRef = doc(db, `Users/${uid}/ActivityLog`, snapshot.docs[0].id);
         await deleteDoc(docRef);
         console.log('Deleted:', snapshot.docs[0].id);
         Alert.alert('Success', 'Deleted.');
@@ -461,6 +509,8 @@ export default function AskJanet() {
     }
 
     const saveFile = async (folder: string) => {
+      let tempPath: string;
+      let content: string;
       try {
         const permission =
           Platform.OS === 'android'
@@ -481,14 +531,26 @@ export default function AskJanet() {
         }
 
         const fileName = `question_${currentDiscussion.id}_${Date.now()}.txt`;
-        const content = `Question: ${dialogQuestion}\nCategories: ${
-          selectedCategories.length > 0 ? selectedCategories.join(', ') : 'None'
-        }\nDescription: ${await getActivityLogDescription()}\nFile: ${
-          selectedFile?.type === 'success' ? selectedFile.name : 'None'
-        }`;
-        const tempPath = `${FileSystem.documentDirectory}${fileName}`;
+        const activityLogEntries = await getActivityLogEntries();
+        console.log('ActivityLog entries:', activityLogEntries);
+        content =
+          `Question: ${dialogQuestion}\n` +
+          `Categories: ${
+            selectedCategories.length > 0
+              ? selectedCategories.join(', ')
+              : 'None'
+          }\n` +
+          `File: ${
+            selectedFile?.assets ? selectedFile.assets[0]?.name : 'None'
+          }\n` +
+          `Description:\n${
+            activityLogEntries.length > 0
+              ? activityLogEntries.join('\n')
+              : 'None'
+          }`;
+        tempPath = `${FileSystem.documentDirectory}${fileName}`;
 
-        await FileSystem.writeAsStringAsync(tempPath, content);
+        await FileSystem.writeAsStringAsync(tempPath, content || '');
         console.log('Temp saved:', tempPath);
 
         if (
@@ -540,7 +602,7 @@ export default function AskJanet() {
       } catch (error) {
         console.error('Save TXT err:', error);
         try {
-          await FileSystem.writeAsStringAsync(tempPath, content);
+          await FileSystem.writeAsStringAsync(tempPath, content || '');
           setFilePath(tempPath);
           Clipboard.setString(`Question: ${dialogQuestion}\nPath: ${tempPath}`);
           Alert.alert(
@@ -603,17 +665,41 @@ export default function AskJanet() {
     );
   };
 
-  async function getActivityLogDescription() {
+  async function getActivityLogEntries(): Promise<string[]> {
     try {
-      if (!currentDiscussion) return 'None';
-      const snapshot = await getDocs(collection(db, 'ActivityLog'));
-      const relatedLog = snapshot.docs.find(
-        (doc) => doc.data().discussionId === currentDiscussion.id
+      const uid = auth.currentUser?.uid;
+      if (!uid || selectedCategories.length === 0) {
+        return [];
+      }
+      const q = query(
+        collection(db, `Users/${uid}/ActivityLog`),
+        where('uid', '==', uid),
+        where('category', 'in', selectedCategories)
       );
-      return relatedLog ? relatedLog.data().description || 'None' : 'None';
+      const snapshot = await getDocs(q);
+      return snapshot.docs
+        .map((doc) => {
+          const data = doc.data() as ActivityLog;
+          // Exclude the current question to avoid duplication
+          if (
+            data.description === dialogQuestion &&
+            data.discussionId === currentDiscussion?.id
+          ) {
+            return null;
+          }
+          const timestamp = new Date(data.timestamp.toDate());
+          const formattedTimestamp = `${
+            timestamp.getMonth() + 1
+          }/${timestamp.getDate()}/${timestamp.getFullYear()} ${timestamp.getHours()}:${timestamp
+            .getMinutes()
+            .toString()
+            .padStart(2, '0')}`;
+          return `${formattedTimestamp} ${data.description}`;
+        })
+        .filter((entry): entry is string => entry !== null);
     } catch (error) {
-      console.error('Desc err:', error);
-      return 'None';
+      console.error('Error fetching ActivityLog entries:', error);
+      return [];
     }
   }
 
@@ -665,7 +751,12 @@ export default function AskJanet() {
       } else if (currentDiscussion.typeSay === 'tell') {
         const category = selectedCategories.join(', ') || 'uncategorized';
         const description = dialogQuestion || 'No question';
-        const activityLogDoc = doc(collection(db, 'ActivityLog'));
+        const uid = auth.currentUser?.uid;
+        if (!uid) {
+          console.error('No UID.');
+          return;
+        }
+        const activityLogDoc = doc(collection(db, `Users/${uid}/ActivityLog`));
         await setDoc(activityLogDoc, {
           id: activityLogDoc.id,
           discussionId: currentDiscussion.id,
@@ -673,9 +764,11 @@ export default function AskJanet() {
           category,
           timestamp: new Date(),
           cleared: false,
-          uid: auth.currentUser?.uid,
+          uid,
           attachedFile:
-            selectedFile?.type === 'success' ? selectedFile.uri : null,
+            selectedFile?.assets && selectedFile?.assets[0]?.uri
+              ? selectedFile?.assets[0]?.uri
+              : null,
         });
         console.log('ActivityLog added for tell:', activityLogDoc.id);
       }
@@ -713,7 +806,7 @@ export default function AskJanet() {
     try {
       console.log('Searching for existing discussion:', description);
       const q = query(
-        collection(db, `Users/${uid}/Discussion`),
+        collection(db, `Users/${uid}/Discussions`),
         where('description', '==', description),
         where('typeSay', '==', 'ask')
       );
@@ -747,7 +840,7 @@ export default function AskJanet() {
       console.log('Reusing existing discussion:', existingDiscussion.id);
       try {
         await setDoc(
-          doc(db, `Users/${uid}/Discussion`, existingDiscussion.id),
+          doc(db, `Users/${uid}/Discussions`, existingDiscussion.id),
           {
             ...existingDiscussion,
             timestamp: new Date(),
@@ -760,6 +853,7 @@ export default function AskJanet() {
         setIsQuestion(true);
         setDialogQuestion(question);
         setCurrentDiscussion(existingDiscussion);
+        setSelectedCategories([]); // Clear categories on modal open
         setDialogVisible(true);
       } catch (error) {
         console.error('Error updating existing discussion:', error);
@@ -910,7 +1004,7 @@ export default function AskJanet() {
                 : 'Fact Details'}
             </Text>
             <Text style={styles.modalLabel}>
-              Entry: {dialogQuestion || 'None'}
+              Question: {dialogQuestion || 'None'}
             </Text>
             <Text style={styles.modalLabel}>Categories:</Text>
             <FlatList
@@ -926,9 +1020,18 @@ export default function AskJanet() {
                 </TouchableOpacity>
               )}
             />
+            <Text style={styles.modalLabel}>Activity Log Entries:</Text>
+            <FlatList
+              data={activityLogEntries}
+              keyExtractor={(item, index) => `${item}-${index}`}
+              renderItem={({ item }) => (
+                <Text style={styles.modalLabel}>{item}</Text>
+              )}
+              ListEmptyComponent={<Text style={styles.modalLabel}>None</Text>}
+            />
             <Text style={styles.modalLabel}>
               File:{' '}
-              {selectedFile?.type === 'success' ? selectedFile.name : 'None'}
+              {selectedFile?.assets ? selectedFile.assets[0]?.name : 'None'}
             </Text>
             <TouchableOpacity
               style={styles.saveButton}
