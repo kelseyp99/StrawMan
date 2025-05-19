@@ -509,8 +509,8 @@ export default function AskJanet() {
     }
 
     const saveFile = async (folder: string) => {
-      let tempPath: string;
-      let content: string;
+      let tempPath: string = '';
+      let content: string = '';
       try {
         const permission =
           Platform.OS === 'android'
@@ -806,7 +806,7 @@ export default function AskJanet() {
     try {
       console.log('Searching for existing discussion:', description);
       const q = query(
-        collection(db, `Users/${uid}/Discussions`),
+        collection(db, `Users/${uid}/Discussion`),
         where('description', '==', description),
         where('typeSay', '==', 'ask')
       );
@@ -840,7 +840,7 @@ export default function AskJanet() {
       console.log('Reusing existing discussion:', existingDiscussion.id);
       try {
         await setDoc(
-          doc(db, `Users/${uid}/Discussions`, existingDiscussion.id),
+          doc(db, `Users/${uid}/Discussion`, existingDiscussion.id),
           {
             ...existingDiscussion,
             timestamp: new Date(),

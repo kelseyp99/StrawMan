@@ -360,7 +360,7 @@ export async function synchronizeActivityLog(
     );
   } catch (error) {
     console.error('Error synchronizing ActivityLog:', error);
-    if (error.code === 'permission-denied') {
+    if ((error as any).code === 'permission-denied') {
       console.error(
         'Permission denied. Check Firestore security rules for /ActivityLog and Users/{uid}/ActivityLog.'
       );
@@ -392,21 +392,24 @@ export async function synchronizeDiscussions(
     console.log('Starting discussion synchronization...');
     const batch = writeBatch(db);
 
-    const globalDiscussionsQuery = query(collection(db, 'Discussions'));
-    const globalSnapshot = await getDocs(globalDiscussionsQuery);
+    const globalDiscussionQuery = query(collection(db, 'Discussion'));
+    const globalSnapshot = await getDocs(globalDiscussionQuery);
+    console.log(
+      `Found ${globalSnapshot.docs.length} global Discussion entries`
+    );
 
     for (const globalDoc of globalSnapshot.docs) {
       const globalData = globalDoc.data() as Discussion;
       if (globalData.uid && globalData.uid !== uid) {
         console.log(
-          `Skipping discussion ${globalDoc.id} (owned by ${globalData.uid})`
+          `Skipping Discussion ${globalDoc.id} (owned by ${globalData.uid})`
         );
         continue;
       }
 
       const userDiscussionRef = doc(
         db,
-        `Users/${uid}/Discussions`,
+        `Users/${uid}/Discussion`,
         globalDoc.id
       );
       const userDoc = await getDoc(userDiscussionRef);
@@ -419,23 +422,24 @@ export async function synchronizeDiscussions(
           timestamp: globalData.timestamp || new Date(),
         });
         console.log(
-          `Queued copy of discussion ${globalDoc.id} to Users/${uid}/Discussions`
+          `Queued copy of Discussion ${globalDoc.id} to Users/${uid}/Discussion`
         );
       } else {
         console.log(
-          `Discussion ${globalDoc.id} already exists in Users/${uid}/Discussions`
+          `Discussion ${globalDoc.id} already exists in Users/${uid}/Discussion`
         );
       }
     }
 
-    const userDiscussionsQuery = query(
-      collection(db, `Users/${uid}/Discussions`)
+    const userDiscussionQuery = query(
+      collection(db, `Users/${uid}/Discussion`)
     );
-    const userSnapshot = await getDocs(userDiscussionsQuery);
+    const userSnapshot = await getDocs(userDiscussionQuery);
+    console.log(`Found ${userSnapshot.docs.length} user Discussion entries`);
 
     for (const userDoc of userSnapshot.docs) {
       const userData = userDoc.data() as Discussion;
-      const globalDiscussionRef = doc(db, 'Discussions', userDoc.id);
+      const globalDiscussionRef = doc(db, 'Discussion', userDoc.id);
       const globalDoc = await getDoc(globalDiscussionRef);
       if (!globalDoc.exists()) {
         batch.set(globalDiscussionRef, {
@@ -444,16 +448,22 @@ export async function synchronizeDiscussions(
           discussionId: userDoc.id,
           timestamp: userData.timestamp || new Date(),
         });
-        console.log(`Queued copy of discussion ${userDoc.id} to /Discussions`);
+        console.log(`Queued copy of Discussion ${userDoc.id} to /Discussion`);
       } else {
-        console.log(`Discussion ${userDoc.id} already exists in /Discussions`);
+        console.log(`Discussion ${userDoc.id} already exists in /Discussion`);
       }
     }
 
     await batch.commit();
     console.log('Discussion synchronization completed.');
   } catch (error) {
-    console.error('Error synchronizing discussions:', error);
+    console.error('Error synchronizing Discussion:', error);
+    if ((error as any).code === 'permission-denied') {
+      console.error(
+        'Permission denied. Check Firestore security rules for /Discussion and Users/{uid}/Discussion.'
+      );
+    }
+    throw error;
   }
 }
 
@@ -476,7 +486,7 @@ function compareVersions(
 }
 
 //////////////////////////////////////////
-// Database functions for Discussions //
+// Database functions for Discussion //
 //////////////////////////////////////////
 
 export async function addOrUpdateDiscussion(
@@ -495,8 +505,8 @@ export async function addOrUpdateDiscussion(
   try {
     console.log('Creating the document reference');
     const docRef = id
-      ? doc(db, `Users/${uid}/Discussions`, String(id))
-      : doc(collection(db, `Users/${uid}/Discussions`));
+      ? doc(db, `Users/${uid}/Discussion`, String(id))
+      : doc(collection(db, `Users/${uid}/Discussion`));
     const discussionData = {
       description,
       typeSay,
@@ -507,7 +517,7 @@ export async function addOrUpdateDiscussion(
       appId: APP_ID,
     };
     console.log(
-      `Writing to Firestore path: Users/${uid}/Discussions/${docRef.id}`,
+      `Writing to Firestore path: Users/${uid}/Discussion/${docRef.id}`,
       discussionData
     );
     await setDoc(docRef, discussionData, { merge: true });
@@ -530,12 +540,12 @@ export async function getDiscussions(
   }
   try {
     let discussionsQuery = query(
-      collection(db, `Users/${uid}/Discussions`),
+      collection(db, `Users/${uid}/Discussion`),
       where('uid', '==', uid),
       orderBy('timestamp', 'desc')
     );
     if (discussionId) {
-      const discussionRef = doc(db, `Users/${uid}/Discussions`, discussionId);
+      const discussionRef = doc(db, `Users/${uid}/Discussion`, discussionId);
       const discussionSnap = await getDoc(discussionRef);
       if (discussionSnap.exists()) {
         discussionsQuery = query(discussionsQuery, startAfter(discussionSnap));
@@ -555,7 +565,7 @@ export async function getDiscussions(
         : 'N/A',
     }));
   } catch (error) {
-    console.error('Error getting Discussions:', error);
+    console.error('Error getting Discussion:', error);
     return [];
   }
 }
@@ -566,7 +576,7 @@ export async function deleteDiscussion(id: string): Promise<void> {
     throw new Error('No UID available for delete discussion operation');
   }
   try {
-    const discussionRef = doc(db, `Users/${uid}/Discussions`, id);
+    const discussionRef = doc(db, `Users/${uid}/Discussion`, id);
     const discussionSnap = await getDoc(discussionRef);
     if (discussionSnap.exists()) {
       const discussionData = discussionSnap.data();
@@ -594,7 +604,7 @@ export const fetchInitialDiscussion = async () => {
   try {
     console.log('Fetching initial discussion with UID:', uid);
     const discussionsQuery = query(
-      collection(db, `Users/${uid}/Discussions`),
+      collection(db, `Users/${uid}/Discussion`),
       where('uid', '==', uid),
       orderBy('timestamp', 'desc'),
       limit(1)
@@ -627,7 +637,7 @@ export const getNextOpenDiscussion = async (lastVisibleDoc?: any) => {
   try {
     console.log(`getNextOpenDiscussion: UID=${uid}`);
     let discussionsQuery = query(
-      collection(db, `Users/${uid}/Discussions`),
+      collection(db, `Users/${uid}/Discussion`),
       where('cleared', 'in', [false, null]),
       where('uid', '==', uid),
       limit(1)
@@ -778,7 +788,7 @@ export const markDiscussionAsCleared = async (discussionId: string) => {
     );
   }
   try {
-    const discussionRef = doc(db, `Users/${uid}/Discussions`, discussionId);
+    const discussionRef = doc(db, `Users/${uid}/Discussion`, discussionId);
     await updateDoc(discussionRef, { cleared: true });
     console.log(`✅ Discussion ${discussionId} marked as cleared.`);
   } catch (error) {
@@ -792,7 +802,7 @@ export async function clearDiscussion(discussionId: string): Promise<boolean> {
     throw new Error('No UID available for clear discussion operation');
   }
   try {
-    const discussionRef = doc(db, `Users/${uid}/Discussions`, discussionId);
+    const discussionRef = doc(db, `Users/${uid}/Discussion`, discussionId);
     console.log(`Attempting to clear discussion ${discussionId}...`);
     const docSnapshot = await getDoc(discussionRef);
     if (docSnapshot.exists()) {
@@ -899,10 +909,10 @@ export const renameFieldToCleared = async () => {
     throw new Error('No UID available for rename field to cleared operation');
   }
   try {
-    const discussionCollection = collection(db, `Users/${uid}/Discussions`);
+    const discussionCollection = collection(db, `Users/${uid}/Discussion`);
     const querySnapshot = await getDocs(discussionCollection);
     querySnapshot.forEach(async (document) => {
-      const docRef = doc(db, `Users/${uid}/Discussions`, document.id);
+      const docRef = doc(db, `Users/${uid}/Discussion`, document.id);
       const data = document.data();
       const fieldName = Object.keys(data).find(
         (key) => key.toLowerCase() === 'cleared'
@@ -935,7 +945,7 @@ export async function getLastOpenDiscussion(): Promise<LastOpenDiscussion> {
   }
   try {
     const querySnapshot = await getDocs(
-      collection(db, `Users/${uid}/Discussions`)
+      collection(db, `Users/${uid}/Discussion`)
     );
     const discussions = querySnapshot.docs.map((doc) => ({
       id: doc.id,
@@ -1007,7 +1017,7 @@ export async function disperseQuestion(
   }
   try {
     console.log('Attempting to disperse question and get answers...');
-    const discussionRef = doc(db, `Users/${uid}/Discussions`, discussionId);
+    const discussionRef = doc(db, `Users/${uid}/Discussion`, discussionId);
     const discussionDoc = await getDoc(discussionRef);
     if (!discussionDoc.exists()) {
       console.log(`No discussion found with ID: ${discussionId}`);
@@ -1072,7 +1082,7 @@ export async function disperseQuestionOLD(
     throw new Error('No UID available for disperse question old operation');
   }
   try {
-    const discussionRef = doc(db, `Users/${uid}/Discussions`, discussionId);
+    const discussionRef = doc(db, `Users/${uid}/Discussion`, discussionId);
     const discussionDoc = await getDoc(discussionRef);
     if (discussionDoc.exists()) {
       const gptResponseRef = doc(db, 'GPTResponses', GPT_ResponseId);
@@ -1366,17 +1376,17 @@ export async function expandFromAbbreviation(
 //////////////////////////////////////////
 
 /* async function updateDiscussions() {
-    const discussionsSnapshot = await getDocs(collection(db, 'Discussions'));
+    const discussionsSnapshot = await getDocs(collection(db, 'Discussion'));
     const batch = writeBatch(db);
     
     discussionsSnapshot.forEach((discussionDoc) => {
-      const docRef = doc(db, 'Discussions', discussionDoc.id);
+      const docRef = doc(db, 'Discussion', discussionDoc.id);
       batch.update(docRef, { Cleared: false });
     });
     
     await batch.commit(); 
 
-    const snapshot = await getDocs(collection(db, "Discussions"));
+    const snapshot = await getDocs(collection(db, "Discussion"));
     snapshot.forEach(doc => {
         console.log(doc.id, " => ", doc.data());
     });   
