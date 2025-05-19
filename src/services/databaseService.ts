@@ -55,6 +55,13 @@ interface ActivityLog {
   responseType?: string;
 }
 
+interface Rule {
+  pattern: string;
+  isRegex: boolean;
+  category: string;
+  priority: number;
+}
+
 export async function initializeUser() {
   const user = auth.currentUser;
   if (!user) {
@@ -178,7 +185,7 @@ export async function getDistinctCategories(): Promise<string[]> {
         categoriesSet.add('diet');
       }
     } catch (error) {
-      console.error('Error processing GPT responses:', error);
+      console.error('Error processing ActivityLog responses:', error);
     }
 
     return Array.from(categoriesSet);
@@ -258,13 +265,7 @@ export async function synchronizeActivityLog(
   }
 
   try {
-    // TEMP: Bypass version check for testing
-    // if (!compareVersions(appVersion, '1.1.0')) {
-    //   console.log('Skipping ActivityLog sync for version >= 1.1.0');
-    //   return;
-    // }
     console.log(`Starting ActivityLog sync with appVersion: ${appVersion}`);
-
     const uid = auth.currentUser?.uid;
     if (!uid) {
       console.error('No user ID for ActivityLog synchronization.');
@@ -284,7 +285,6 @@ export async function synchronizeActivityLog(
 
     for (const globalDoc of globalSnapshot.docs) {
       const globalData = globalDoc.data() as ActivityLog;
-      // Skip if document has a uid and it doesn't match the current user
       if (globalData.uid && globalData.uid !== uid) {
         console.log(
           `Skipping ActivityLog ${globalDoc.id} (owned by ${globalData.uid})`
@@ -302,7 +302,7 @@ export async function synchronizeActivityLog(
         batch.set(userActivityLogRef, {
           ...globalData,
           id: globalDoc.id,
-          uid, // Ensure uid is set
+          uid,
           timestamp: globalData.timestamp || Timestamp.fromDate(new Date()),
         });
         console.log(
@@ -325,7 +325,6 @@ export async function synchronizeActivityLog(
 
     for (const userDoc of userSnapshot.docs) {
       const userData = userDoc.data() as ActivityLog;
-      // Ensure userData has a uid
       if (!userData.uid) {
         console.warn(
           `ActivityLog ${userDoc.id} in Users/${uid}/ActivityLog missing uid, skipping`
@@ -338,7 +337,7 @@ export async function synchronizeActivityLog(
         batch.set(globalActivityLogRef, {
           ...userData,
           id: userDoc.id,
-          uid, // Ensure uid is set
+          uid,
           timestamp: userData.timestamp || Timestamp.fromDate(new Date()),
         });
         console.log(`Queued copy of ActivityLog ${userDoc.id} to /ActivityLog`);
@@ -493,7 +492,7 @@ export async function addOrUpdateDiscussion(
   description: string,
   typeSay: string = 'tell',
   id?: string
-): Promise<void> {
+): Promise<string> {
   console.log('Entering addOrUpdateDiscussion');
   const uid = await getUID();
   if (!uid) {
@@ -524,6 +523,7 @@ export async function addOrUpdateDiscussion(
     console.log(
       `Discussion ${id ? 'updated' : 'added'} successfully: ${docRef.id}`
     );
+    return docRef.id;
   } catch (error) {
     console.error('Error adding/updating discussion:', error);
     throw error;
@@ -639,6 +639,7 @@ export const getNextOpenDiscussion = async (lastVisibleDoc?: any) => {
     let discussionsQuery = query(
       collection(db, `Users/${uid}/Discussion`),
       where('cleared', 'in', [false, null]),
+      where('typeSay', '==', 'ask'),
       where('uid', '==', uid),
       limit(1)
     );
@@ -660,6 +661,81 @@ export const getNextOpenDiscussion = async (lastVisibleDoc?: any) => {
     return { snapshot: null, hasMore: false, lastVisibleDoc: null };
   }
 };
+
+export async function processPendingTells(): Promise<void> {
+  const uid = await getUID();
+  if (!uid) {
+    throw new Error('No UID available for processing pending tells');
+  }
+  try {
+    console.log('Processing pending tell statements...');
+    const q = query(
+      collection(db, `Users/${uid}/Discussion`),
+      where('typeSay', '==', 'tell'),
+      where('cleared', 'in', [false, null]),
+      where('uid', '==', uid)
+    );
+    const snapshot = await getDocs(q);
+    if (snapshot.empty) {
+      console.log('No pending tell statements to process.');
+      return;
+    }
+
+    const rules = await getRules();
+    console.log('Rules fetched:', rules);
+
+    for (const doc of snapshot.docs) {
+      const discussion = doc.data() as Discussion;
+      console.log('Processing tell:', discussion.description);
+
+      // Apply rules to determine category
+      let category = 'uncategorized';
+      for (const rule of rules) {
+        if (rule.isRegex) {
+          const pattern = new RegExp(rule.pattern, 'i');
+          if (pattern.test(discussion.description)) {
+            category = rule.category;
+            break;
+          }
+        } else {
+          if (
+            discussion.description
+              .toLowerCase()
+              .includes(rule.pattern.toLowerCase())
+          ) {
+            category = rule.category;
+            break;
+          }
+        }
+      }
+
+      // Add to ActivityLog
+      const docRef = await addDoc(collection(db, `Users/${uid}/ActivityLog`), {
+        id: doc.id,
+        discussionId: doc.id,
+        description: discussion.description,
+        category,
+        timestamp: discussion.timestamp || Timestamp.fromDate(new Date()),
+        cleared: false,
+        uid,
+      });
+      console.log('Added to ActivityLog:', docRef.id);
+
+      // Mark discussion as cleared
+      await updateDoc(doc.ref, { cleared: true });
+      console.log('Cleared discussion:', doc.id);
+    }
+    console.log('Finished processing pending tell statements.');
+  } catch (error) {
+    console.error('Error processing pending tells:', error);
+    if ((error as any).code === 'permission-denied') {
+      console.error(
+        'Permission denied. Check Firestore security rules for /Discussion and Users/{uid}/ActivityLog.'
+      );
+    }
+    throw error;
+  }
+}
 
 export async function addQuestionDiscussion(
   question: string,
@@ -1475,7 +1551,7 @@ export async function getRules() {
       orderBy('priority', 'asc')
     );
     const snapshot = await getDocs(q);
-    const rules = snapshot.docs.map((doc) => doc.data());
+    const rules = snapshot.docs.map((doc) => doc.data() as Rule);
     return rules;
   } catch (error) {
     console.error('Error fetching rules:', error);

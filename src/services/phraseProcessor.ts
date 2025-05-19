@@ -274,15 +274,15 @@ export async function applyRules(
     let parsedDesc = '';
 
     if (rule.isRegex) {
-      const regex = new RegExp(rule.phrase, 'i');
+      const regex = new RegExp(rule.pattern, 'i');
       if (regex.test(normalizedInput)) {
         isMatch = true;
-        parsedDesc = normalizedInput.replace(regex, rule.replacement);
+        parsedDesc = normalizedInput.replace(regex, rule.category);
       }
     } else {
-      if (normalizedInput.includes(rule.phrase)) {
+      if (normalizedInput.includes(rule.pattern)) {
         isMatch = true;
-        parsedDesc = normalizedInput.replace(rule.phrase, rule.replacement);
+        parsedDesc = normalizedInput.replace(rule.pattern, rule.category);
       }
     }
 

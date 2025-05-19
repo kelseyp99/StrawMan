@@ -24,6 +24,8 @@ import {
   fetchInitialDiscussion,
   synchronizeDiscussions,
   synchronizeActivityLog,
+  markDiscussionAsCleared,
+  processPendingTells,
 } from '../../src/services/databaseService';
 import { transformInput } from '../../src/services/phraseProcessor';
 import {
@@ -159,6 +161,8 @@ export default function AskJanet() {
             await synchronizeActivityLog('1.1.0');
             await initializeUser();
             await loadInitialData();
+            // Process any pending "tell" statements
+            await processPendingTells();
           } catch (error) {
             console.error('Init err:', error);
           }
@@ -181,6 +185,7 @@ export default function AskJanet() {
           await synchronizeActivityLog('1.1.0');
           await initializeUser();
           await loadInitialData();
+          await processPendingTells();
         } catch (error) {
           console.error('Fallback init err:', error);
         }
@@ -306,11 +311,18 @@ export default function AskJanet() {
         };
         console.log('Process:', discussionTyped.description);
 
+        // Skip if not an "ask" or already processed/cleared
         if (
+          discussionTyped.typeSay !== 'ask' ||
           processedDiscussions.includes(discussionTyped.id) ||
           discussionTyped.cleared
         ) {
-          console.log('Skip:', discussionTyped.id);
+          console.log(
+            'Skip:',
+            discussionTyped.id,
+            'Type:',
+            discussionTyped.typeSay
+          );
           if (hasMore) {
             await fetchDiscussions(maxAttempts);
           } else {
@@ -345,7 +357,7 @@ export default function AskJanet() {
           }
         }
       } else {
-        console.log('No discussions.');
+        console.log('No unprocessed ask discussions.');
         setFetchAttempts(0);
       }
     } catch (error) {
@@ -509,8 +521,8 @@ export default function AskJanet() {
     }
 
     const saveFile = async (folder: string) => {
-      let tempPath: string = '';
-      let content: string = '';
+      let tempPath: string;
+      let content: string;
       try {
         const permission =
           Platform.OS === 'android'
@@ -748,6 +760,8 @@ export default function AskJanet() {
           setResponses(newResponses);
           console.log('Resp:', newResponses);
         }
+        // Mark the discussion as cleared to prevent looping
+        await markDiscussionAsCleared(currentDiscussion.id);
       } else if (currentDiscussion.typeSay === 'tell') {
         const category = selectedCategories.join(', ') || 'uncategorized';
         const description = dialogQuestion || 'No question';
@@ -791,7 +805,10 @@ export default function AskJanet() {
     setDialogVisible(false);
     setCurrentDiscussion(null);
     setResponses([]);
-    fetchDiscussions();
+    // Only fetch if there are unprocessed asks to prevent looping
+    if (processedDiscussions.length > 0) {
+      fetchDiscussions();
+    }
   };
 
   const toggleCategory = (category: string) => {
@@ -891,10 +908,24 @@ export default function AskJanet() {
       );
       console.log('Discussion saved with ID:', discussionId ?? 'undefined');
       setInput('');
-      fetchDiscussions();
-      console.log('Submission complete:', transformedInput);
-
       if (isQuestion) {
+        // Set modal state directly for the new "ask"
+        const newDiscussion: Discussion = {
+          id: discussionId!,
+          discussionId: discussionId!,
+          description: transformedInput,
+          timestamp: new Date(),
+          typeSay: 'ask',
+          cleared: false,
+          uid: auth.currentUser?.uid,
+        };
+        setProcessedDiscussions((prev) => [...prev, discussionId!]);
+        setDialogQuestion(transformedInput);
+        setCurrentDiscussion(newDiscussion);
+        setSelectedCategories([]);
+        setFilePath('');
+        setSelectedFile(null);
+        setDialogVisible(true);
         const aiResponse =
           responses
             .filter((response) => response.responseType === 'gpt response')
@@ -907,7 +938,11 @@ export default function AskJanet() {
               : item
           )
         );
+      } else {
+        // Process pending "tell" statements
+        await processPendingTells();
       }
+      console.log('Submission complete:', transformedInput);
     } catch (error: any) {
       console.error('Submit err:', error);
     }
