@@ -127,7 +127,7 @@ export const processPhrase = async (
     let activityLogId: string;
 
     if (existingLog) {
-      activityLogId = String(existingLog.id); // Cast number to string for Firestore
+      activityLogId = String(existingLog.id);
       const existingCount = discussionCounts.find(
         (count) => count.activityLogId === activityLogId
       );
@@ -271,18 +271,16 @@ export async function applyRules(
   const rules = await getRules();
   for (const rule of rules) {
     let isMatch = false;
-    let parsedDesc = '';
+    let parsedDesc = normalizedInput;
 
     if (rule.isRegex) {
       const regex = new RegExp(rule.pattern, 'i');
       if (regex.test(normalizedInput)) {
         isMatch = true;
-        parsedDesc = normalizedInput.replace(regex, rule.category);
       }
     } else {
       if (normalizedInput.includes(rule.pattern)) {
         isMatch = true;
-        parsedDesc = normalizedInput.replace(rule.pattern, rule.category);
       }
     }
 

@@ -144,6 +144,7 @@ export default function AskJanet() {
   const [destinationFolder, setDestinationFolder] =
     useState<string>('Downloads');
   const [activityLogEntries, setActivityLogEntries] = useState<string[]>([]);
+  const [isFetching, setIsFetching] = useState(false);
   const dialogRef = useRef<View>(null);
   const [fetchAttempts, setFetchAttempts] = useState(0);
   const MAX_FETCH_ATTEMPTS = 5;
@@ -156,12 +157,10 @@ export default function AskJanet() {
         setUID(user.uid);
         setTimeout(async () => {
           try {
-            // Synchronize discussions and activity logs on startup
             await synchronizeDiscussions('1.1.0');
             await synchronizeActivityLog('1.1.0');
             await initializeUser();
             await loadInitialData();
-            // Process any pending "tell" statements
             await processPendingTells();
           } catch (error) {
             console.error('Init err:', error);
@@ -174,7 +173,6 @@ export default function AskJanet() {
       setLoadingAuth(false);
     });
 
-    // Fallback: Check current user immediately if listener doesn't fire
     if (auth.currentUser) {
       console.log('Fallback: Detected signed-in user on startup');
       setUserEmail(auth.currentUser.email);
@@ -195,6 +193,26 @@ export default function AskJanet() {
 
     return () => unsubscribe();
   }, [router]);
+
+  useEffect(() => {
+    if (dialogVisible) {
+      const fetchCategories = async () => {
+        try {
+          const categories = await getDistinctCategories();
+          console.log('Modal opened, fetched categories:', categories);
+          setDistinctCategories(
+            categories.length > 0
+              ? categories
+              : ['diet', 'exercise', 'sleep', 'mood']
+          );
+        } catch (error) {
+          console.error('Error fetching categories:', error);
+          setDistinctCategories(['diet', 'exercise', 'sleep', 'mood']);
+        }
+      };
+      fetchCategories();
+    }
+  }, [dialogVisible]);
 
   useEffect(() => {
     if (dialogVisible && selectedCategories.length > 0) {
@@ -281,6 +299,9 @@ export default function AskJanet() {
     setInDJ_Mode(/\b(DJ mode|dj mode|Dj mode|DJ|dj)\b/i.test(text));
   };
 
+  const delay = (ms: number) =>
+    new Promise((resolve) => setTimeout(resolve, ms));
+
   async function fetchDiscussions(maxAttempts: number = MAX_FETCH_ATTEMPTS) {
     const uid = auth.currentUser?.uid;
     if (!uid) {
@@ -288,12 +309,19 @@ export default function AskJanet() {
       return;
     }
 
-    if (fetchAttempts >= maxAttempts) {
-      console.warn('Max fetch attempts reached, stopping.');
+    if (isFetching || fetchAttempts >= maxAttempts) {
+      console.warn(
+        isFetching
+          ? 'Already fetching, skipping.'
+          : 'Max fetch attempts reached.'
+      );
       setFetchAttempts(0);
+      setProcessedDiscussions([]);
+      setIsFetching(false);
       return;
     }
 
+    setIsFetching(true);
     console.log('Fetching discussion...');
     try {
       setFetchAttempts((prev) => prev + 1);
@@ -311,22 +339,55 @@ export default function AskJanet() {
         };
         console.log('Process:', discussionTyped.description);
 
-        // Skip if not an "ask" or already processed/cleared
+        // Double-check cleared status from Firestore
+        const discussionRef = doc(
+          db,
+          `Users/${uid}/Discussion`,
+          discussionTyped.id
+        );
+        const discussionSnap = await getDoc(discussionRef);
+        if (!discussionSnap.exists() || discussionSnap.data().cleared) {
+          console.log(
+            'Discussion already cleared or deleted:',
+            discussionTyped.id
+          );
+          if (hasMore) {
+            await delay(500);
+            await fetchDiscussions(maxAttempts);
+          } else {
+            setFetchAttempts(0);
+            setProcessedDiscussions([]);
+          }
+          return;
+        }
+
+        // Skip if not an "ask", already processed, modal is open, or too recent
         if (
           discussionTyped.typeSay !== 'ask' ||
           processedDiscussions.includes(discussionTyped.id) ||
-          discussionTyped.cleared
+          dialogVisible ||
+          (discussionTyped.timestamp &&
+            new Date().getTime() - discussionTyped.timestamp.getTime() < 1000)
         ) {
           console.log(
             'Skip:',
             discussionTyped.id,
             'Type:',
-            discussionTyped.typeSay
+            discussionTyped.typeSay,
+            'Processed:',
+            processedDiscussions.includes(discussionTyped.id),
+            'Modal Open:',
+            dialogVisible,
+            'Recent:',
+            discussionTyped.timestamp &&
+              new Date().getTime() - discussionTyped.timestamp.getTime() < 1000
           );
           if (hasMore) {
+            await delay(500);
             await fetchDiscussions(maxAttempts);
           } else {
             setFetchAttempts(0);
+            setProcessedDiscussions([]);
           }
           return;
         }
@@ -336,33 +397,44 @@ export default function AskJanet() {
         console.log('Dialog:', discussionTyped.description);
         try {
           const categories = await getDistinctCategories();
-          console.log('Cats:', categories);
-          setDistinctCategories(categories);
+          console.log('Fetched categories:', categories);
+          setDistinctCategories(
+            categories.length > 0
+              ? categories
+              : ['diet', 'exercise', 'sleep', 'mood']
+          );
           setDialogQuestion(discussionTyped.description || 'No description');
           setCurrentDiscussion(discussionTyped);
-          setSelectedCategories([]); // Clear categories on modal open
+          setSelectedCategories([]);
           setFilePath('');
           setSelectedFile(null);
           setDialogVisible(true);
           setFetchAttempts(0);
         } catch (error) {
           console.error('Dialog err:', error.message, error.code);
+          await markDiscussionAsCleared(discussionTyped.id);
           setDialogQuestion('Error');
           setDialogVisible(false);
           setCurrentDiscussion(null);
           if (hasMore) {
+            await delay(500);
             await fetchDiscussions(maxAttempts);
           } else {
             setFetchAttempts(0);
+            setProcessedDiscussions([]);
           }
         }
       } else {
         console.log('No unprocessed ask discussions.');
         setFetchAttempts(0);
+        setProcessedDiscussions([]);
       }
     } catch (error) {
       console.error('Fetch err:', error.message, error.code);
       setFetchAttempts(0);
+      setProcessedDiscussions([]);
+    } finally {
+      setIsFetching(false);
     }
   }
 
@@ -395,6 +467,9 @@ export default function AskJanet() {
     if (!currentDiscussion || !auth.currentUser?.uid) {
       console.error('No discussion/user.');
       Alert.alert('Error', 'No discussion/user.');
+      setDialogVisible(false);
+      setCurrentDiscussion(null);
+      setProcessedDiscussions([]);
       return;
     }
 
@@ -410,6 +485,10 @@ export default function AskJanet() {
       );
       if (!isUnique) {
         Alert.alert('Error', 'Duplicate.');
+        await markDiscussionAsCleared(currentDiscussion.id);
+        setDialogVisible(false);
+        setCurrentDiscussion(null);
+        setProcessedDiscussions([]);
         return;
       }
 
@@ -430,12 +509,18 @@ export default function AskJanet() {
       });
       console.log('Added:', activityLogDoc.id);
       Alert.alert('Success', 'Added.');
+      await markDiscussionAsCleared(currentDiscussion.id);
       setDialogVisible(false);
       setCurrentDiscussion(null);
+      setProcessedDiscussions([]);
       fetchDiscussions();
     } catch (error) {
       console.error('Add err:', error);
       Alert.alert('Error', 'Failed.');
+      await markDiscussionAsCleared(currentDiscussion.id);
+      setDialogVisible(false);
+      setCurrentDiscussion(null);
+      setProcessedDiscussions([]);
     }
   };
 
@@ -443,6 +528,9 @@ export default function AskJanet() {
     if (!currentDiscussion) {
       console.error('No discussion.');
       Alert.alert('Error', 'No discussion.');
+      setDialogVisible(false);
+      setCurrentDiscussion(null);
+      setProcessedDiscussions([]);
       return;
     }
 
@@ -466,12 +554,18 @@ export default function AskJanet() {
         console.log('No entry:', currentDiscussion.id);
         Alert.alert('Info', 'No entry.');
       }
+      await markDiscussionAsCleared(currentDiscussion.id);
       setDialogVisible(false);
       setCurrentDiscussion(null);
+      setProcessedDiscussions([]);
       fetchDiscussions();
     } catch (error) {
       console.error('Delete err:', error);
       Alert.alert('Error', 'Failed.');
+      await markDiscussionAsCleared(currentDiscussion.id);
+      setDialogVisible(false);
+      setCurrentDiscussion(null);
+      setProcessedDiscussions([]);
     }
   };
 
@@ -521,8 +615,8 @@ export default function AskJanet() {
     }
 
     const saveFile = async (folder: string) => {
-      let tempPath: string;
-      let content: string;
+      let tempPath: string = '';
+      let content: string = '';
       try {
         const permission =
           Platform.OS === 'android'
@@ -534,7 +628,7 @@ export default function AskJanet() {
           console.log('Permission check:', result);
           if (result !== RESULTS.GRANTED) {
             const requestResult = await request(permission);
-            console.log('Permission request:', requestResult);
+            console.log('Permission request:', result);
             if (requestResult !== RESULTS.GRANTED) {
               permissionGranted = false;
               console.warn('Storage permission denied.');
@@ -692,7 +786,6 @@ export default function AskJanet() {
       return snapshot.docs
         .map((doc) => {
           const data = doc.data() as ActivityLog;
-          // Exclude the current question to avoid duplication
           if (
             data.description === dialogQuestion &&
             data.discussionId === currentDiscussion?.id
@@ -720,7 +813,8 @@ export default function AskJanet() {
       console.error('No discussion.');
       setDialogVisible(false);
       setCurrentDiscussion(null);
-      fetchDiscussions();
+      setResponses([]);
+      setProcessedDiscussions([]);
       return;
     }
 
@@ -733,6 +827,11 @@ export default function AskJanet() {
       );
       if (!isUnique) {
         Alert.alert('Error', 'Duplicate.');
+        await markDiscussionAsCleared(currentDiscussion.id);
+        setDialogVisible(false);
+        setCurrentDiscussion(null);
+        setResponses([]);
+        setProcessedDiscussions([]);
         return;
       }
 
@@ -760,7 +859,6 @@ export default function AskJanet() {
           setResponses(newResponses);
           console.log('Resp:', newResponses);
         }
-        // Mark the discussion as cleared to prevent looping
         await markDiscussionAsCleared(currentDiscussion.id);
       } else if (currentDiscussion.typeSay === 'tell') {
         const category = selectedCategories.join(', ') || 'uncategorized';
@@ -787,28 +885,32 @@ export default function AskJanet() {
         console.log('ActivityLog added for tell:', activityLogDoc.id);
       }
 
+      await markDiscussionAsCleared(currentDiscussion.id);
       setDialogVisible(false);
       setCurrentDiscussion(null);
       setResponses([]);
+      setProcessedDiscussions([]);
       fetchDiscussions();
     } catch (error) {
       console.error('Confirm err:', error);
+      await markDiscussionAsCleared(currentDiscussion.id);
       setDialogVisible(false);
       setCurrentDiscussion(null);
       setResponses([]);
+      setProcessedDiscussions([]);
       fetchDiscussions();
     }
   };
 
   const handleDialogCancel = async () => {
-    console.log('Cancel dialog, no clearing');
+    console.log('Cancel dialog, marking as cleared');
+    if (currentDiscussion) {
+      await markDiscussionAsCleared(currentDiscussion.id);
+    }
     setDialogVisible(false);
     setCurrentDiscussion(null);
     setResponses([]);
-    // Only fetch if there are unprocessed asks to prevent looping
-    if (processedDiscussions.length > 0) {
-      fetchDiscussions();
-    }
+    setProcessedDiscussions([]);
   };
 
   const toggleCategory = (category: string) => {
@@ -870,7 +972,7 @@ export default function AskJanet() {
         setIsQuestion(true);
         setDialogQuestion(question);
         setCurrentDiscussion(existingDiscussion);
-        setSelectedCategories([]); // Clear categories on modal open
+        setSelectedCategories([]);
         setDialogVisible(true);
       } catch (error) {
         console.error('Error updating existing discussion:', error);
@@ -909,7 +1011,6 @@ export default function AskJanet() {
       console.log('Discussion saved with ID:', discussionId ?? 'undefined');
       setInput('');
       if (isQuestion) {
-        // Set modal state directly for the new "ask"
         const newDiscussion: Discussion = {
           id: discussionId!,
           discussionId: discussionId!,
@@ -939,7 +1040,6 @@ export default function AskJanet() {
           )
         );
       } else {
-        // Process pending "tell" statements
         await processPendingTells();
       }
       console.log('Submission complete:', transformedInput);
@@ -1054,6 +1154,9 @@ export default function AskJanet() {
                   <Text>{selectedCategories.includes(item) ? '✔' : '⬜'}</Text>
                 </TouchableOpacity>
               )}
+              ListEmptyComponent={
+                <Text style={styles.modalLabel}>No categories available</Text>
+              }
             />
             <Text style={styles.modalLabel}>Activity Log Entries:</Text>
             <FlatList
