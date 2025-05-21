@@ -868,6 +868,11 @@ export async function clearDiscussion(discussionId: string): Promise<boolean> {
   }
 }
 
+interface GPTResponseJSONData {
+  category: string;
+  parsedDescription: string;
+}
+
 export async function addOrUpdateActivityLog(): Promise<void> {
   const uid = await getUID();
   if (!uid) {
@@ -876,24 +881,35 @@ export async function addOrUpdateActivityLog(): Promise<void> {
     );
   }
   try {
-    interface GPTResponseJSONData {
-      category: string;
-      parsedDescription: string;
-    }
+    // Explicitly type the Realm query result
     const responses = realm
-      .objects('GPTResponses')
+      .objects<GPTResponse>('GPTResponses')
       .filtered(
         'cleared == false AND responseType == "updateDB" AND uid == $0',
         uid
       );
     for (const gptResponse of responses) {
       const responseJson = JSON.parse(
-        gptResponse.response as string
+        gptResponse.response
       ) as GPTResponseJSONData;
+      // Validate and convert timestamp
+      const timestampValue = gptResponse.timestamp;
+      const timestamp =
+        timestampValue instanceof Date
+          ? timestampValue
+          : typeof timestampValue === 'string' ||
+            typeof timestampValue === 'number'
+          ? new Date(timestampValue)
+          : new Date(); // Fallback to current date if invalid
+      if (isNaN(timestamp.getTime())) {
+        console.warn(
+          `Invalid timestamp for GPTResponse ${gptResponse.id}, using current date`
+        );
+        timestamp.setTime(Date.now());
+      }
       const category = responseJson.category;
       const parsedDescription = responseJson.parsedDescription;
       const discussionId = gptResponse.discussionId;
-      const timestamp = new Date(gptResponse.timestamp);
       const activityLog = realm
         .objects('ActivityLog')
         .filtered('discussionId == $0', discussionId)[0];
@@ -1554,17 +1570,29 @@ export async function getDescriptionsWithTimestamps(
   }
 }
 
-async function isPaidUser(): Promise<boolean> {
+// Interface for User schema (matches realmConfig.ts)
+interface User {
+  id: string;
+  appVersion: string;
+  appId: string;
+  timestamp: Date;
+  uid: string;
+  isPaid: boolean;
+}
+
+export async function isPaidUser(): Promise<boolean> {
   const uid = await getUID();
   if (!uid) return false;
   try {
-    const user = realm.objects('User').filtered('uid == $0', uid)[0];
-    return user?.isPaid === true || false; // Assumes 'isPaid' field in User schema
+    const user = realm.objects<User>('User').filtered('uid == $0', uid)[0];
+    return user?.isPaid ?? false;
   } catch (error) {
     console.error('Error checking subscription status:', error);
     return false;
   }
 }
+
+// ... other exports (e.g., addOrUpdateActivityLog, getDistinctCategories)
 
 export {
   type ActivityLog,

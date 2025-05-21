@@ -1,6 +1,6 @@
 import axios from 'axios';
 import { ActivityInput, analyzeActivity, ParsedActivity } from './openaiAPI';
-import { getRules } from './databaseService';
+import { getRules } from './dbServices';
 import { db } from '../firebaseConfig';
 import {
   doc,
