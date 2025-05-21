@@ -26,7 +26,7 @@ import {
   synchronizeActivityLog,
   markDiscussionAsCleared,
   processPendingTells,
-} from '../../src/services/databaseService';
+} from '../../src/services/dbServices';
 import { transformInput } from '../../src/services/phraseProcessor';
 import {
   collection,

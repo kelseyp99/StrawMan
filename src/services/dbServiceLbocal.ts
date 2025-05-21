@@ -1554,6 +1554,18 @@ export async function getDescriptionsWithTimestamps(
   }
 }
 
+async function isPaidUser(): Promise<boolean> {
+  const uid = await getUID();
+  if (!uid) return false;
+  try {
+    const user = realm.objects('User').filtered('uid == $0', uid)[0];
+    return user?.isPaid === true || false; // Assumes 'isPaid' field in User schema
+  } catch (error) {
+    console.error('Error checking subscription status:', error);
+    return false;
+  }
+}
+
 export {
   type ActivityLog,
   type Discussion,

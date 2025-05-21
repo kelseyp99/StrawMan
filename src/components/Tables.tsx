@@ -39,8 +39,8 @@ import {
   addOrUpdateActivityLog,
   addOrUpdateGPTResponse,
   getDistinctCategories,
-} from '@/services/databaseService';
-import { processPhrase } from '../services/phraseProcessor';
+} from '@/services/dbServices';
+import { processPhrase } from '@/services/phraseProcessor';
 
 // Screen width for responsive design
 const SCREEN_WIDTH = Dimensions.get('window').width;
