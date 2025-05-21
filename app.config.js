@@ -11,6 +11,7 @@ module.exports = ({ config }) => {
       scheme: 'com.anonymous.lifelog',
       android: {
         ...(expoConfig.android || {}),
+        versionCode: 3,
         package:
           expoConfig.android && expoConfig.android.package
             ? expoConfig.android.package
