@@ -1,9 +1,24 @@
+// src/realmConfig.ts
 import Realm, { Configuration } from 'realm';
 
 console.log('Loading realmConfig.ts...');
 
+const UserSchema = {
+  name: 'User',
+  primaryKey: 'id',
+  properties: {
+    id: 'string',
+    appVersion: 'string',
+    appId: 'string',
+    timestamp: 'date',
+    uid: 'string',
+    isPaid: 'bool',
+  },
+};
+
 const ActivityLogSchema = {
   name: 'ActivityLog',
+  primaryKey: 'id',
   properties: {
     id: 'int',
     discussionId: 'int',
@@ -11,38 +26,41 @@ const ActivityLogSchema = {
     description: 'string',
     timestamp: 'date',
     cleared: 'bool',
+    responseType: 'string?',
+    uid: 'string',
     synced: 'bool',
     syncTimestamp: 'date?',
   },
-  primaryKey: 'id',
 };
 
 const DiscussionSchema = {
   name: 'Discussion',
+  primaryKey: 'id',
   properties: {
     id: 'int',
-    timestamp: 'date',
-    type: 'string',
+    discussionId: 'int',
     description: 'string',
+    timestamp: 'date',
+    typeSay: 'string',
     cleared: 'bool',
-    activityLogs: 'ActivityLog[]',
     synced: 'bool',
     syncTimestamp: 'date?',
+    uid: 'string',
   },
-  primaryKey: 'id',
 };
 
 const ParametersSchema = {
-  name: 'parameters',
+  name: 'Parameters',
+  primaryKey: 'parameterName',
   properties: {
-    paramName: 'string',
-    paramValue: 'string?',
+    parameterName: 'string',
+    parameterValue: 'string?',
   },
-  primaryKey: 'paramName',
 };
 
 const LogsSchema = {
   name: 'Logs',
+  primaryKey: 'id',
   properties: {
     id: 'int',
     timestamp: 'date',
@@ -50,11 +68,11 @@ const LogsSchema = {
     message: 'string',
     error: 'string?',
   },
-  primaryKey: 'id',
 };
 
 const GPTResponsesSchema = {
   name: 'GPTResponses',
+  primaryKey: 'id',
   properties: {
     id: 'int',
     discussionId: 'int',
@@ -63,17 +81,28 @@ const GPTResponsesSchema = {
     response: 'string',
     responseType: 'string',
     cleared: 'bool',
+    uid: 'string',
     synced: 'bool',
     syncTimestamp: 'date?',
   },
+};
+
+const GPTSpecialtiesSchema = {
+  name: 'GPTSpecialties',
   primaryKey: 'id',
+  properties: {
+    id: 'int',
+    name: 'string',
+    url: 'string',
+    apiKey: 'string',
+  },
 };
 
 const AlertSchema = {
   name: 'Alert',
-  primaryKey: '_id',
+  primaryKey: 'id',
   properties: {
-    _id: 'objectId',
+    id: 'int',
     description: 'string',
     frequency: 'string',
     date: 'date?',
@@ -82,23 +111,48 @@ const AlertSchema = {
     isActive: 'bool',
     createdAt: 'date',
     updatedAt: 'date?',
+    uid: 'string',
   },
 };
 
-const GPTSpecialtiesSchema = {
-  name: 'GPTSpecialties',
+const DocumentSchema = {
+  name: 'Document',
+  primaryKey: 'id',
   properties: {
     id: 'int',
-    name: 'string',
-    url: 'string',
-    apiKey: 'string',
+    timestamp: 'date',
+    uid: 'string',
   },
+};
+
+const RuleSchema = {
+  name: 'Rule',
   primaryKey: 'id',
+  properties: {
+    id: 'int',
+    pattern: 'string',
+    isRegex: 'bool',
+    category: 'string',
+    priority: 'int',
+  },
+};
+
+const SyncEntrySchema = {
+  name: 'SyncEntry',
+  primaryKey: 'id',
+  properties: {
+    id: 'int',
+    tableName: 'string',
+    operation: 'string',
+    timestamp: 'date',
+    uid: 'string',
+  },
 };
 
 const config: Configuration = {
-  path: '/data/data/com.lifelog/databases/ActivityLog.realm',
+  path: 'lifelog.realm', // Relative path in app's data directory
   schema: [
+    UserSchema,
     ActivityLogSchema,
     DiscussionSchema,
     ParametersSchema,
@@ -106,14 +160,48 @@ const config: Configuration = {
     GPTResponsesSchema,
     GPTSpecialtiesSchema,
     AlertSchema,
+    DocumentSchema,
+    RuleSchema,
+    SyncEntrySchema,
   ],
   schemaVersion: 7,
+  onMigration: (oldRealm: Realm, newRealm: Realm) => {
+    // Handle schema changes from version 2 to 7
+    if (oldRealm.schemaVersion < 7) {
+      // Add new schemas (Logs, etc.)
+      console.log(
+        'Migrating Realm schema from version',
+        oldRealm.schemaVersion,
+        'to 7'
+      );
+      // Example: Initialize new fields
+      newRealm.objects('ActivityLog').forEach((log) => {
+        if (!log.synced) log.synced = false;
+        if (!log.syncTimestamp) log.syncTimestamp = null;
+      });
+      newRealm.objects('Discussion').forEach((discussion) => {
+        if (!discussion.synced) discussion.synced = false;
+        if (!discussion.syncTimestamp) discussion.syncTimestamp = null;
+      });
+      newRealm.objects('GPTResponses').forEach((response) => {
+        if (!response.synced) response.synced = false;
+        if (!response.syncTimestamp) response.syncTimestamp = null;
+      });
+    }
+  },
 };
 
-const realm = new Realm(config);
+let realmInstance: Realm | null = null;
+try {
+  realmInstance = new Realm(config);
+  console.log('Realm initialized at:', realmInstance.path);
+} catch (error) {
+  console.error('Failed to initialize Realm:', error);
+}
 
+export const realm = realmInstance;
 export {
-  realm,
+  UserSchema,
   ActivityLogSchema,
   DiscussionSchema,
   ParametersSchema,
@@ -121,4 +209,7 @@ export {
   GPTResponsesSchema,
   GPTSpecialtiesSchema,
   AlertSchema,
+  DocumentSchema,
+  RuleSchema,
+  SyncEntrySchema,
 };

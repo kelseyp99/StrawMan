@@ -20,9 +20,17 @@ const APP_ID = 'com.anonymous.lifelog';
 const ENABLE_DISCUSSION_SYNC = false;
 const ENABLE_ACTIVITYLOG_SYNC = false;
 
-declare var confirm: (message: string) => boolean;
+// Interfaces matching realmConfig.ts schemas
+interface User {
+  id: string;
+  appVersion: string;
+  appId: string;
+  timestamp: Date;
+  uid: string;
+  isPaid: boolean;
+}
 
-interface ActivityLog {
+export interface ActivityLog {
   id: number;
   discussionId: number;
   category: string;
@@ -30,7 +38,9 @@ interface ActivityLog {
   timestamp: Date;
   cleared: boolean;
   responseType?: string;
-  uid?: string;
+  uid: string;
+  synced: boolean;
+  syncTimestamp?: Date;
 }
 
 interface Discussion {
@@ -42,11 +52,12 @@ interface Discussion {
   cleared: boolean;
   synced: boolean;
   syncTimestamp: Date;
+  uid: string;
 }
 
-interface Parameters {
+export interface Parameters {
   parameterName: string;
-  parameterValue: string;
+  parameterValue?: string;
 }
 
 interface Rule {
@@ -61,6 +72,7 @@ interface GPTSpecialty {
   name: string;
   url: string;
   apiKey: string;
+  synced?: boolean;
 }
 
 interface GPTResponse {
@@ -71,6 +83,9 @@ interface GPTResponse {
   response: string;
   responseType: string;
   cleared: boolean;
+  uid: string;
+  synced: boolean;
+  syncTimestamp?: Date;
 }
 
 interface Alert {
@@ -82,6 +97,8 @@ interface Alert {
   nextTrigger: Date;
   createdAt: Date;
   uid: string;
+  synced: boolean;
+  syncTimestamp?: Date;
 }
 
 interface DiscussionCloudPayload {
@@ -118,21 +135,71 @@ interface LastOpenDiscussion {
   description: string;
 }
 
+// src/services/dbServicesLocal.ts
+// ... existing imports and interfaces ...
+
+interface SyncEntry {
+  id: number;
+  tableName: string;
+  operation: 'create' | 'update' | 'delete';
+  timestamp: Date;
+  uid: string;
+}
+
+export async function logSyncEntry(entry: SyncEntry): Promise<void> {
+  if (!realm) {
+    console.warn('Realm not initialized, skipping SyncEntry log');
+    return;
+  }
+  try {
+    realm.write(() => {
+      if (!realm) {
+        console.error('Failed to open Realm instance');
+        throw new Error('Failed to open Realm instance');
+      }
+      realm.create('SyncEntry', {
+        id: entry.id,
+        tableName: entry.tableName,
+        operation: entry.operation,
+        timestamp: entry.timestamp,
+        uid: entry.uid,
+      });
+    });
+    console.log('Logged SyncEntry to Realm:', entry);
+  } catch (error) {
+    console.error('Error logging SyncEntry to Realm:', error);
+    throw error;
+  }
+}
+
+// ... rest of dbServicesLocal.ts (unchanged, including restoreLostData) ...
+
 export async function initializeUser(): Promise<void> {
   const uid = await getUID();
   if (!uid) {
     throw new Error('No user signed in');
   }
+  if (!realm) {
+    console.error('Failed to open Realm instance');
+    throw new Error('Failed to open Realm instance');
+  }
   try {
     console.log(`Initializing user for UID: ${uid}`);
     realm.write(() => {
-      const existingUser = realm.objects('User').filtered('uid == $0', uid)[0];
+      if (!realm) {
+        console.error('Failed to open Realm instance');
+        throw new Error('Failed to open Realm instance');
+      }
+      const existingUser = realm
+        .objects<User>('User')
+        .filtered('uid == $0', uid)[0];
       const userData = {
         id: uid,
         appVersion: APP_VERSION,
         appId: APP_ID,
         timestamp: new Date(),
         uid,
+        isPaid: false, // Update based on subscription check
       };
       if (existingUser) {
         Object.assign(existingUser, userData);
@@ -152,14 +219,23 @@ export async function createDocument(data: any): Promise<string> {
   if (!uid) {
     throw new Error('No UID available for create operation');
   }
+  if (!realm) {
+    console.error('Failed to open Realm instance');
+    throw new Error('Failed to open Realm instance');
+  }
   try {
     const id = new Date().getTime();
     realm.write(() => {
+      if (!realm) {
+        console.error('Failed to open Realm instance');
+        throw new Error('Failed to open Realm instance');
+      }
       realm.create('Document', {
         id,
         ...data,
         uid,
         timestamp: new Date(),
+        synced: false,
       });
     });
     console.log('Document created with ID:', id);
@@ -175,10 +251,14 @@ export async function readDocuments(): Promise<any[]> {
   if (!uid) {
     throw new Error('No UID available for read operation');
   }
+  if (!realm) {
+    console.error('Failed to open Realm instance');
+    throw new Error('Failed to open Realm instance');
+  }
   try {
     const documents = realm
       .objects('Document')
-      .filtered('uid == $0')
+      .filtered('uid == $0', uid)
       .map((doc) => ({ id: doc.id, ...doc }));
     console.log('Documents retrieved:', documents);
     return documents;
@@ -193,11 +273,19 @@ export async function updateDocument(docId: string, data: any): Promise<void> {
   if (!uid) {
     throw new Error('No UID available for update operation');
   }
+  if (!realm) {
+    console.error('Failed to open Realm instance');
+    throw new Error('Failed to open Realm instance');
+  }
   try {
     realm.write(() => {
+      if (!realm) {
+        console.error('Failed to open Realm instance');
+        throw new Error('Failed to open Realm instance');
+      }
       const doc = realm.objectForPrimaryKey('Document', Number(docId));
       if (doc) {
-        Object.assign(doc, data);
+        Object.assign(doc, { ...data, synced: false });
         console.log('Document updated with ID:', docId);
       }
     });
@@ -212,8 +300,16 @@ export async function deleteDocument(docId: string): Promise<void> {
   if (!uid) {
     throw new Error('No UID available for delete operation');
   }
+  if (!realm) {
+    console.error('Failed to open Realm instance');
+    throw new Error('Failed to open Realm instance');
+  }
   try {
     realm.write(() => {
+      if (!realm) {
+        console.error('Failed to open Realm instance');
+        throw new Error('Failed to open Realm instance');
+      }
       const doc = realm.objectForPrimaryKey('Document', Number(docId));
       if (doc) {
         realm.delete(doc);
@@ -228,12 +324,16 @@ export async function deleteDocument(docId: string): Promise<void> {
 
 export async function getDistinctCategories(): Promise<string[]> {
   console.log('Getting distinct categories...');
+  if (!realm) {
+    console.error('Failed to open Realm instance');
+    throw new Error('Failed to open Realm instance');
+  }
   try {
     const categories = Array.from(
       new Set(
-        realm.objects('ActivityLog').map((item: any) => item.category as string)
+        realm.objects<ActivityLog>('ActivityLog').map((item) => item.category)
       )
-    ).filter((cat) => cat !== 'Uncategorized');
+    ).filter((cat) => cat !== 'uncategorized');
     if (categories.length === 0) {
       categories.push('diet');
     }
@@ -250,19 +350,29 @@ export async function insertJsonFile(jsonData: any): Promise<void> {
   if (!uid) {
     throw new Error('No UID available for insert operation');
   }
+  if (!realm) {
+    console.error('Failed to open Realm instance');
+    throw new Error('Failed to open Realm instance');
+  }
   try {
     realm.write(() => {
+      if (!realm) {
+        console.error('Failed to open Realm instance');
+        throw new Error('Failed to open Realm instance');
+      }
       jsonData.forEach((item: any) => {
         const id = new Date().getTime();
         const entry = {
           id,
+          discussionId: id,
           category: item.category,
           description: item.value,
           timestamp: new Date(),
           cleared: false,
           uid,
+          synced: false,
         };
-        realm.create('ActivityLog', entry);
+        realm!.create('ActivityLog', entry);
       });
     });
     console.log('Data inserted successfully!');
@@ -275,14 +385,18 @@ export async function queryAllFieldsByCategories(
   categories: string[]
 ): Promise<string[]> {
   console.log('Querying all fields by categories:', categories);
+  if (!realm) {
+    console.error('Failed to open Realm instance');
+    throw new Error('Failed to open Realm instance');
+  }
   try {
     const results = realm
-      .objects('ActivityLog')
+      .objects<ActivityLog>('ActivityLog')
       .filtered(
         'category IN $0',
         categories.length > 0 ? categories : ['uncategorized']
       );
-    return results.map((log: any) => {
+    return results.map((log) => {
       const timestamp = new Date(log.timestamp);
       const formattedTimestamp = `${
         timestamp.getMonth() + 1
@@ -309,23 +423,33 @@ export async function synchronizeActivityLog(
   if (!uid) {
     throw new Error('No UID available for ActivityLog synchronization');
   }
+  if (!realm) {
+    console.error('Failed to open Realm instance');
+    throw new Error('Failed to open Realm instance');
+  }
   try {
     console.log(`Synchronizing ActivityLog for UID: ${uid}`);
-    const globalLogs = realm.objects('ActivityLog').filtered('uid == $0', uid);
-    const userLogs = realm.objects('ActivityLog').filtered('uid == $0', uid);
+    const globalLogs = realm
+      .objects<ActivityLog>('ActivityLog')
+      .filtered('uid == $0', uid);
+    const userLogs = realm
+      .objects<ActivityLog>('ActivityLog')
+      .filtered('uid == $0', uid);
     realm.write(() => {
-      globalLogs.forEach((log: any) => {
-        const exists = userLogs.some((userLog: any) => userLog.id === log.id);
+      if (!realm) {
+        console.error('Failed to open Realm instance');
+        throw new Error('Failed to open Realm instance');
+      }
+      globalLogs.forEach((log) => {
+        const exists = userLogs.some((userLog) => userLog.id === log.id);
         if (!exists) {
-          realm.create('ActivityLog', { ...log, uid });
+          realm!.create('ActivityLog', { ...log, uid, synced: false });
         }
       });
-      userLogs.forEach((log: any) => {
-        const exists = globalLogs.some(
-          (globalLog: any) => globalLog.id === log.id
-        );
+      userLogs.forEach((log) => {
+        const exists = globalLogs.some((globalLog) => globalLog.id === log.id);
         if (!exists) {
-          realm.create('ActivityLog', { ...log, uid });
+          realm!.create('ActivityLog', { ...log, uid, synced: false });
         }
       });
     });
@@ -351,29 +475,37 @@ export async function synchronizeDiscussions(
   if (!uid) {
     throw new Error('No UID available for Discussion synchronization');
   }
+  if (!realm) {
+    console.error('Failed to open Realm instance');
+    throw new Error('Failed to open Realm instance');
+  }
   try {
     console.log(`Synchronizing Discussions for UID: ${uid}`);
     const globalDiscussions = realm
-      .objects('Discussion')
+      .objects<Discussion>('Discussion')
       .filtered('uid == $0', uid);
     const userDiscussions = realm
-      .objects('Discussion')
+      .objects<Discussion>('Discussion')
       .filtered('uid == $0', uid);
     realm.write(() => {
-      globalDiscussions.forEach((discussion: any) => {
+      if (!realm) {
+        console.error('Failed to open Realm instance');
+        throw new Error('Failed to open Realm instance');
+      }
+      globalDiscussions.forEach((discussion) => {
         const exists = userDiscussions.some(
-          (userDiscussion: any) => userDiscussion.id === discussion.id
+          (userDiscussion) => userDiscussion.id === discussion.id
         );
         if (!exists) {
-          realm.create('Discussion', { ...discussion, uid });
+          realm!.create('Discussion', { ...discussion, uid, synced: false });
         }
       });
-      userDiscussions.forEach((discussion: any) => {
+      userDiscussions.forEach((discussion) => {
         const exists = globalDiscussions.some(
-          (globalDiscussion: any) => globalDiscussion.id === discussion.id
+          (globalDiscussion) => globalDiscussion.id === discussion.id
         );
         if (!exists) {
-          realm.create('Discussion', { ...discussion, uid });
+          realm!.create('Discussion', { ...discussion, uid, synced: false });
         }
       });
     });
@@ -409,6 +541,10 @@ export async function addOrUpdateDiscussion(
   if (!uid) {
     throw new Error('No UID available for discussion operation');
   }
+  if (!realm) {
+    console.error('Failed to open Realm instance');
+    throw new Error('Failed to open Realm instance');
+  }
   try {
     const currentTime = new Date();
     const discussionId = id || currentTime.getTime();
@@ -420,7 +556,14 @@ export async function addOrUpdateDiscussion(
       typeSay,
     };
     realm.write(() => {
-      const discussion = realm.objectForPrimaryKey('Discussion', discussionId);
+      if (!realm) {
+        console.error('Failed to open Realm instance');
+        throw new Error('Failed to open Realm instance');
+      }
+      const discussion = realm.objectForPrimaryKey<Discussion>(
+        'Discussion',
+        discussionId
+      );
       const discussionData = {
         id: discussionId,
         discussionId,
@@ -465,11 +608,22 @@ async function addDiscussion(
   if (!uid) {
     throw new Error('No UID available for add discussion operation');
   }
+  if (!realm) {
+    console.error('Failed to open Realm instance');
+    throw new Error('Failed to open Realm instance');
+  }
   try {
     realm.write(() => {
+      if (!realm) {
+        console.error('Failed to open Realm instance');
+        throw new Error('Failed to open Realm instance');
+      }
       const discussions = realm
-        .objects('Discussion')
-        .filtered('description == null || description == ""');
+        .objects<Discussion>('Discussion')
+        .filtered(
+          'description == null OR description == "" AND uid == $0',
+          uid
+        );
       realm.delete(discussions);
     });
     const currentTime = new Date();
@@ -482,6 +636,10 @@ async function addDiscussion(
       typeSay,
     };
     realm.write(() => {
+      if (!realm) {
+        console.error('Failed to open Realm instance');
+        throw new Error('Failed to open Realm instance');
+      }
       realm.create('Discussion', {
         id,
         discussionId: id,
@@ -532,9 +690,20 @@ async function addOrUpdateDiscussionCloud(
 }
 
 const updateRealmDiscussionSyncStatus = (id: number, synced: boolean): void => {
+  if (!realm) {
+    console.error('Failed to open Realm instance');
+    throw new Error('Failed to open Realm instance');
+  }
   try {
     realm.write(() => {
-      const discussion = realm.objectForPrimaryKey('Discussion', id);
+      if (!realm) {
+        console.error('Failed to open Realm instance');
+        throw new Error('Failed to open Realm instance');
+      }
+      const discussion = realm.objectForPrimaryKey<Discussion>(
+        'Discussion',
+        id
+      );
       if (discussion) {
         discussion.synced = synced;
         discussion.syncTimestamp = new Date();
@@ -553,13 +722,17 @@ export async function getDiscussions(
   if (!uid) {
     throw new Error('No UID available for get discussions operation');
   }
+  if (!realm) {
+    console.error('Failed to open Realm instance');
+    throw new Error('Failed to open Realm instance');
+  }
   try {
     let discussions = realm
-      .objects('Discussion')
+      .objects<Discussion>('Discussion')
       .filtered('uid == $0', uid)
       .sorted('timestamp', true);
     if (discussionId) {
-      const discussion = realm.objectForPrimaryKey(
+      const discussion = realm.objectForPrimaryKey<Discussion>(
         'Discussion',
         Number(discussionId)
       );
@@ -572,22 +745,23 @@ export async function getDiscussions(
     }
     if (lastX !== undefined) {
       discussions = realm
-        .objects('Discussion')
+        .objects<Discussion>('Discussion')
         .filtered(
           `id IN {${discussions
             .slice(0, lastX)
             .map((d) => d.id)
-            .join(',')}}`
+            .join(',')}} AND uid == $0`,
+          uid
         )
         .sorted('timestamp', true);
     }
-    return discussions.map((doc: any) => ({
+    return discussions.map((doc) => ({
       id: doc.id,
       discussionId: doc.discussionId,
       description: doc.description,
       typeSay: doc.typeSay,
       cleared: doc.cleared,
-      timestamp: format(new Date(doc.timestamp as Date), 'M/d/yy \n h:mm a'),
+      timestamp: format(new Date(doc.timestamp), 'M/d/yy \n h:mm a'),
       uid: doc.uid,
     }));
   } catch (error) {
@@ -601,9 +775,20 @@ export async function deleteDiscussion(id: number): Promise<void> {
   if (!uid) {
     throw new Error('No UID available for delete discussion operation');
   }
+  if (!realm) {
+    console.error('Failed to open Realm instance');
+    throw new Error('Failed to open Realm instance');
+  }
   try {
     realm.write(() => {
-      const discussion = realm.objectForPrimaryKey('Discussion', id);
+      if (!realm) {
+        console.error('Failed to open Realm instance');
+        throw new Error('Failed to open Realm instance');
+      }
+      const discussion = realm.objectForPrimaryKey<Discussion>(
+        'Discussion',
+        id
+      );
       if (discussion && discussion.uid === uid) {
         realm.delete(discussion);
         console.log(`Discussion with ID ${id} deleted.`);
@@ -619,9 +804,13 @@ export async function fetchInitialDiscussion(): Promise<any | null> {
   if (!uid) {
     throw new Error('No UID available for fetch initial discussion operation');
   }
+  if (!realm) {
+    console.error('Failed to open Realm instance');
+    throw new Error('Failed to open Realm instance');
+  }
   try {
     const discussions = realm
-      .objects('Discussion')
+      .objects<Discussion>('Discussion')
       .filtered('uid == $0', uid)
       .sorted('timestamp', true);
     if (discussions.length > 0) {
@@ -630,7 +819,7 @@ export async function fetchInitialDiscussion(): Promise<any | null> {
         id: doc.id,
         discussionId: doc.discussionId || doc.id,
         description: doc.description,
-        timestamp: new Date(doc.timestamp as Date),
+        timestamp: new Date(doc.timestamp),
         typeSay: doc.typeSay || 'ask',
         cleared: doc.cleared || false,
       };
@@ -651,9 +840,13 @@ export async function getNextOpenDiscussion(lastVisibleId?: number): Promise<{
   if (!uid) {
     throw new Error('No UID available for get next open discussion operation');
   }
+  if (!realm) {
+    console.error('Failed to open Realm instance');
+    throw new Error('Failed to open Realm instance');
+  }
   try {
     let discussions = realm
-      .objects('Discussion')
+      .objects<Discussion>('Discussion')
       .filtered('cleared == false AND typeSay == "ask" AND uid == $0', uid);
     if (lastVisibleId) {
       discussions = discussions.filtered('id < $0', lastVisibleId);
@@ -675,9 +868,13 @@ export async function processPendingTells(): Promise<void> {
   if (!uid) {
     throw new Error('No UID available for processing pending tells');
   }
+  if (!realm) {
+    console.error('Failed to open Realm instance');
+    throw new Error('Failed to open Realm instance');
+  }
   try {
     const discussions = realm
-      .objects('Discussion')
+      .objects<Discussion>('Discussion')
       .filtered('typeSay == "tell" AND cleared == false AND uid == $0', uid);
     if (discussions.length === 0) {
       console.log('No pending tell statements to process.');
@@ -685,7 +882,11 @@ export async function processPendingTells(): Promise<void> {
     }
     const rules = await getRules();
     realm.write(() => {
-      discussions.forEach((doc: any) => {
+      if (!realm) {
+        console.error('Failed to open Realm instance');
+        throw new Error('Failed to open Realm instance');
+      }
+      discussions.forEach((doc) => {
         let category = 'uncategorized';
         for (const rule of rules) {
           if (rule.isRegex) {
@@ -701,7 +902,7 @@ export async function processPendingTells(): Promise<void> {
             break;
           }
         }
-        realm.create('ActivityLog', {
+        realm!.create('ActivityLog', {
           id: new Date().getTime(),
           discussionId: doc.id,
           description: doc.description,
@@ -709,8 +910,10 @@ export async function processPendingTells(): Promise<void> {
           timestamp: doc.timestamp,
           cleared: false,
           uid,
+          synced: false,
         });
         doc.cleared = true;
+        doc.synced = false;
       });
     });
     console.log('Finished processing pending tell statements.');
@@ -728,6 +931,10 @@ export async function addQuestionDiscussion(
   if (!uid) {
     throw new Error('No UID available for add question discussion operation');
   }
+  if (!realm) {
+    console.error('Failed to open Realm instance');
+    throw new Error('Failed to open Realm instance');
+  }
   try {
     await addOrUpdateDiscussion(question, 'ask', Number(discussionId));
     const gpts_names = ['openAI', 'Gemini', 'ChatGPT', 'Claude', 'DeepSeek'];
@@ -740,15 +947,20 @@ export async function addQuestionDiscussion(
     });
     const id = new Date().getTime();
     realm.write(() => {
+      if (!realm) {
+        console.error('Failed to open Realm instance');
+        throw new Error('Failed to open Realm instance');
+      }
       realm.create('GPTResponses', {
         id,
-        timestamp: new Date(),
         discussionId: Number(discussionId),
+        timestamp: new Date(),
         prompt: question,
         response: JSON.stringify(response),
         responseType: 'parsed question',
         cleared: false,
         uid,
+        synced: false,
       });
     });
     return id.toString();
@@ -765,11 +977,15 @@ export async function processUnclearedGPTResponses(): Promise<void> {
       'No UID available for process uncleared GPT responses operation'
     );
   }
+  if (!realm) {
+    console.error('Failed to open Realm instance');
+    throw new Error('Failed to open Realm instance');
+  }
   try {
     let hasMore = true;
     while (hasMore) {
       const responses = realm
-        .objects('GPTResponses')
+        .objects<GPTResponse>('GPTResponses')
         .filtered(
           'cleared == false AND responseType == "updateDB" AND uid == $0',
           uid
@@ -780,21 +996,26 @@ export async function processUnclearedGPTResponses(): Promise<void> {
         break;
       }
       const gptResponse = responses[0];
-      const responseJson = JSON.parse(gptResponse.response as string) as {
+      const responseJson = JSON.parse(gptResponse.response) as {
         category: string;
         parsedDescription: string;
       };
       const discussionId = gptResponse.discussionId;
-      const timestamp = new Date(gptResponse.timestamp as unknown as Date);
+      const timestamp = new Date(gptResponse.timestamp);
       const activityLog = realm
-        .objects('ActivityLog')
-        .filtered('discussionId == $0', discussionId)[0];
+        .objects<ActivityLog>('ActivityLog')
+        .filtered('discussionId == $0 AND uid == $1', discussionId, uid)[0];
       realm.write(() => {
+        if (!realm) {
+          console.error('Failed to open Realm instance');
+          throw new Error('Failed to open Realm instance');
+        }
         if (activityLog) {
           activityLog.category = responseJson.category;
           activityLog.description = responseJson.parsedDescription;
           activityLog.responseType = 'tell';
           activityLog.cleared = true;
+          activityLog.synced = false;
         } else {
           realm.create('ActivityLog', {
             id: new Date().getTime(),
@@ -804,9 +1025,11 @@ export async function processUnclearedGPTResponses(): Promise<void> {
             timestamp,
             cleared: true,
             uid,
+            synced: false,
           });
         }
         gptResponse.cleared = true;
+        gptResponse.synced = false;
       });
       const success = await clearDiscussion(String(discussionId));
       if (!success) {
@@ -829,14 +1052,23 @@ export async function markDiscussionAsCleared(
       'No UID available for mark discussion as cleared operation'
     );
   }
+  if (!realm) {
+    console.error('Failed to open Realm instance');
+    throw new Error('Failed to open Realm instance');
+  }
   try {
     realm.write(() => {
-      const discussion = realm.objectForPrimaryKey(
+      if (!realm) {
+        console.error('Failed to open Realm instance');
+        throw new Error('Failed to open Realm instance');
+      }
+      const discussion = realm.objectForPrimaryKey<Discussion>(
         'Discussion',
         Number(discussionId)
       );
-      if (discussion) {
+      if (discussion && discussion.uid === uid) {
         discussion.cleared = true;
+        discussion.synced = false;
         console.log(`Discussion ${discussionId} marked as cleared.`);
       }
     });
@@ -850,14 +1082,23 @@ export async function clearDiscussion(discussionId: string): Promise<boolean> {
   if (!uid) {
     throw new Error('No UID available for clear discussion operation');
   }
+  if (!realm) {
+    console.error('Failed to open Realm instance');
+    throw new Error('Failed to open Realm instance');
+  }
   try {
     realm.write(() => {
-      const discussion = realm.objectForPrimaryKey(
+      if (!realm) {
+        console.error('Failed to open Realm instance');
+        throw new Error('Failed to open Realm instance');
+      }
+      const discussion = realm.objectForPrimaryKey<Discussion>(
         'Discussion',
         Number(discussionId)
       );
-      if (discussion) {
+      if (discussion && discussion.uid === uid) {
         discussion.cleared = true;
+        discussion.synced = false;
         console.log(`Processed and cleared Discussion: ${discussionId}`);
       }
     });
@@ -880,8 +1121,11 @@ export async function addOrUpdateActivityLog(): Promise<void> {
       'No UID available for add or update activity log operation'
     );
   }
+  if (!realm) {
+    console.error('Failed to open Realm instance');
+    throw new Error('Failed to open Realm instance');
+  }
   try {
-    // Explicitly type the Realm query result
     const responses = realm
       .objects<GPTResponse>('GPTResponses')
       .filtered(
@@ -892,7 +1136,6 @@ export async function addOrUpdateActivityLog(): Promise<void> {
       const responseJson = JSON.parse(
         gptResponse.response
       ) as GPTResponseJSONData;
-      // Validate and convert timestamp
       const timestampValue = gptResponse.timestamp;
       const timestamp =
         timestampValue instanceof Date
@@ -900,7 +1143,7 @@ export async function addOrUpdateActivityLog(): Promise<void> {
           : typeof timestampValue === 'string' ||
             typeof timestampValue === 'number'
           ? new Date(timestampValue)
-          : new Date(); // Fallback to current date if invalid
+          : new Date();
       if (isNaN(timestamp.getTime())) {
         console.warn(
           `Invalid timestamp for GPTResponse ${gptResponse.id}, using current date`
@@ -911,14 +1154,19 @@ export async function addOrUpdateActivityLog(): Promise<void> {
       const parsedDescription = responseJson.parsedDescription;
       const discussionId = gptResponse.discussionId;
       const activityLog = realm
-        .objects('ActivityLog')
-        .filtered('discussionId == $0', discussionId)[0];
+        .objects<ActivityLog>('ActivityLog')
+        .filtered('discussionId == $0 AND uid == $1', discussionId, uid)[0];
       realm.write(() => {
+        if (!realm) {
+          console.error('Failed to open Realm instance');
+          throw new Error('Failed to open Realm instance');
+        }
         if (activityLog) {
           activityLog.category = category;
           activityLog.description = parsedDescription;
           activityLog.responseType = 'tell';
           activityLog.cleared = true;
+          activityLog.synced = false;
         } else {
           realm.create('ActivityLog', {
             id: new Date().getTime(),
@@ -928,9 +1176,11 @@ export async function addOrUpdateActivityLog(): Promise<void> {
             timestamp,
             cleared: true,
             uid,
+            synced: false,
           });
         }
         gptResponse.cleared = true;
+        gptResponse.synced = false;
       });
     }
   } catch (error) {
@@ -943,18 +1193,27 @@ export async function renameFieldToCleared(): Promise<void> {
   if (!uid) {
     throw new Error('No UID available for rename field to cleared operation');
   }
+  if (!realm) {
+    console.error('Failed to open Realm instance');
+    throw new Error('Failed to open Realm instance');
+  }
   try {
     realm.write(() => {
+      if (!realm) {
+        console.error('Failed to open Realm instance');
+        throw new Error('Failed to open Realm instance');
+      }
       const discussions = realm
-        .objects('Discussion')
+        .objects<Discussion>('Discussion')
         .filtered('uid == $0', uid);
-      discussions.forEach((doc: any) => {
+      discussions.forEach((doc) => {
         const fieldName = Object.keys(doc).find(
           (key) => key.toLowerCase() === 'cleared'
         );
         if (fieldName && fieldName !== 'cleared') {
-          doc.cleared = doc[fieldName];
-          delete doc[fieldName];
+          doc.cleared = (doc as any)[fieldName];
+          delete (doc as any)[fieldName];
+          doc.synced = false;
         }
       });
     });
@@ -969,9 +1228,13 @@ export async function getLastOpenDiscussion(): Promise<LastOpenDiscussion> {
   if (!uid) {
     throw new Error('No UID available for get last open discussion operation');
   }
+  if (!realm) {
+    console.error('Failed to open Realm instance');
+    throw new Error('Failed to open Realm instance');
+  }
   try {
     const discussions = realm
-      .objects('Discussion')
+      .objects<Discussion>('Discussion')
       .filtered(
         'cleared == false AND description != null AND description != "" AND uid == $0',
         uid
@@ -981,7 +1244,7 @@ export async function getLastOpenDiscussion(): Promise<LastOpenDiscussion> {
       const discussion = discussions[0];
       return {
         id: String(discussion.id),
-        description: discussion.description as string,
+        description: discussion.description,
       };
     }
     throw new Error('No open discussions found');
@@ -999,8 +1262,12 @@ export async function disperseQuestion(
   if (!uid) {
     throw new Error('No UID available for disperse question operation');
   }
+  if (!realm) {
+    console.error('Failed to open Realm instance');
+    throw new Error('Failed to open Realm instance');
+  }
   try {
-    const discussion = realm.objectForPrimaryKey(
+    const discussion = realm.objectForPrimaryKey<Discussion>(
       'Discussion',
       Number(discussionId)
     );
@@ -1008,7 +1275,7 @@ export async function disperseQuestion(
       console.log(`No discussion found with ID: ${discussionId}`);
       return undefined;
     }
-    const gptResponse = realm.objectForPrimaryKey(
+    const gptResponse = realm.objectForPrimaryKey<GPTResponse>(
       'GPTResponses',
       Number(GPT_ResponseId)
     );
@@ -1016,7 +1283,9 @@ export async function disperseQuestion(
       console.error('GPT Response not found');
       return undefined;
     }
-    const parsedQuestion = JSON.parse(gptResponse.response as string);
+    const parsedQuestion = JSON.parse(gptResponse.response) as {
+      parts: { category: string; gpt: string; parsedDescription: string }[];
+    };
     const responses: string[] = [];
     for (const part of parsedQuestion.parts) {
       const { gpt, category, parsedDescription: question } = part;
@@ -1027,15 +1296,20 @@ export async function disperseQuestion(
         discussionId,
       });
       realm.write(() => {
+        if (!realm) {
+          console.error('Failed to open Realm instance');
+          throw new Error('Failed to open Realm instance');
+        }
         realm.create('GPTResponses', {
           id: new Date().getTime(),
+          discussionId: Number(discussionId),
           timestamp: new Date(),
           prompt: question,
-          response: response,
+          response: response.parsedDescription,
           responseType: 'gpt response',
-          discussionId: Number(discussionId),
           cleared: false,
           uid,
+          synced: false,
         });
       });
       responses.push(response.parsedDescription);
@@ -1059,9 +1333,17 @@ export async function addOrUpdateGPTResponse(
       'No UID available for add or update GPT response operation'
     );
   }
+  if (!realm) {
+    console.error('Failed to open Realm instance');
+    throw new Error('Failed to open Realm instance');
+  }
   try {
     const id = new Date().getTime();
     realm.write(() => {
+      if (!realm) {
+        console.error('Failed to open Realm instance');
+        throw new Error('Failed to open Realm instance');
+      }
       realm.create('GPTResponses', {
         id,
         discussionId: Number(discussionId),
@@ -1070,6 +1352,7 @@ export async function addOrUpdateGPTResponse(
         timestamp: new Date(),
         cleared,
         uid,
+        synced: false,
       });
     });
     console.log('GPT Response saved.');
@@ -1083,11 +1366,15 @@ export async function getGPTResponses(discussionId: string): Promise<any[]> {
   if (!uid) {
     throw new Error('No UID available for get GPT responses operation');
   }
+  if (!realm) {
+    console.error('Failed to open Realm instance');
+    throw new Error('Failed to open Realm instance');
+  }
   try {
     const responses = realm
-      .objects('GPTResponses')
+      .objects<GPTResponse>('GPTResponses')
       .filtered('discussionId == $0 AND uid == $1', Number(discussionId), uid);
-    return responses.map((doc: any) => doc);
+    return Array.from(responses);
   } catch (error) {
     console.error('Error getting GPT responses:', error);
     return [];
@@ -1101,15 +1388,19 @@ export async function getParsedGPTResponses(
   if (!uid) {
     throw new Error('No UID available for get parsed GPT responses operation');
   }
+  if (!realm) {
+    console.error('Failed to open Realm instance');
+    throw new Error('Failed to open Realm instance');
+  }
   try {
     const responses = realm
-      .objects('GPTResponses')
+      .objects<GPTResponse>('GPTResponses')
       .filtered(
         'discussionId == $0 AND responseType == "parsed answer" AND uid == $1',
         Number(discussionId),
         uid
       );
-    return responses.map((doc: any) => doc.response);
+    return responses.map((doc) => doc.response);
   } catch (error) {
     console.error('Error getting parsed GPT responses:', error);
     return [];
@@ -1163,8 +1454,16 @@ const updateRealmSyncStatus = (
   id: number,
   synced: boolean
 ): void => {
+  if (!realm) {
+    console.error('Failed to open Realm instance');
+    throw new Error('Failed to open Realm instance');
+  }
   try {
     realm.write(() => {
+      if (!realm) {
+        console.error('Failed to open Realm instance');
+        throw new Error('Failed to open Realm instance');
+      }
       const record = realm.objectForPrimaryKey(tableName, id);
       if (record) {
         record.synced = synced;
@@ -1181,9 +1480,13 @@ export async function getNextActiveAlert(): Promise<any | null> {
   if (!uid) {
     throw new Error('No UID available for get next active alert operation');
   }
+  if (!realm) {
+    console.error('Failed to open Realm instance');
+    throw new Error('Failed to open Realm instance');
+  }
   try {
     const alerts = realm
-      .objects('Alert')
+      .objects<Alert>('Alert')
       .filtered('isActive == true AND uid == $0', uid)
       .sorted('nextTrigger', true);
     return alerts.length > 0 ? alerts[0] : null;
@@ -1198,10 +1501,18 @@ export async function addOrUpdateAlert(alertData: any): Promise<void> {
   if (!uid) {
     throw new Error('No UID available for add or update alert operation');
   }
+  if (!realm) {
+    console.error('Failed to open Realm instance');
+    throw new Error('Failed to open Realm instance');
+  }
   try {
     realm.write(() => {
+      if (!realm) {
+        console.error('Failed to open Realm instance');
+        throw new Error('Failed to open Realm instance');
+      }
       const existingAlert = alertData._id
-        ? realm.objectForPrimaryKey('Alert', alertData._id)
+        ? realm.objectForPrimaryKey<Alert>('Alert', alertData._id)
         : null;
       const alert = {
         id: alertData._id || new Date().getTime(),
@@ -1214,6 +1525,7 @@ export async function addOrUpdateAlert(alertData: any): Promise<void> {
           : new Date(),
         createdAt: new Date(),
         uid,
+        synced: false,
       };
       if (existingAlert) {
         Object.assign(existingAlert, alert);
@@ -1228,11 +1540,24 @@ export async function addOrUpdateAlert(alertData: any): Promise<void> {
 }
 
 export async function deactivateAlertByKey(key: number): Promise<void> {
+  const uid = await getUID();
+  if (!uid) {
+    throw new Error('No UID available for deactivate alert operation');
+  }
+  if (!realm) {
+    console.error('Failed to open Realm instance');
+    throw new Error('Failed to open Realm instance');
+  }
   try {
     realm.write(() => {
-      const alert = realm.objectForPrimaryKey('Alert', key);
-      if (alert) {
+      if (!realm) {
+        console.error('Failed to open Realm instance');
+        throw new Error('Failed to open Realm instance');
+      }
+      const alert = realm.objectForPrimaryKey<Alert>('Alert', key);
+      if (alert && alert.uid === uid) {
         alert.isActive = false;
+        alert.synced = false;
         console.log(`Alert with key ${key} deactivated.`);
       }
     });
@@ -1244,13 +1569,15 @@ export async function deactivateAlertByKey(key: number): Promise<void> {
 export async function getURLofGPT(
   gpt_name: string
 ): Promise<{ url: string; apiKey: string } | null> {
+  if (!realm) {
+    console.error('Failed to open Realm instance');
+    throw new Error('Failed to open Realm instance');
+  }
   try {
     const specialty = realm
-      .objects('GPTSpecialties')
+      .objects<GPTSpecialty>('GPTSpecialties')
       .filtered('name == $0', gpt_name)[0];
-    return specialty
-      ? { url: specialty.url as string, apiKey: specialty.apiKey as string }
-      : null;
+    return specialty ? { url: specialty.url, apiKey: specialty.apiKey } : null;
   } catch (error) {
     console.error('Error fetching GPT specialty:', error);
     return null;
@@ -1274,6 +1601,10 @@ export async function restoreLostData(): Promise<void> {
   const uid = await getUID();
   if (!uid) {
     throw new Error('No UID available for restore lost data operation');
+  }
+  if (!realm) {
+    console.error('Failed to open Realm instance');
+    throw new Error('Failed to open Realm instance');
   }
   const lostData = [
     {
@@ -1322,9 +1653,16 @@ export async function restoreLostData(): Promise<void> {
   ];
   try {
     realm.write(() => {
+      if (!realm) {
+        console.error('Failed to open Realm instance');
+        throw new Error('Failed to open Realm instance');
+      }
       for (const entry of lostData) {
         const id = Number(entry.id);
-        const existing = realm.objectForPrimaryKey('ActivityLog', id);
+        const existing = realm.objectForPrimaryKey<ActivityLog>(
+          'ActivityLog',
+          id
+        );
         if (!existing) {
           realm.create('ActivityLog', {
             id,
@@ -1334,6 +1672,7 @@ export async function restoreLostData(): Promise<void> {
             timestamp: new Date(entry.timestamp),
             cleared: false,
             uid,
+            synced: false,
           });
           console.log(`Restored document: ${entry.id}`);
         }
@@ -1342,12 +1681,17 @@ export async function restoreLostData(): Promise<void> {
     console.log('Data restoration completed!');
   } catch (error) {
     console.error('Error restoring lost data:', error);
+    throw error;
   }
 }
 
 export async function getRules(): Promise<Rule[]> {
+  if (!realm) {
+    console.error('Failed to open Realm instance');
+    throw new Error('Failed to open Realm instance');
+  }
   try {
-    const rules = realm.objects('Rule').map((rule: any) => ({
+    const rules = realm.objects<Rule>('Rule').map((rule) => ({
       pattern: rule.pattern,
       isRegex: rule.isRegex,
       category: rule.category,
@@ -1362,78 +1706,250 @@ export async function getRules(): Promise<Rule[]> {
   }
 }
 
+export async function updateGPTSpecialties(gptSpecialty: {
+  id?: number;
+  name: string;
+  url: string;
+  apiKey: string;
+}): Promise<void> {
+  if (!realm) {
+    console.error('Failed to open Realm instance');
+    throw new Error('Failed to open Realm instance');
+  }
+  try {
+    const url = `${process.env.EXPO_PUBLIC_API_URL}gpt-specialties/`;
+    const method = gptSpecialty.id ? 'PUT' : 'POST';
+    const response = await axios({
+      method,
+      url,
+      headers: { 'Content-Type': 'application/json' },
+      data: JSON.stringify(gptSpecialty),
+    });
+    realm.write(() => {
+      if (!realm) {
+        console.error('Failed to open Realm instance');
+        throw new Error('Failed to open Realm instance');
+      }
+      const existing = gptSpecialty.id
+        ? realm.objectForPrimaryKey<GPTSpecialty>(
+            'GPTSpecialties',
+            gptSpecialty.id
+          )
+        : null;
+      if (existing) {
+        existing.name = gptSpecialty.name;
+        existing.url = gptSpecialty.url;
+        existing.apiKey = gptSpecialty.apiKey;
+        existing.synced = false;
+      } else {
+        realm.create('GPTSpecialties', {
+          id: new Date().getTime(),
+          name: gptSpecialty.name,
+          url: gptSpecialty.url,
+          apiKey: gptSpecialty.apiKey,
+          synced: false,
+        });
+      }
+    });
+    console.log('GPT Specialty updated:', response.data);
+  } catch (error) {
+    console.error('Error updating GPT specialty:', error);
+    throw error;
+  }
+}
+
+export function getActivityLogs(): ActivityLog[] {
+  if (!realm) {
+    console.error('Failed to open Realm instance');
+    throw new Error('Failed to open Realm instance');
+  }
+  try {
+    return Array.from(realm.objects<ActivityLog>('ActivityLog'));
+  } catch (error) {
+    console.error('Error getting activity logs:', error);
+    return [];
+  }
+}
+
+export async function getDescriptionsWithTimestamps(
+  categories: string[]
+): Promise<string> {
+  const uid = await getUID();
+  if (!uid) {
+    throw new Error(
+      'No UID available for get descriptions with timestamps operation'
+    );
+  }
+  if (!realm) {
+    console.error('Failed to open Realm instance');
+    throw new Error('Failed to open Realm instance');
+  }
+  try {
+    const logs = realm
+      .objects<ActivityLog>('ActivityLog')
+      .filtered('category IN $0 AND uid == $1', categories, uid);
+    const descriptionsWithTimestamps = logs.map((log) => ({
+      description: log.description,
+      timestamp: log.timestamp.toISOString(),
+    }));
+    return JSON.stringify(descriptionsWithTimestamps);
+  } catch (error) {
+    console.error('Error getting descriptions with timestamps:', error);
+    return '[]';
+  }
+}
+
+export async function isPaidUser(): Promise<boolean> {
+  const uid = await getUID();
+  if (!uid) return false;
+  if (!realm) {
+    console.error('Failed to open Realm instance');
+    throw new Error('Failed to open Realm instance');
+  }
+  try {
+    const user = realm.objects<User>('User').filtered('uid == $0', uid)[0];
+    return user?.isPaid ?? false;
+  } catch (error) {
+    console.error('Error checking subscription status:', error);
+    return false;
+  }
+}
+
+function deleteGPTResponsesWithInvalidCategory(): void {
+  if (!realm) {
+    console.error('Failed to open Realm instance');
+    throw new Error('Failed to open Realm instance');
+  }
+  try {
+    realm.write(() => {
+      if (!realm) {
+        console.error('Failed to open Realm instance');
+        throw new Error('Failed to open Realm instance');
+      }
+      const gptResponses = realm.objects<GPTResponse>('GPTResponses');
+      gptResponses.forEach((gptResponse) => {
+        try {
+          const responseJson = JSON.parse(gptResponse.response);
+          if (!responseJson.category) {
+            realm!.delete(gptResponse);
+            console.log(
+              `Deleted GPTResponse with ID ${gptResponse.id} due to invalid category`
+            );
+          }
+        } catch (error) {
+          console.error(`Error parsing GPTResponse ${gptResponse.id}:`, error);
+        }
+      });
+    });
+    console.log('Finished deleting GPTResponses with invalid categories');
+  } catch (error) {
+    console.error(
+      'Error deleting GPTResponses with invalid categories:',
+      error
+    );
+  } finally {
+    try {
+      // Finally block is executed after try and catch blocks
+    } finally {
+    }
+  }
+}
+
 export class DatabaseService {
   async parseAndSaveInstructions(jsonData: any): Promise<void> {
+    const uid = await getUID();
+    if (!uid) {
+      throw new Error(
+        'No UID available for parse and save instructions operation'
+      );
+    }
+    if (!realm) {
+      console.error('Failed to open Realm instance');
+      throw new Error('Failed to open Realm instance');
+    }
     try {
       const instructions = jsonData.instructions;
       realm.write(() => {
+        if (!realm) {
+          console.error('Failed to open Realm instance');
+          throw new Error('Failed to open Realm instance');
+        }
         for (const instruction of instructions) {
           const discussion = realm
-            .objects('Discussion')
-            .filtered('id == $0', instruction.id)[0];
+            .objects<Discussion>('Discussion')
+            .filtered('id == $0 AND uid == $1', Number(instruction.id), uid)[0];
           if (discussion) {
-            const timestamp = new Date(discussion.timestamp as Date);
+            const timestamp = new Date(discussion.timestamp);
             const existingLog = realm
-              .objects('ActivityLog')
-              .filtered('timestamp == $0', timestamp)[0];
+              .objects<ActivityLog>('ActivityLog')
+              .filtered(
+                'discussionId == $0 AND uid == $1',
+                discussion.id,
+                uid
+              )[0];
+            const logData = {
+              id: existingLog ? existingLog.id : new Date().getTime(),
+              discussionId: discussion.id,
+              category: instruction.category,
+              description: instruction.description,
+              timestamp,
+              cleared: false,
+              uid,
+              synced: false,
+            };
             if (existingLog) {
-              existingLog.category = instruction.category;
-              existingLog.description = instruction.description;
+              Object.assign(existingLog, logData);
+              console.log(`Updated ActivityLog ${logData.id}`);
             } else {
-              realm.create('ActivityLog', {
-                id: new Date().getTime(),
-                discussionId: discussion.id,
-                category: instruction.category,
-                description: instruction.description,
-                timestamp,
-                cleared: false,
-                uid: discussion.uid,
-              });
+              realm.create('ActivityLog', logData);
+              console.log(`Added ActivityLog ${logData.id}`);
             }
+          } else {
+            console.log(`Discussion with ID ${instruction.id} not found`);
           }
         }
       });
+      console.log('Instructions parsed and saved successfully');
     } catch (error) {
       console.error('Error parsing and saving instructions:', error);
     }
   }
 
   async getDiscussionById(id: string): Promise<Discussion | null> {
+    const uid = await getUID();
+    if (!uid) {
+      throw new Error('No UID available for get discussion by ID operation');
+    }
+    if (!realm) {
+      console.error('Failed to open Realm instance');
+      throw new Error('Failed to open Realm instance');
+    }
     try {
-      const discussion = realm.objectForPrimaryKey('Discussion', Number(id));
-      return discussion
-        ? {
-            id: Number(discussion.id),
-            discussionId: Number(discussion.discussionId), // Ensure discussionId is a number
-            description: discussion.description as string,
-            timestamp: discussion.timestamp as Date,
-            typeSay: discussion.typeSay as string,
-            cleared: discussion.cleared as boolean, // Fixed typo from 'typleared'
-            synced: discussion.synced as boolean,
-            syncTimestamp: discussion.syncTimestamp as Date,
-          }
-        : null;
+      const discussion = realm.objectForPrimaryKey<Discussion>(
+        'Discussion',
+        Number(id)
+      );
+      return discussion && discussion.uid === uid ? discussion : null;
     } catch (error) {
       console.error('Error getting discussion by ID:', error);
       return null;
     }
   }
+
   async getExistingLog(timestamp: Date): Promise<ActivityLog | null> {
+    const uid = await getUID();
+    if (!uid) {
+      throw new Error('No UID available for get existing log operation');
+    }
+    if (!realm) {
+      console.error('Failed to open Realm instance');
+      throw new Error('Failed to open Realm instance');
+    }
     try {
       const log = realm
-        .objects('ActivityLog')
-        .filtered('timestamp == $0', timestamp)[0];
-      return log
-        ? {
-            id: Number(log.id),
-            discussionId: Number(log.discussionId),
-            category: log.category as string,
-            description: log.description as string,
-            timestamp: log.timestamp as Date,
-            cleared: log.cleared as boolean,
-            responseType: log.responseType as string,
-          }
-        : null;
+        .objects<ActivityLog>('ActivityLog')
+        .filtered('timestamp == $0 AND uid == $1', timestamp, uid)[0];
+      return log || null;
     } catch (error) {
       console.error('Error getting existing log:', error);
       return null;
@@ -1447,15 +1963,31 @@ export class DatabaseService {
   }
 
   async updateActivityLog(log: ActivityLog): Promise<void> {
+    const uid = await getUID();
+    if (!uid) {
+      throw new Error('No UID available for update activity log operation');
+    }
+    if (!realm) {
+      console.error('Failed to open Realm instance');
+      throw new Error('Failed to open Realm instance');
+    }
     try {
       realm.write(() => {
-        const existingLog = realm.objectForPrimaryKey('ActivityLog', log.id);
-        if (existingLog) {
+        if (!realm) {
+          console.error('Failed to open Realm instance');
+          throw new Error('Failed to open Realm instance');
+        }
+        const existingLog = realm.objectForPrimaryKey<ActivityLog>(
+          'ActivityLog',
+          log.id
+        );
+        if (existingLog && existingLog.uid === uid) {
           existingLog.category = log.category;
           existingLog.description = log.description;
           existingLog.timestamp = log.timestamp;
           existingLog.cleared = log.cleared;
           existingLog.responseType = log.responseType;
+          existingLog.synced = false;
           console.log(`Updated ActivityLog ${log.id}`);
         }
       });
@@ -1465,8 +1997,20 @@ export class DatabaseService {
   }
 
   async addActivityLog(log: ActivityLog): Promise<void> {
+    const uid = await getUID();
+    if (!uid) {
+      throw new Error('No UID available for add activity log operation');
+    }
+    if (!realm) {
+      console.error('Failed to open Realm instance');
+      throw new Error('Failed to open Realm instance');
+    }
     try {
       realm.write(() => {
+        if (!realm) {
+          console.error('Failed to open Realm instance');
+          throw new Error('Failed to open Realm instance');
+        }
         realm.create('ActivityLog', {
           id: log.id,
           discussionId: log.discussionId,
@@ -1475,7 +2019,8 @@ export class DatabaseService {
           timestamp: log.timestamp,
           cleared: log.cleared,
           responseType: log.responseType,
-          uid: log.uid,
+          uid,
+          synced: false,
         });
         console.log(`Added ActivityLog ${log.id}`);
       });
@@ -1485,119 +2030,25 @@ export class DatabaseService {
   }
 }
 
-function deleteGPTResponsesWithInvalidCategory(): void {
-  realm.write(() => {
-    const gptResponses = realm.objects('GPTResponses');
-    gptResponses.forEach((gptResponse: any) => {
-      try {
-        const responseJson = JSON.parse(gptResponse.response);
-        if (!responseJson.category) {
-          realm.delete(gptResponse);
-        }
-      } catch (error) {
-        console.error('Error parsing GPT response:', error);
-      }
-    });
-  });
-}
-
-export async function updateGPTSpecialties(gptSpecialty: {
-  id?: number;
-  name: string;
-  url: string;
-  apiKey: string;
-}): Promise<void> {
+export async function getParameters(): Promise<Parameters[]> {
   const uid = await getUID();
-  if (!uid) {
-    throw new Error('No UID available for update GPT specialties operation');
-  }
+  if (!uid) throw new Error('No UID available');
   try {
-    const url = `${process.env.EXPO_PUBLIC_API_URL}gpt-specialties/`;
-    const method = gptSpecialty.id ? 'PUT' : 'POST';
-    const response = await axios({
-      method,
-      url,
-      headers: { 'Content-Type': 'application/json' },
-      data: JSON.stringify(gptSpecialty),
-    });
-    realm.write(() => {
-      const existing = gptSpecialty.id
-        ? realm.objectForPrimaryKey('GPTSpecialties', gptSpecialty.id)
-        : null;
-      if (existing) {
-        existing.name = gptSpecialty.name;
-        existing.url = gptSpecialty.url;
-        existing.apiKey = gptSpecialty.apiKey;
-      } else {
-        realm.create('GPTSpecialties', {
-          id: new Date().getTime(),
-          name: gptSpecialty.name,
-          url: gptSpecialty.url,
-          apiKey: gptSpecialty.apiKey,
-        });
-      }
-    });
-    console.log('GPT Specialty updated:', response.data);
-  } catch (error) {
-    console.error('Error updating GPT specialty:', error);
-    throw error;
-  }
-}
-
-export function getActivityLogs(): ActivityLog[] {
-  return Array.from(realm.objects('ActivityLog'));
-}
-
-export function getParameters(): Parameters[] {
-  return Array.from(realm.objects('Parameters'));
-}
-
-export async function getDescriptionsWithTimestamps(
-  categories: string[]
-): Promise<string> {
-  try {
-    const logs = realm
-      .objects('ActivityLog')
-      .filtered('category IN $0', categories);
-    const descriptionsWithTimestamps = logs.map((log: any) => ({
-      description: log.description,
-      timestamp: log.timestamp.toISOString(),
+    if (!realm) {
+      console.warn('Realm not initialized, returning empty parameters');
+      return [];
+    }
+    const snapshot = realm.objects('Parameters').filtered('uid == $0', uid);
+    return snapshot.map((doc: any) => ({
+      parameterName: doc.parameterName,
+      parameterValue: doc.parameterValue,
     }));
-    return JSON.stringify(descriptionsWithTimestamps);
   } catch (error) {
-    console.error('Error getting descriptions with timestamps:', error);
-    return '[]';
+    console.error('Error in getParameters:', error);
+    return [];
   }
 }
 
-// Interface for User schema (matches realmConfig.ts)
-interface User {
-  id: string;
-  appVersion: string;
-  appId: string;
-  timestamp: Date;
-  uid: string;
-  isPaid: boolean;
-}
+export const databaseService = new DatabaseService();
 
-export async function isPaidUser(): Promise<boolean> {
-  const uid = await getUID();
-  if (!uid) return false;
-  try {
-    const user = realm.objects<User>('User').filtered('uid == $0', uid)[0];
-    return user?.isPaid ?? false;
-  } catch (error) {
-    console.error('Error checking subscription status:', error);
-    return false;
-  }
-}
-
-// ... other exports (e.g., addOrUpdateActivityLog, getDistinctCategories)
-
-export {
-  type ActivityLog,
-  type Discussion,
-  type GPTSpecialty,
-  type GPTResponse,
-  type Alert,
-};
+export { type Discussion, type GPTSpecialty, type GPTResponse, type Alert };

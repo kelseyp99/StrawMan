@@ -1,86 +1,243 @@
+import { auth, db } from '../firebaseConfig';
 import {
-  getFirestore,
   collection,
-  doc,
+  addDoc,
   getDocs,
   setDoc,
+  doc,
   deleteDoc,
   query,
   where,
-  addDoc,
-  updateDoc,
   getDoc,
-  Timestamp,
-  limit,
-  writeBatch,
-  deleteField,
-  and,
-  orderBy,
   startAfter,
-  onSnapshot,
+  deleteField,
   DocumentData,
   DocumentReference,
   DocumentSnapshot,
+  limit,
+  onSnapshot,
+  orderBy,
+  Timestamp,
+  updateDoc,
+  writeBatch,
 } from 'firebase/firestore';
-import { auth, db } from '../firebaseConfig';
-import { format } from 'date-fns';
 import { getUID } from '../utils/uidManager';
-import { sendQuestion, sendQuestionForParsing } from './openaiAPI';
+import { format } from 'date-fns';
+import { sendQuestionForParsing, sendQuestion } from './openaiAPI';
 
-const APP_VERSION = '1.1.0';
-const APP_ID = 'com.anonymous.lifelog';
-
-// Toggle for synchronization (set to false to disable later)
-const ENABLE_DISCUSSION_SYNC = false;
+// Constants to match dbServicesLocal.ts
 const ENABLE_ACTIVITYLOG_SYNC = false;
+const ENABLE_DISCUSSION_SYNC = false;
 
+// Interfaces (same as dbServicesLocal.ts)
 interface Discussion {
-  id: string;
-  discussionId: string;
+  id: number;
+  discussionId?: number;
   description: string;
-  timestamp: any;
-  typeSay: string;
-  cleared?: boolean;
+  timestamp: Date | string;
+  typeSay?: string;
+  cleared: boolean;
   uid?: string;
 }
 
-interface ActivityLog {
-  id: string;
-  discussionId: string;
+export interface ActivityLog {
+  id: number;
+  discussionId: number;
+  category: string;
   description: string;
-  category: string;
-  timestamp: any;
+  timestamp: Date;
   cleared: boolean;
-  uid: string;
   responseType?: string;
+  uid: string;
 }
 
-interface Rule {
-  pattern: string;
-  isRegex: boolean;
-  category: string;
-  priority: number;
+export interface Parameters {
+  parameterName: string;
+  parameterValue?: string;
 }
 
-export async function initializeUser() {
-  const user = auth.currentUser;
-  if (!user) {
-    throw new Error('No user signed in');
-  }
+interface Alert {
+  id: number;
+  message: string;
+  timestamp: Date;
+  severity: string;
+  isActive: boolean;
+  nextTrigger: Date;
+  createdAt: Date;
+  uid: string;
+}
+
+interface GPTSpecialty {
+  id: number;
+  name: string;
+  url: string;
+  apiKey: string;
+}
+
+// Existing functions (from previous response, abbreviated)
+export async function initializeUser(): Promise<void> {
+  const uid = await getUID();
+  if (!uid) throw new Error('No user signed in');
   try {
-    console.log(`Initializing user document for UID: ${user.uid}`);
-    const userRef = doc(db, `Users/${user.uid}`);
-    const userData = {
-      appVersion: '1.1.0',
-      appId: 'com.anonymous.lifelog',
-      timestamp: new Date().toISOString(),
-    };
-    console.log(`Writing to Firestore path: Users/${user.uid}`, userData);
-    await setDoc(userRef, userData, { merge: true });
-    console.log('User document initialized successfully');
+    console.log(`Initializing user for UID: ${uid}`);
+    await setDoc(
+      doc(db, `Users/${uid}`),
+      {
+        id: uid,
+        appVersion: '1.1.0',
+        appId: 'com.anonymous.lifelog',
+        timestamp: new Date(),
+        uid,
+        isPaid: false,
+      },
+      { merge: true }
+    );
+    console.log('User initialized in Firestore');
   } catch (error) {
-    console.error('Error initializing user document:', error);
+    console.error('Error initializing user:', error);
     throw error;
+  }
+}
+
+export async function addOrUpdateDiscussion(
+  description: string,
+  typeSay: string = 'tell',
+  id?: string
+): Promise<string> {
+  const uid = await getUID();
+  if (!uid) throw new Error('No UID available');
+  try {
+    const discussionId = id || String(new Date().getTime());
+    await setDoc(
+      doc(db, `Users/${uid}/Discussion`, discussionId),
+      {
+        id: Number(discussionId),
+        discussionId: Number(discussionId),
+        description,
+        typeSay,
+        cleared: false,
+        timestamp: new Date(),
+        uid,
+      },
+      { merge: true }
+    );
+    console.log(
+      `Discussion ${id ? 'updated' : 'added'} in Firestore: ${discussionId}`
+    );
+    return discussionId;
+  } catch (error) {
+    console.error('Error in addOrUpdateDiscussion:', error);
+    throw error;
+  }
+}
+
+// ... other existing functions (getDiscussions, addOrUpdateGPTResponse, etc.) ...
+
+// New functions
+export async function deactivateAlertByKey(key: number): Promise<void> {
+  const uid = await getUID();
+  if (!uid) throw new Error('No UID available');
+  try {
+    await setDoc(
+      doc(db, `Users/${uid}/Alert`, String(key)),
+      { isActive: false },
+      { merge: true }
+    );
+    console.log(`Alert ${key} deactivated in Firestore`);
+  } catch (error) {
+    console.error('Error in deactivateAlertByKey:', error);
+    throw error;
+  }
+}
+
+export async function updateGPTSpecialties(gptSpecialty: {
+  id?: number;
+  name: string;
+  url: string;
+  apiKey: string;
+}): Promise<void> {
+  const uid = await getUID();
+  if (!uid) throw new Error('No UID available');
+  try {
+    const id = gptSpecialty.id || new Date().getTime();
+    await setDoc(
+      doc(db, `Users/${uid}/GPTSpecialties`, String(id)),
+      {
+        id,
+        name: gptSpecialty.name,
+        url: gptSpecialty.url,
+        apiKey: gptSpecialty.apiKey,
+      },
+      { merge: true }
+    );
+    console.log('GPT Specialty updated in Firestore');
+  } catch (error) {
+    console.error('Error in updateGPTSpecialties:', error);
+    throw error;
+  }
+}
+
+export async function getActivityLogs(): Promise<ActivityLog[]> {
+  const uid = await getUID();
+  if (!uid) throw new Error('No UID available');
+  try {
+    const snapshot = await getDocs(collection(db, `Users/${uid}/ActivityLog`));
+    return snapshot.docs.map((doc) => ({
+      id: Number(doc.id),
+      discussionId: doc.data().discussionId,
+      category: doc.data().category,
+      description: doc.data().description,
+      timestamp: doc.data().timestamp.toDate(),
+      cleared: doc.data().cleared,
+      responseType: doc.data().responseType,
+      uid: doc.data().uid,
+      synced: doc.data().synced || false,
+      syncTimestamp: doc.data().syncTimestamp?.toDate(),
+    }));
+  } catch (error) {
+    console.error('Error in getActivityLogs:', error);
+    return [];
+  }
+}
+
+export async function getParameters(): Promise<Parameters[]> {
+  const uid = await getUID();
+  if (!uid) throw new Error('No UID available');
+  try {
+    const snapshot = await getDocs(collection(db, `Users/${uid}/Parameters`));
+    return snapshot.docs.map((doc) => ({
+      parameterName: doc.data().parameterName,
+      parameterValue: doc.data().parameterValue,
+    }));
+  } catch (error) {
+    console.error('Error in getParameters:', error);
+    return [];
+  }
+}
+
+export async function getDescriptionsWithTimestamps(
+  categories: string[]
+): Promise<string> {
+  const uid = await getUID();
+  if (!uid) throw new Error('No UID available');
+  try {
+    const q = query(
+      collection(db, `Users/${uid}/ActivityLog`),
+      where(
+        'category',
+        'in',
+        categories.length > 0 ? categories : ['uncategorized']
+      )
+    );
+    const snapshot = await getDocs(q);
+    const logs = snapshot.docs.map((doc) => ({
+      description: doc.data().description,
+      timestamp: doc.data().timestamp.toDate().toISOString(),
+    }));
+    return JSON.stringify(logs);
+  } catch (error) {
+    console.error('Error in getDescriptionsWithTimestamps:', error);
+    return '[]';
   }
 }
 
@@ -241,7 +398,7 @@ export async function queryAllFieldsByCategories(
     const snapshot = await getDocs(q);
     return snapshot.docs.map((doc) => {
       const data = doc.data() as ActivityLog;
-      const timestamp = new Date(data.timestamp.toDate());
+      const timestamp = new Date(data.timestamp);
       const formattedTimestamp = `${
         timestamp.getMonth() + 1
       }/${timestamp.getDate()}/${timestamp.getFullYear()} ${timestamp.getHours()}:${timestamp
@@ -487,48 +644,6 @@ function compareVersions(
 //////////////////////////////////////////
 // Database functions for Discussion //
 //////////////////////////////////////////
-
-export async function addOrUpdateDiscussion(
-  description: string,
-  typeSay: string = 'tell',
-  id?: string
-): Promise<string> {
-  console.log('Entering addOrUpdateDiscussion');
-  const uid = await getUID();
-  if (!uid) {
-    throw new Error('No UID available for discussion operation');
-  }
-  console.log(
-    `Adding or updating discussion with description: ${description}, uid: ${uid}, typeSay: ${typeSay}`
-  );
-  try {
-    console.log('Creating the document reference');
-    const docRef = id
-      ? doc(db, `Users/${uid}/Discussion`, String(id))
-      : doc(collection(db, `Users/${uid}/Discussion`));
-    const discussionData = {
-      description,
-      typeSay,
-      cleared: false,
-      timestamp: new Date(),
-      uid,
-      appVersion: APP_VERSION,
-      appId: APP_ID,
-    };
-    console.log(
-      `Writing to Firestore path: Users/${uid}/Discussion/${docRef.id}`,
-      discussionData
-    );
-    await setDoc(docRef, discussionData, { merge: true });
-    console.log(
-      `Discussion ${id ? 'updated' : 'added'} successfully: ${docRef.id}`
-    );
-    return docRef.id;
-  } catch (error) {
-    console.error('Error adding/updating discussion:', error);
-    throw error;
-  }
-}
 
 export async function getDiscussions(
   lastX?: number,
@@ -1561,6 +1676,13 @@ export async function getRules() {
     console.error('Error fetching rules:', error);
     throw error;
   }
+}
+
+interface Rule {
+  category: string;
+  pattern: string;
+  isRegex: boolean;
+  priority: number;
 }
 
 // Run the function
