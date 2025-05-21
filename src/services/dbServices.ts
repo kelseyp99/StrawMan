@@ -1,4 +1,8 @@
 import * as remote from './dbServicesRemote';
+import * as local from './dbServicesLocal';
+import { getUID } from '../utils/uidManager';
+
+const USE_REMOTE = true; // Initially route to remote
 
 export async function initializeUser(): Promise<void> {
   return remote.initializeUser();
@@ -125,10 +129,25 @@ export async function getParsedGPTResponses(
   return remote.getParsedGPTResponses(discussionId);
 }
 
-export async function getAIResponse(question: string): Promise<string> {
-  return remote.getAIResponse(question);
+// Pass-through to dbServicesLocal.ts
+export async function isPaidUser(): Promise<boolean> {
+  return local.isPaidUser();
 }
 
+// ... other router functions (e.g., getAIResponse, addOrUpdateDiscussion)
+
+export async function getAIResponse(question: string): Promise<string> {
+  const result = USE_REMOTE
+    ? await remote.getAIResponse(question)
+    : await local.getAIResponse(question);
+  if (typeof result !== 'string') {
+    console.warn(
+      `Invalid AI response type for question "${question}", returning fallback`
+    );
+    return `This is a fallback response to: "${question}"`;
+  }
+  return result;
+}
 export async function getNextActiveAlert(): Promise<any | null> {
   return remote.getNextActiveAlert();
 }
@@ -154,5 +173,3 @@ export async function restoreLostData(): Promise<void> {
 export async function getRules(): Promise<any[]> {
   return remote.getRules();
 }
-
-export class DatabaseService extends remote.DatabaseService {}

@@ -1304,13 +1304,13 @@ export async function getParsedGPTResponses(
   }
 }
 
-export const getAIResponse = async (question: string) => {
-  return new Promise((resolve) => {
+export async function getAIResponse(question: string): Promise<string> {
+  return new Promise<string>((resolve) => {
     setTimeout(() => {
       resolve(`This is an AI-generated response to: "${question}"`);
     }, 2000);
   });
-};
+}
 
 //////////////////////////////////////////
 // Helper Functions for Cloud Sync //
@@ -1515,7 +1515,9 @@ const lostData = [
   },
 ];
 
-async function restoreLostData(): Promise<void> {
+// ... other imports and code ...
+
+export async function restoreLostData(): Promise<void> {
   const uid = await getUID();
   if (!uid) {
     throw new Error('No UID available for restore lost data operation');
@@ -1537,6 +1539,8 @@ async function restoreLostData(): Promise<void> {
   }
   console.log('Data restoration completed!');
 }
+
+// ... other exports ...
 
 export async function getRules() {
   const uid = await getUID();
