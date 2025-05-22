@@ -2,7 +2,6 @@
   "expo": {
     "name": "LifeLog",
     "slug": "LifeLog",
-    "version": "1.1.0",
     "orientation": "portrait",
     "icon": "src/assets/images/ask-janet-icon.png",
     "scheme": "lifelog",
@@ -12,11 +11,15 @@
       "usesAppTrackingTransparency": true
     },
     "android": {
-      "versionCode": 3,
       "adaptiveIcon": {
         "foregroundImage": "src/assets/images/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
+      "permissions": [
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.MANAGE_EXTERNAL_STORAGE"
+      ],
       "package": "com.anonymous.lifelog"
     },
     "plugins": [

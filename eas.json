@@ -47,9 +47,11 @@
       },
       "channel": "production",
       "android": {
+        "autoIncrement": true,
         "buildType": "app-bundle"
       },
       "ios": {
+        "autoIncrement": true,
         "simulator": false
       }
     },
@@ -57,6 +59,7 @@
       "distribution": "store",
       "channel": "beta",
       "android": {
+        "autoIncrement": true,
         "buildType": "app-bundle"
       }
     }
