@@ -65,7 +65,12 @@
     }
   },
   "submit": {
-    "production": {},
+    "production": {
+      "android": {
+        "track": "internal",
+        "serviceAccountKeyPath": "./lifelog-f2904-b5d58f4dfdec.json"
+      }
+    },
     "beta": {
       "android": {
         "track": "beta"
