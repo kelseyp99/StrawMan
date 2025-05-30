@@ -96,6 +96,19 @@ const GPTSpecialtiesSchema = {
   primaryKey: 'id',
 };
 
+const DiscussionCountSchema = {
+  name: 'DiscussionCount',
+  properties: {
+    id: 'int',
+    discussionId: 'int',
+    count: 'int',
+    description: 'string',
+    uid: 'string',
+    timestamp: 'date',
+  },
+  primaryKey: 'id',
+};
+
 const config: Configuration = {
   path: '/data/data/com.lifelog/databases/ActivityLog.realm',
   schema: [
@@ -106,8 +119,9 @@ const config: Configuration = {
     GPTResponsesSchema,
     GPTSpecialtiesSchema,
     AlertSchema,
+    DiscussionCountSchema,
   ],
-  schemaVersion: 7,
+  schemaVersion: 8, // bump version for schema change
 };
 
 const realm = new Realm(config);
@@ -121,4 +135,5 @@ export {
   GPTResponsesSchema,
   GPTSpecialtiesSchema,
   AlertSchema,
+  DiscussionCountSchema,
 };

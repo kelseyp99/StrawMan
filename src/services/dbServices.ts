@@ -18,7 +18,7 @@ interface Discussion {
   uid?: string;
 }
 
-interface IActivityLog {
+export interface IActivityLog {
   id: number;
   discussionId: number;
   category: string;
@@ -64,6 +64,38 @@ export async function isPaidUser(): Promise<boolean> {
   console.log('isPaidUser called');
   return local.isPaidUser();
 }
+//
+
+export const findDuplicateActivityLog = async (
+  discussionId: string,
+  category: string,
+  description: string,
+  uid: string
+): Promise<IActivityLog | null> => {
+  console.log('findDuplicateActivityLog called');
+  try {
+    const uid = (await getUID()) || 'unknown';
+    if (USE_REMOTE) {
+      await remote.findDuplicateActivityLog(
+        discussionId,
+        category,
+        description,
+        uid
+      );
+    } else {
+      await local.findDuplicateActivityLog(
+        discussionId,
+        category,
+        description,
+        uid
+      );
+    }
+    return null; // Add a return statement here
+  } catch (error) {
+    console.error('Error in initializeUser:', error);
+    throw error;
+  }
+};
 
 export async function initializeUser(): Promise<void> {
   console.log('initializeUser called');
@@ -795,6 +827,90 @@ export async function synchronizeDiscussions(
     });
   } catch (error) {
     console.error('Error in synchronizeDiscussions:', error);
+    throw error;
+  }
+}
+
+// Delete ActivityLog (router)
+export async function deleteActivityLog(activityLogId: string): Promise<void> {
+  if (USE_REMOTE) {
+    await remote.deleteActivityLog(activityLogId);
+  } else {
+    await local.deleteActivityLog(activityLogId);
+  }
+  const uid = (await getUID()) || 'unknown';
+  await logSyncEntry({
+    id: Number(activityLogId),
+    tableName: 'ActivityLog',
+    operation: 'delete',
+    timestamp: new Date(),
+    uid,
+  });
+}
+
+// Create ActivityLog (router)
+export async function createActivityLog(
+  activityLog: Omit<IActivityLog, 'id'>
+): Promise<string> {
+  if (USE_REMOTE) {
+    return await remote.createActivityLog(activityLog);
+  } else {
+    return await local.createActivityLog(activityLog);
+  }
+}
+
+export async function updateActivityLogCategory(
+  activityLogId: string,
+  category: string
+): Promise<void> {
+  console.log(
+    'updateActivityLogCategory called with:',
+    activityLogId,
+    category
+  );
+  try {
+    if (USE_REMOTE) {
+      await remote.updateActivityLogCategory(activityLogId, category);
+    } else {
+      await local.updateActivityLogCategory(activityLogId, category);
+    }
+    const uid = (await getUID()) || 'unknown';
+    await logSyncEntry({
+      id: Number(activityLogId),
+      tableName: 'ActivityLog',
+      operation: 'update',
+      timestamp: new Date(),
+      uid,
+    });
+  } catch (error) {
+    console.error('Error in updateActivityLogCategory:', error);
+    throw error;
+  }
+}
+
+export async function createRuleCandidate(data: {
+  discussionId: string;
+  category: string;
+  description: string;
+  uid: string;
+}): Promise<void> {
+  console.log('createRuleCandidate called with:', data);
+  try {
+    if (USE_REMOTE) {
+      await remote.createRuleCandidate(data);
+    } else {
+      await local.createRuleCandidate(data);
+    }
+    const uid = (await getUID()) || 'unknown';
+    await logSyncEntry({
+      id: new Date().getTime(),
+      tableName: 'RuleCandidate',
+      operation: 'create',
+      timestamp: new Date(),
+      uid,
+    });
+  } catch (error) {
+    console.error('Error in createRuleCandidate:', error);
     throw error;
   }
 }

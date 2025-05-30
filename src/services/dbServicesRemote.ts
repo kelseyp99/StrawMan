@@ -24,6 +24,8 @@ import {
 import { getUID } from '../utils/uidManager';
 import { format } from 'date-fns';
 import { sendQuestionForParsing, sendQuestion } from './openaiAPI';
+import { IActivityLog } from './dbServices';
+// import { getRules } from './RulesService';
 
 // Constants to match dbServicesLocal.ts
 const ENABLE_ACTIVITYLOG_SYNC = false;
@@ -38,17 +40,6 @@ interface Discussion {
   typeSay?: string;
   cleared: boolean;
   uid?: string;
-}
-
-export interface ActivityLog {
-  id: number;
-  discussionId: number;
-  category: string;
-  description: string;
-  timestamp: Date;
-  cleared: boolean;
-  responseType?: string;
-  uid: string;
 }
 
 export interface Parameters {
@@ -73,6 +64,45 @@ interface GPTSpecialty {
   url: string;
   apiKey: string;
 }
+
+// Define DiscussionCount interface for Firebase
+export interface DiscussionCount {
+  id?: string | number;
+  discussionId: string | number;
+  count: number;
+  description: string;
+  timestamp: Date | string;
+  uid?: string;
+}
+
+// Fet
+
+export const findDuplicateActivityLog = async (
+  discussionId: string,
+  category: string,
+  description: string,
+  uid: string
+): Promise<IActivityLog | null> => {
+  const q = query(
+    collection(db, 'ActivityLog'),
+    where('discussionId', '==', discussionId),
+    where('category', '==', category),
+    where('description', '==', description),
+    where('uid', '==', uid)
+  );
+  const snapshot = await getDocs(q);
+  return snapshot.empty
+    ? null
+    : ({
+        id: snapshot.docs[0].id,
+        ...snapshot.docs[0].data(),
+      } as unknown as IActivityLog);
+};
+
+const getDiscussionCountsQuery = async () => {
+  const uid = await getUID();
+  return query(collection(db, `Users/${uid}/DiscussionCounts`));
+};
 
 // Existing functions (from previous response, abbreviated)
 export async function initializeUser(): Promise<void> {
@@ -177,7 +207,7 @@ export async function updateGPTSpecialties(gptSpecialty: {
   }
 }
 
-export async function getActivityLogs(): Promise<ActivityLog[]> {
+export async function getActivityLogs(): Promise<IActivityLog[]> {
   const uid = await getUID();
   if (!uid) throw new Error('No UID available');
   try {
@@ -397,7 +427,7 @@ export async function queryAllFieldsByCategories(
     );
     const snapshot = await getDocs(q);
     return snapshot.docs.map((doc) => {
-      const data = doc.data() as ActivityLog;
+      const data = doc.data() as IActivityLog;
       const timestamp = new Date(data.timestamp);
       const formattedTimestamp = `${
         timestamp.getMonth() + 1
@@ -441,7 +471,7 @@ export async function synchronizeActivityLog(
     );
 
     for (const globalDoc of globalSnapshot.docs) {
-      const globalData = globalDoc.data() as ActivityLog;
+      const globalData = globalDoc.data() as IActivityLog;
       if (globalData.uid && globalData.uid !== uid) {
         console.log(
           `Skipping ActivityLog ${globalDoc.id} (owned by ${globalData.uid})`
@@ -481,7 +511,7 @@ export async function synchronizeActivityLog(
     console.log(`Found ${userSnapshot.docs.length} user ActivityLog entries`);
 
     for (const userDoc of userSnapshot.docs) {
-      const userData = userDoc.data() as ActivityLog;
+      const userData = userDoc.data() as IActivityLog;
       if (!userData.uid) {
         console.warn(
           `ActivityLog ${userDoc.id} in Users/${uid}/ActivityLog missing uid, skipping`
@@ -970,7 +1000,9 @@ export async function processUnclearedGPTResponses() {
   console.log('All GPTResponses have been cleared.');
 }
 
-export const markDiscussionAsCleared = async (discussionId: string) => {
+export const markDiscussionAsCleared = async (
+  discussionId: string
+): Promise<void> => {
   console.log(`Attempting to mark discussion ${discussionId} as cleared...`);
   const uid = await getUID();
   if (!uid) {
@@ -1554,98 +1586,52 @@ export async function expandFromAbbreviation(
   const expandedForm = abbreviationMap.get(discussion);
   console.log(`Expanded '${discussion}' to '${expandedForm}'`);
   if (expandedForm) {
-    console.log(`Expanded '${discussion}' to '${expandedForm}'`);
-    return expandedForm;
-  } else {
-    console.log(`Unable to expand abbreviation '${discussion}'`);
-    return discussion;
+    return Promise.resolve(expandedForm);
+  }
+  return Promise.resolve(discussion);
+}
+
+export async function getRules(): Promise<
+  Array<{ pattern: string; category: string; isRegex: boolean }>
+> {
+  const uid = await getUID();
+  if (!uid) throw new Error('No UID available for getRules');
+  try {
+    const rulesSnapshot = await getDocs(collection(db, `Users/${uid}/Rules`));
+    return rulesSnapshot.docs.map((doc) => ({
+      pattern: doc.data().pattern,
+      category: doc.data().category,
+      isRegex: doc.data().isRegex || false,
+    }));
+  } catch (error) {
+    console.error('Error fetching rules:', error);
+    return [];
   }
 }
 
-//////////////////////////////////////////
-// Exporting Helper Functions //
-//////////////////////////////////////////
-
-/* async function updateDiscussions() {
-    const discussionsSnapshot = await getDocs(collection(db, 'Discussion'));
-    const batch = writeBatch(db);
-    
-    discussionsSnapshot.forEach((discussionDoc) => {
-      const docRef = doc(db, 'Discussion', discussionDoc.id);
-      batch.update(docRef, { Cleared: false });
-    });
-    
-    await batch.commit(); 
-
-    const snapshot = await getDocs(collection(db, "Discussion"));
-    snapshot.forEach(doc => {
-        console.log(doc.id, " => ", doc.data());
-    });   
-}
-*/
-
-const lostData = [
-  {
-    id: '1738367528606',
-    typeSay: 'tell',
-    timestamp: 1738367528606,
-    description: '1',
-  },
-  {
-    id: '1738374105437',
-    typeSay: 'tell',
-    timestamp: 1738374105437,
-    description: 'I ate salmon couscous and 2 slices of avocado',
-  },
-  {
-    id: '1738382525048',
-    typeSay: 'tell',
-    timestamp: 1738382525048,
-    description: 'Took 5 mg Staten',
-  },
-  {
-    id: '7vukcCfVaBApZaAv6PoU',
-    typeSay: 'tell',
-    timestamp: 1738374105437,
-    description: "I'm feeling anxious and frustrated",
-  },
-  {
-    id: '92JlMF1EHheU8uPMLBMi',
-    typeSay: 'tell',
-    timestamp: 1738382525048,
-    description: '1',
-  },
-  {
-    id: 'ArZ5Z0pQN1RKVb3kWuVh',
-    typeSay: 'tell',
-    timestamp: 1738374105437,
-    description:
-      'Ate Cheese omelet 3 out of 4 yolks removed with mustard leaf onions',
-  },
-  {
-    id: 'BA5UcSPVyWjPUHCMNiwM',
-    typeSay: 'tell',
-    timestamp: 1738382525048,
-    description: 'I ate banana',
-  },
-];
-
-// ... other imports and code ...
-
+// Restore lost data to ActivityLog collection
 export async function restoreLostData(): Promise<void> {
   const uid = await getUID();
-  if (!uid) {
-    throw new Error('No UID available for restore lost data operation');
-  }
-  const collectionRef = collection(db, `Users/${uid}/ActivityLog`);
+  if (!uid) throw new Error('No UID available for restore lost data operation');
+  const lostData = [
+    { id: '1738367528606', typeSay: 'tell', timestamp: 1738367528606, description: '1' },
+    { id: '1738374105437', typeSay: 'tell', timestamp: 1738374105437, description: 'I ate salmon couscous and 2 slices of avocado' },
+    { id: '1738382525048', typeSay: 'tell', timestamp: 1738382525048, description: 'Took 5 mg Staten' },
+    { id: '7vukcCfVaBApZaAv6PoU', typeSay: 'tell', timestamp: 1738374105437, description: "I'm feeling anxious and frustrated" },
+    { id: '92JlMF1EHheU8uPMLBMi', typeSay: 'tell', timestamp: 1738382525048, description: '1' },
+    { id: 'ArZ5Z0pQN1RKVb3kWuVh', typeSay: 'tell', timestamp: 1738374105437, description: 'Ate Cheese omelet 3 out of 4 yolks removed with mustard leaf onions' },
+    { id: 'BA5UcSPVyWjPUHCMNiwM', typeSay: 'tell', timestamp: 1738382525048, description: 'I ate banana' },
+  ];
   for (const entry of lostData) {
     try {
-      const docRef = doc(collectionRef, entry.id);
+      const docRef = doc(collection(db, `Users/${uid}/ActivityLog`), entry.id);
       await setDoc(docRef, {
         typeSay: entry.typeSay,
         description: entry.description,
         timestamp: Timestamp.fromMillis(entry.timestamp),
         uid: uid,
+        cleared: false,
+        category: 'uncategorized',
       });
       console.log(`Restored document: ${entry.id}`);
     } catch (error) {
@@ -1655,35 +1641,45 @@ export async function restoreLostData(): Promise<void> {
   console.log('Data restoration completed!');
 }
 
-// ... other exports ...
-
-export async function getRules() {
+// Delete ActivityLog by id
+export async function deleteActivityLog(activityLogId: string): Promise<void> {
   const uid = await getUID();
-  if (!uid) {
-    throw new Error('No UID available for get rules operation');
-  }
-  try {
-    const rulesRef = collection(db, 'Rules');
-    const q = query(
-      rulesRef,
-      orderBy('isRegex', 'desc'),
-      orderBy('priority', 'asc')
-    );
-    const snapshot = await getDocs(q);
-    const rules = snapshot.docs.map((doc) => doc.data() as Rule);
-    return rules;
-  } catch (error) {
-    console.error('Error fetching rules:', error);
-    throw error;
-  }
+  if (!uid) throw new Error('No UID available for delete operation');
+  const docRef = doc(db, `Users/${uid}/ActivityLog`, activityLogId);
+  await deleteDoc(docRef);
+  console.log(`ActivityLog with ID ${activityLogId} deleted.`);
 }
 
-interface Rule {
-  category: string;
-  pattern: string;
-  isRegex: boolean;
-  priority: number;
+// Create ActivityLog
+export async function createActivityLog(activityLog: Omit<IActivityLog, 'id'>): Promise<string> {
+  const uid = await getUID();
+  if (!uid) throw new Error('No UID available for createActivityLog');
+  const docRef = await addDoc(collection(db, `Users/${uid}/ActivityLog`), {
+    ...activityLog,
+    uid,
+    timestamp: activityLog.timestamp ? Timestamp.fromDate(new Date(activityLog.timestamp)) : new Date(),
+    cleared: activityLog.cleared ?? false,
+  });
+  console.log('ActivityLog created with ID:', docRef.id);
+  return docRef.id;
 }
 
-// Run the function
-// restoreLostData();
+// Update ActivityLog category
+export async function updateActivityLogCategory(activityLogId: string, category: string): Promise<void> {
+  const uid = await getUID();
+  if (!uid) throw new Error('No UID available for updateActivityLogCategory');
+  const docRef = doc(db, `Users/${uid}/ActivityLog`, activityLogId);
+  await updateDoc(docRef, { category, lockedCategory: true });
+  console.log(`ActivityLog ${activityLogId} category updated to ${category}`);
+}
+
+// Create RuleCandidate
+export async function createRuleCandidate(data: { discussionId: string; category: string; description: string; uid: string }): Promise<void> {
+  const uid = await getUID();
+  if (!uid) throw new Error('No UID available for createRuleCandidate');
+  await addDoc(collection(db, `Users/${uid}/RuleCandidates`), {
+    ...data,
+    timestamp: new Date(),
+  });
+  console.log('RuleCandidate created:', data);
+}

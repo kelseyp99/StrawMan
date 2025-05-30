@@ -12,6 +12,7 @@ import {
 import { sendQuestion, sendQuestionForParsing } from './openaiAPI';
 import { getUID } from '../utils/uidManager';
 import { format } from 'date-fns';
+import { IActivityLog } from './dbServices';
 
 const APP_VERSION = '1.1.0';
 const APP_ID = 'com.anonymous.lifelog';
@@ -137,6 +138,7 @@ interface LastOpenDiscussion {
 
 // src/services/dbServicesLocal.ts
 // ... existing imports and interfaces ...
+//import Realm from 'realm';
 
 interface SyncEntry {
   id: number;
@@ -145,6 +147,53 @@ interface SyncEntry {
   timestamp: Date;
   uid: string;
 }
+
+export const findDuplicateActivityLog = (
+  discussionId: string,
+  category: string,
+  description: string,
+  uid: string
+): IActivityLog | null => {
+  if (!realm) throw new Error('Realm not initialized');
+  console.log(
+    `Checking for duplicate ActivityLog: ${discussionId}, ${category}`
+  );
+
+  try {
+    const logs = realm
+      .objects<IActivityLog>('ActivityLog')
+      .filtered(
+        'discussionId == $0 AND category == $1 AND description == $2 AND uid == $3',
+        discussionId,
+        category,
+        description,
+        uid
+      );
+
+    if (logs.length === 0) {
+      console.log('No duplicate ActivityLog found');
+      return null;
+    }
+
+    const log = logs[0];
+    console.log(`Found duplicate ActivityLog: ${log.id}`);
+    return {
+      id: log.id,
+      discussionId: log.discussionId,
+      category: log.category,
+      description: log.description,
+      timestamp: log.timestamp,
+      cleared: log.cleared,
+      responseType: log.responseType,
+      uid: log.uid,
+      synced: log.synced,
+      syncTimestamp: log.syncTimestamp,
+    };
+  } catch (error) {
+    console.error('Error finding duplicate ActivityLog:', error);
+    throw error;
+  }
+};
 
 export async function logSyncEntry(entry: SyncEntry): Promise<void> {
   if (!realm) {
@@ -1758,103 +1807,6 @@ export async function updateGPTSpecialties(gptSpecialty: {
   }
 }
 
-export function getActivityLogs(): ActivityLog[] {
-  if (!realm) {
-    console.error('Failed to open Realm instance');
-    throw new Error('Failed to open Realm instance');
-  }
-  try {
-    return Array.from(realm.objects<ActivityLog>('ActivityLog'));
-  } catch (error) {
-    console.error('Error getting activity logs:', error);
-    return [];
-  }
-}
-
-export async function getDescriptionsWithTimestamps(
-  categories: string[]
-): Promise<string> {
-  const uid = await getUID();
-  if (!uid) {
-    throw new Error(
-      'No UID available for get descriptions with timestamps operation'
-    );
-  }
-  if (!realm) {
-    console.error('Failed to open Realm instance');
-    throw new Error('Failed to open Realm instance');
-  }
-  try {
-    const logs = realm
-      .objects<ActivityLog>('ActivityLog')
-      .filtered('category IN $0 AND uid == $1', categories, uid);
-    const descriptionsWithTimestamps = logs.map((log) => ({
-      description: log.description,
-      timestamp: log.timestamp.toISOString(),
-    }));
-    return JSON.stringify(descriptionsWithTimestamps);
-  } catch (error) {
-    console.error('Error getting descriptions with timestamps:', error);
-    return '[]';
-  }
-}
-
-export async function isPaidUser(): Promise<boolean> {
-  const uid = await getUID();
-  if (!uid) return false;
-  if (!realm) {
-    console.error('Failed to open Realm instance');
-    throw new Error('Failed to open Realm instance');
-  }
-  try {
-    const user = realm.objects<User>('User').filtered('uid == $0', uid)[0];
-    return user?.isPaid ?? false;
-  } catch (error) {
-    console.error('Error checking subscription status:', error);
-    return false;
-  }
-}
-
-function deleteGPTResponsesWithInvalidCategory(): void {
-  if (!realm) {
-    console.error('Failed to open Realm instance');
-    throw new Error('Failed to open Realm instance');
-  }
-  try {
-    realm.write(() => {
-      if (!realm) {
-        console.error('Failed to open Realm instance');
-        throw new Error('Failed to open Realm instance');
-      }
-      const gptResponses = realm.objects<GPTResponse>('GPTResponses');
-      gptResponses.forEach((gptResponse) => {
-        try {
-          const responseJson = JSON.parse(gptResponse.response);
-          if (!responseJson.category) {
-            realm!.delete(gptResponse);
-            console.log(
-              `Deleted GPTResponse with ID ${gptResponse.id} due to invalid category`
-            );
-          }
-        } catch (error) {
-          console.error(`Error parsing GPTResponse ${gptResponse.id}:`, error);
-        }
-      });
-    });
-    console.log('Finished deleting GPTResponses with invalid categories');
-  } catch (error) {
-    console.error(
-      'Error deleting GPTResponses with invalid categories:',
-      error
-    );
-  } finally {
-    try {
-      // Finally block is executed after try and catch blocks
-    } finally {
-    }
-  }
-}
-
 export class DatabaseService {
   async parseAndSaveInstructions(jsonData: any): Promise<void> {
     const uid = await getUID();
@@ -2028,6 +1980,27 @@ export class DatabaseService {
       console.error('Error adding ActivityLog:', error);
     }
   }
+
+  async createActivityLog(
+    activityLog: Omit<ActivityLog, 'id'>
+  ): Promise<string> {
+    // Realm: create and return the new object's id as a string
+    const realm = await Realm.open({
+      schema: [
+        /* your schemas here */
+      ],
+    });
+    let createdId = '';
+    realm.write(() => {
+      const created = realm.create('ActivityLog', {
+        ...activityLog,
+        id: new Realm.BSON.ObjectId().toHexString(),
+      });
+      createdId = created.id;
+    });
+    realm.close();
+    return createdId;
+  }
 }
 
 export async function getParameters(): Promise<Parameters[]> {
@@ -2049,6 +2022,149 @@ export async function getParameters(): Promise<Parameters[]> {
   }
 }
 
+export async function addDiscussionCount(
+  uid: string,
+  count: DiscussionCount & { description: string }
+): Promise<void> {
+  if (!realm) throw new Error('Realm not initialized');
+  realm.write(() => {
+    realm!.create(
+      'DiscussionCount',
+      {
+        ...count,
+        uid,
+        timestamp: count.timestamp || new Date(),
+      },
+      Realm.UpdateMode.Modified
+    );
+  });
+}
+
 export const databaseService = new DatabaseService();
 
 export { type Discussion, type GPTSpecialty, type GPTResponse, type Alert };
+export async function updateActivityLogCategory(
+  activityLogId: string,
+  category: string
+): Promise<void> {
+  if (!realm) throw new Error('Realm not initialized');
+  const uid = await getUID();
+  realm!.write(() => {
+    const log = realm!.objectForPrimaryKey(
+      'ActivityLog',
+      Number(activityLogId)
+    );
+    if (log && log.uid === uid) {
+      log.category = category;
+      log.lockedCategory = true;
+      log.synced = false;
+    }
+  });
+}
+
+export async function createRuleCandidate(data: {
+  discussionId: string;
+  category: string;
+  description: string;
+  uid: string;
+}): Promise<void> {
+  if (!realm) throw new Error('Realm not initialized');
+  try {
+    realm!.write(() => {
+      if (realm!.schema.find((s) => s.name === 'RuleCandidate')) {
+        realm!.create('RuleCandidate', {
+          id: new Date().getTime(),
+          discussionId: data.discussionId,
+          category: data.category,
+          description: data.description,
+          uid: data.uid,
+          timestamp: new Date(),
+        });
+      } else {
+        console.log('RuleCandidate schema not found, skipping local create.');
+      }
+    });
+  } catch (e) {
+    console.error('Error creating RuleCandidate locally:', e);
+  }
+}
+
+// Add a local implementation for deleting an ActivityLog by id
+export async function deleteActivityLog(activityLogId: string): Promise<void> {
+  const uid = await getUID();
+  if (!uid) throw new Error('No UID available for delete operation');
+  if (!realm) throw new Error('Realm not initialized');
+  realm.write(() => {
+    const log = realm!.objectForPrimaryKey(
+      'ActivityLog',
+      Number(activityLogId)
+    );
+    if (log && log.uid === uid) {
+      realm!.delete(log);
+      console.log(`ActivityLog with ID ${activityLogId} deleted.`);
+    }
+  });
+}
+
+// Add a local implementation for creating an ActivityLog
+export async function createActivityLog(
+  activityLog: Omit<ActivityLog, 'id'>
+): Promise<string> {
+  if (!realm) throw new Error('Realm not initialized');
+  let createdId = '';
+  realm.write(() => {
+    const created = realm!.create('ActivityLog', {
+      ...activityLog,
+      id: new Date().getTime(),
+    });
+    createdId = String(created.id);
+  });
+  return createdId;
+}
+
+// Return all ActivityLogs for the current user
+export async function getActivityLogs(): Promise<ActivityLog[]> {
+  const uid = await getUID();
+  if (!uid) throw new Error('No UID available for getActivityLogs');
+  if (!realm) throw new Error('Realm not initialized');
+  return realm
+    .objects<ActivityLog>('ActivityLog')
+    .filtered('uid == $0', uid)
+    .map((log) => ({ ...log }));
+}
+
+// Return descriptions with timestamps for given categories
+export async function getDescriptionsWithTimestamps(
+  categories: string[]
+): Promise<string> {
+  const uid = await getUID();
+  if (!uid)
+    throw new Error('No UID available for getDescriptionsWithTimestamps');
+  if (!realm) throw new Error('Realm not initialized');
+  const logs = realm
+    .objects<ActivityLog>('ActivityLog')
+    .filtered('category IN $0 AND uid == $1', categories, uid);
+  const descriptionsWithTimestamps = logs.map((log: any) => ({
+    description: log.description,
+    timestamp:
+      log.timestamp instanceof Date
+        ? log.timestamp.toISOString()
+        : String(log.timestamp),
+  }));
+  return JSON.stringify(descriptionsWithTimestamps);
+}
+
+// Return true for isPaidUser (local fallback)
+export async function isPaidUser(): Promise<boolean> {
+  return true;
+}
+
+// Add the missing DiscussionCount interface for type safety
+export interface DiscussionCount {
+  id: number;
+  discussionId: number;
+  count: number;
+  description: string;
+  uid: string;
+  timestamp: Date;
+}
