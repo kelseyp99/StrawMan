@@ -4,7 +4,8 @@ import * as local from './dbServicesLocal';
 import { getUID } from '../utils/uidManager';
 import { addDoc, collection } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
-import { ActivityLog, Parameters } from './dbServicesLocal';
+import { ActivityLog, ChangeLog, Parameters } from './dbServicesLocal';
+import { realm } from '@/realmConfig';
 
 const USE_REMOTE = true;
 
@@ -83,7 +84,7 @@ export const findDuplicateActivityLog = async (
         uidVal
       );
     } else {
-      await local.findDuplicateActivityLog(discussionId, category, description); // removed uid for local
+      local.findDuplicateActivityLog(discussionId, category, description); // removed uid for local
     }
     return null;
   } catch (error) {
@@ -484,6 +485,209 @@ export async function syncToCloud(
     });
   } catch (error) {
     console.error('Error in syncToCloud:', error);
+    throw error;
+  }
+}
+
+/**
+ * Synchronizes pending ChangeLog entries from the local Realm database to Firestore.
+ * Processes unsynced CRUD operations ('create', 'update', 'delete') for supported tables.
+ * @returns A promise that resolves when all pending ChangeLog entries are processed.
+ * @throws Error if synchronization fails critically.
+ */
+export async function syncChangeLog(): Promise<void> {
+  console.log('[SYNC] Starting synchronization of ChangeLog entries');
+  try {
+    const uid = (await getUID()) || 'unknown';
+    console.log(`[SYNC] Using UID: ${uid} for Firestore synchronization`);
+
+    // Fetch unsynced ChangeLog entries from local Realm
+    const changes = local.readChangeLog({ synced: false });
+    console.log(`[SYNC] Found ${changes.length} pending ChangeLog entries`);
+
+    for (const change of changes) {
+      console.log(
+        `[SYNC] Processing ChangeLog: ${change.tableName}, ID: ${change.rowId}, Operation: ${change.operation}`
+      );
+      let payload: any = null;
+      let method: 'POST' | 'PUT' | 'DELETE' = 'POST';
+
+      // Prepare payload based on tableName
+      switch (change.tableName) {
+        case 'ActivityLog': {
+          const record = local.findDuplicateActivityLog(
+            change.rowId,
+            'any',
+            'any'
+          );
+          if (record) {
+            payload = {
+              id: change.rowId,
+              DiscussionId: String(record.discussionId),
+              description: record.description,
+              Operation: change.operation,
+              typeSay: record.responseType || 'tell',
+              cleared: record.cleared,
+              category: record.category,
+              timestamp: record.timestamp,
+              uid,
+            };
+            method =
+              change.operation === 'create'
+                ? 'POST'
+                : change.operation === 'update'
+                ? 'PUT'
+                : 'DELETE';
+          }
+          break;
+        }
+        case 'Discussion': {
+          const discussions = await local.getDiscussions(
+            undefined,
+            change.rowId
+          );
+          const record = discussions[0];
+          if (record) {
+            payload = {
+              id: change.rowId,
+              DiscussionId: String(record.discussionId),
+              description: record.description,
+              Operation: change.operation,
+              typeSay: record.typeSay,
+              timestamp: new Date(record.timestamp),
+              uid,
+            };
+            method =
+              change.operation === 'create'
+                ? 'POST'
+                : change.operation === 'update'
+                ? 'PUT'
+                : 'DELETE';
+          }
+          break;
+        }
+        case 'GPTResponses': {
+          const responses = await local.getGPTResponses(change.rowId);
+          const record = responses[0];
+          if (record) {
+            payload = {
+              id: change.rowId,
+              DiscussionId: String(record.discussionId),
+              description: record.response,
+              Operation: change.operation,
+              typeSay: record.responseType,
+              timestamp: record.timestamp,
+              prompt: record.prompt,
+              uid,
+            };
+            method =
+              change.operation === 'create'
+                ? 'POST'
+                : change.operation === 'update'
+                ? 'PUT'
+                : 'DELETE';
+          }
+          break;
+        }
+        case 'Alert': {
+          const record = await local.getNextActiveAlert();
+          if (record && record.id === Number(change.rowId)) {
+            payload = {
+              id: change.rowId,
+              description: record.message,
+              Operation: change.operation,
+              timestamp: record.timestamp,
+              severity: record.severity,
+              isActive: record.isActive,
+              nextTrigger: record.nextTrigger,
+              createdAt: record.createdAt,
+              uid,
+            };
+            method =
+              change.operation === 'create'
+                ? 'POST'
+                : change.operation === 'update'
+                ? 'PUT'
+                : 'DELETE';
+          }
+          break;
+        }
+        default:
+          console.warn(
+            `[SYNC] Unsupported table: ${change.tableName}, skipping`
+          );
+          continue;
+      }
+
+      if (payload) {
+        console.log(
+          `[SYNC] Syncing ${change.tableName} to cloud, method: ${method}`
+        );
+        await syncToCloud(change.tableName, payload, method);
+        local.updateChangeLog(change.id, { synced: true });
+        console.log(`[SYNC] Marked ChangeLog entry as synced: ${change.id}`);
+
+        // Log SyncEntry for consistency
+        await logSyncEntry({
+          id: Number(change.rowId),
+          tableName: change.tableName,
+          operation: change.operation,
+          timestamp: new Date(),
+          uid,
+        });
+      } else {
+        console.warn(
+          `[SYNC] No record found for ${change.tableName}, ID: ${change.rowId}, marking as synced`
+        );
+        local.updateChangeLog(change.id, { synced: true });
+      }
+    }
+    console.log('[SYNC] ChangeLog synchronization completed');
+  } catch (error) {
+    console.error('[SYNC] Error synchronizing ChangeLog:', error);
+    throw error;
+  }
+}
+
+/**
+ * Clears synced ChangeLog entries from the local Realm database to manage storage.
+ * @param olderThan - Optional date to only clear entries older than this timestamp.
+ * @returns A promise that resolves with the number of entries deleted.
+ * @throws Error if Realm operations fail.
+ */
+export async function clearSyncedChangeLog(olderThan?: Date): Promise<number> {
+  console.log('[CHANGELOG] Clearing synced ChangeLog entries');
+  try {
+    let deletedCount = 0;
+    if (realm) {
+      realm.write(() => {
+        let changes = realm!
+          .objects<ChangeLog>('ChangeLog')
+          .filtered('synced == true');
+        if (olderThan) {
+          console.log(`[CHANGELOG] Filtering entries older than: ${olderThan}`);
+          changes = changes.filtered('timestamp < $0', olderThan);
+        }
+        console.log(
+          `[CHANGELOG] Found ${changes.length} synced entries to delete`
+        );
+        realm?.delete(changes);
+        console.log(
+          `[CHANGELOG] Deleted ${deletedCount} synced ChangeLog entries`
+        );
+      });
+      console.log('[CHANGELOG] Synced ChangeLog cleanup completed');
+      return deletedCount;
+    } else {
+      console.warn('[CHANGELOG] Realm is not initialized, skipping cleanup');
+      return 0;
+    }
+  } catch (error) {
+    console.error(
+      '[CHANGELOG] Error clearing synced ChangeLog entries:',
+      error
+    );
+    return 0;
     throw error;
   }
 }
