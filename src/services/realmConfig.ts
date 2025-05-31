@@ -103,7 +103,6 @@ const DiscussionCountSchema = {
     discussionId: 'int',
     count: 'int',
     description: 'string',
-    uid: 'string',
     timestamp: 'date',
   },
   primaryKey: 'id',
@@ -124,6 +123,18 @@ const config: Configuration = {
   schemaVersion: 8, // bump version for schema change
 };
 
+const ChangeLogSchema = {
+  name: 'ChangeLog',
+  primaryKey: 'id',
+  properties: {
+    id: 'string', // Unique ID for the changelog entry
+    tableName: 'string', // e.g., 'ActivityLog', 'Discussion'
+    rowId: 'string', // ID of the affected row
+    operation: 'string', // 'create', 'update', 'delete'
+    timestamp: 'date', // When the change occurred
+  },
+};
+
 const realm = new Realm(config);
 
 export {
@@ -134,6 +145,7 @@ export {
   LogsSchema,
   GPTResponsesSchema,
   GPTSpecialtiesSchema,
+  ChangeLogSchema,
   AlertSchema,
   DiscussionCountSchema,
 };

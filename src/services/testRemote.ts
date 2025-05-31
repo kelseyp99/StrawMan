@@ -1,7 +1,4 @@
-import {
-  getActivityLogs,
-  getDiscussions,
-} from './dbServicesRemote';
+import { getActivityLogs, getDiscussions } from './dbServicesRemote';
 
 const testRemote = async (uid: string) => {
   try {

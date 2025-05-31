@@ -1614,13 +1614,49 @@ export async function restoreLostData(): Promise<void> {
   const uid = await getUID();
   if (!uid) throw new Error('No UID available for restore lost data operation');
   const lostData = [
-    { id: '1738367528606', typeSay: 'tell', timestamp: 1738367528606, description: '1' },
-    { id: '1738374105437', typeSay: 'tell', timestamp: 1738374105437, description: 'I ate salmon couscous and 2 slices of avocado' },
-    { id: '1738382525048', typeSay: 'tell', timestamp: 1738382525048, description: 'Took 5 mg Staten' },
-    { id: '7vukcCfVaBApZaAv6PoU', typeSay: 'tell', timestamp: 1738374105437, description: "I'm feeling anxious and frustrated" },
-    { id: '92JlMF1EHheU8uPMLBMi', typeSay: 'tell', timestamp: 1738382525048, description: '1' },
-    { id: 'ArZ5Z0pQN1RKVb3kWuVh', typeSay: 'tell', timestamp: 1738374105437, description: 'Ate Cheese omelet 3 out of 4 yolks removed with mustard leaf onions' },
-    { id: 'BA5UcSPVyWjPUHCMNiwM', typeSay: 'tell', timestamp: 1738382525048, description: 'I ate banana' },
+    {
+      id: '1738367528606',
+      typeSay: 'tell',
+      timestamp: 1738367528606,
+      description: '1',
+    },
+    {
+      id: '1738374105437',
+      typeSay: 'tell',
+      timestamp: 1738374105437,
+      description: 'I ate salmon couscous and 2 slices of avocado',
+    },
+    {
+      id: '1738382525048',
+      typeSay: 'tell',
+      timestamp: 1738382525048,
+      description: 'Took 5 mg Staten',
+    },
+    {
+      id: '7vukcCfVaBApZaAv6PoU',
+      typeSay: 'tell',
+      timestamp: 1738374105437,
+      description: "I'm feeling anxious and frustrated",
+    },
+    {
+      id: '92JlMF1EHheU8uPMLBMi',
+      typeSay: 'tell',
+      timestamp: 1738382525048,
+      description: '1',
+    },
+    {
+      id: 'ArZ5Z0pQN1RKVb3kWuVh',
+      typeSay: 'tell',
+      timestamp: 1738374105437,
+      description:
+        'Ate Cheese omelet 3 out of 4 yolks removed with mustard leaf onions',
+    },
+    {
+      id: 'BA5UcSPVyWjPUHCMNiwM',
+      typeSay: 'tell',
+      timestamp: 1738382525048,
+      description: 'I ate banana',
+    },
   ];
   for (const entry of lostData) {
     try {
@@ -1651,13 +1687,17 @@ export async function deleteActivityLog(activityLogId: string): Promise<void> {
 }
 
 // Create ActivityLog
-export async function createActivityLog(activityLog: Omit<IActivityLog, 'id'>): Promise<string> {
+export async function createActivityLog(
+  activityLog: Omit<IActivityLog, 'id'>
+): Promise<string> {
   const uid = await getUID();
   if (!uid) throw new Error('No UID available for createActivityLog');
   const docRef = await addDoc(collection(db, `Users/${uid}/ActivityLog`), {
     ...activityLog,
     uid,
-    timestamp: activityLog.timestamp ? Timestamp.fromDate(new Date(activityLog.timestamp)) : new Date(),
+    timestamp: activityLog.timestamp
+      ? Timestamp.fromDate(new Date(activityLog.timestamp))
+      : new Date(),
     cleared: activityLog.cleared ?? false,
   });
   console.log('ActivityLog created with ID:', docRef.id);
@@ -1665,7 +1705,10 @@ export async function createActivityLog(activityLog: Omit<IActivityLog, 'id'>): 
 }
 
 // Update ActivityLog category
-export async function updateActivityLogCategory(activityLogId: string, category: string): Promise<void> {
+export async function updateActivityLogCategory(
+  activityLogId: string,
+  category: string
+): Promise<void> {
   const uid = await getUID();
   if (!uid) throw new Error('No UID available for updateActivityLogCategory');
   const docRef = doc(db, `Users/${uid}/ActivityLog`, activityLogId);
@@ -1674,7 +1717,12 @@ export async function updateActivityLogCategory(activityLogId: string, category:
 }
 
 // Create RuleCandidate
-export async function createRuleCandidate(data: { discussionId: string; category: string; description: string; uid: string }): Promise<void> {
+export async function createRuleCandidate(data: {
+  discussionId: string;
+  category: string;
+  description: string;
+  uid: string;
+}): Promise<void> {
   const uid = await getUID();
   if (!uid) throw new Error('No UID available for createRuleCandidate');
   await addDoc(collection(db, `Users/${uid}/RuleCandidates`), {

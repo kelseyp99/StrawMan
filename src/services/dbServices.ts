@@ -62,35 +62,30 @@ async function logSyncEntry(entry: SyncEntry): Promise<void> {
 
 export async function isPaidUser(): Promise<boolean> {
   console.log('isPaidUser called');
-  return local.isPaidUser();
+  // return local.isPaidUser();
+  return false; // TODO: Implement or update as needed
 }
-//
 
 export const findDuplicateActivityLog = async (
   discussionId: string,
   category: string,
   description: string,
-  uid: string
+  uid: string // keep for remote, but not for local
 ): Promise<IActivityLog | null> => {
   console.log('findDuplicateActivityLog called');
   try {
-    const uid = (await getUID()) || 'unknown';
+    const uidVal = (await getUID()) || 'unknown';
     if (USE_REMOTE) {
       await remote.findDuplicateActivityLog(
         discussionId,
         category,
         description,
-        uid
+        uidVal
       );
     } else {
-      await local.findDuplicateActivityLog(
-        discussionId,
-        category,
-        description,
-        uid
-      );
+      await local.findDuplicateActivityLog(discussionId, category, description); // removed uid for local
     }
-    return null; // Add a return statement here
+    return null;
   } catch (error) {
     console.error('Error in initializeUser:', error);
     throw error;
