@@ -1465,38 +1465,45 @@ export async function getAIResponse(question: string): Promise<string> {
 
 export async function syncToCloud(
   tableName: string,
-  payload: any,
-  method: 'POST' | 'PUT' | 'DELETE'
+  payload?: any,
+  method?: 'POST' | 'PUT' | 'DELETE'
 ): Promise<void> {
   const uid = await getUID();
   if (!uid) {
     throw new Error('No UID available for sync to cloud operation');
   }
-  const url = `http://localhost:5155/api/${tableName.toLowerCase()}`;
-  try {
-    const config = { headers: { 'Content-Type': 'application/json' } };
-    let response;
-    if (method === 'POST') {
-      response = await fetch(url, {
-        method,
-        headers: config.headers,
-        body: JSON.stringify(payload),
-      });
-    } else if (method === 'PUT') {
-      response = await fetch(url, {
-        method,
-        headers: config.headers,
-        body: JSON.stringify(payload),
-      });
-    } else if (method === 'DELETE') {
-      response = await fetch(`${url}/${payload.id}`, {
-        method,
-        headers: config.headers,
-      });
+  if (payload && method) {
+    // Single-record sync
+    const url = `http://localhost:5155/api/${tableName.toLowerCase()}`;
+    try {
+      const config = { headers: { 'Content-Type': 'application/json' } };
+      let response;
+      if (method === 'POST') {
+        response = await fetch(url, {
+          method,
+          headers: config.headers,
+          body: JSON.stringify(payload),
+        });
+      } else if (method === 'PUT') {
+        response = await fetch(url, {
+          method,
+          headers: config.headers,
+          body: JSON.stringify(payload),
+        });
+      } else if (method === 'DELETE') {
+        response = await fetch(`${url}/${payload.id}`, {
+          method,
+          headers: config.headers,
+        });
+      }
+      console.log(`${tableName} synced successfully.`);
+    } catch (error) {
+      console.error(`Error syncing ${tableName} to cloud:`, error);
     }
-    console.log(`${tableName} synced successfully.`);
-  } catch (error) {
-    console.error(`Error syncing ${tableName} to cloud:`, error);
+  } else {
+    // Full-table sync (stub: implement upload all unsynced, download new/updated, handle deletions)
+    console.log(`syncToCloud (full-table) called for: ${tableName}`);
+    // TODO: Implement full-table sync logic here
   }
 }
 

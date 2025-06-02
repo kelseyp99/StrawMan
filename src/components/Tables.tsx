@@ -479,9 +479,20 @@ const MainComponent: React.FC = () => {
   }, []);
 
   const sortedData = useCallback(() => {
+    console.log(
+      'Current table index:',
+      currentTableIndex,
+      'sortBy:',
+      sortBy,
+      'tables.length:',
+      tables.length
+    );
     if (!sortBy || tables.length === 0)
       return tables[currentTableIndex]?.data || [];
     const { column, order } = sortBy;
+    console.log(
+      `Sorting by column: ${column}, order: ${order}, currentTableIndex: ${currentTableIndex}`
+    );
     return [...tables[currentTableIndex].data].sort((a, b) => {
       const valueA = a[column] || '';
       const valueB = b[column] || '';
@@ -501,7 +512,14 @@ const MainComponent: React.FC = () => {
   }, [sortBy, tables, currentTableIndex]);
 
   const filteredData = useCallback(() => {
+    console.log(
+      'Current table index:',
+      currentTableIndex,
+      'tables.length:',
+      tables.length
+    );
     if (tables.length === 0) return sortedData();
+    console.log('Filtered data before applying filters:', sortedData());
     const data = sortedData().filter((row) =>
       Object.entries(filters).every(([column, value]) =>
         row[column]?.toString().toLowerCase().includes(value.toLowerCase())

@@ -1,4 +1,4 @@
-// src/realmConfig.ts
+// src/services/realmConfig.ts
 import Realm, { Configuration } from 'realm';
 
 console.log('Loading realmConfig.ts...');
@@ -11,7 +11,6 @@ const UserSchema = {
     appVersion: 'string',
     appId: 'string',
     timestamp: 'date',
-    uid: 'string',
     isPaid: 'bool',
   },
 };
@@ -27,7 +26,6 @@ const ActivityLogSchema = {
     timestamp: 'date',
     cleared: 'bool',
     responseType: 'string?',
-    uid: 'string',
     synced: 'bool',
     syncTimestamp: 'date?',
   },
@@ -43,9 +41,9 @@ const DiscussionSchema = {
     timestamp: 'date',
     typeSay: 'string',
     cleared: 'bool',
+    activityLogs: 'ActivityLog[]', // Added from second config
     synced: 'bool',
     syncTimestamp: 'date?',
-    uid: 'string',
   },
 };
 
@@ -81,7 +79,6 @@ const GPTResponsesSchema = {
     response: 'string',
     responseType: 'string',
     cleared: 'bool',
-    uid: 'string',
     synced: 'bool',
     syncTimestamp: 'date?',
   },
@@ -102,7 +99,7 @@ const AlertSchema = {
   name: 'Alert',
   primaryKey: 'id',
   properties: {
-    id: 'int',
+    id: 'int', // Kept from first config for consistency
     description: 'string',
     frequency: 'string',
     date: 'date?',
@@ -111,7 +108,6 @@ const AlertSchema = {
     isActive: 'bool',
     createdAt: 'date',
     updatedAt: 'date?',
-    uid: 'string',
   },
 };
 
@@ -121,7 +117,6 @@ const DocumentSchema = {
   properties: {
     id: 'int',
     timestamp: 'date',
-    uid: 'string',
   },
 };
 
@@ -145,12 +140,35 @@ const SyncEntrySchema = {
     tableName: 'string',
     operation: 'string',
     timestamp: 'date',
-    uid: 'string',
+  },
+};
+
+const DiscussionCountSchema = {
+  name: 'DiscussionCount',
+  primaryKey: 'id',
+  properties: {
+    id: 'int',
+    discussionId: 'int',
+    count: 'int',
+    description: 'string',
+    timestamp: 'date',
+  },
+};
+
+const ChangeLogSchema = {
+  name: 'ChangeLog',
+  primaryKey: 'id',
+  properties: {
+    id: 'string',
+    tableName: 'string',
+    rowId: 'string',
+    operation: 'string',
+    timestamp: 'date',
   },
 };
 
 const config: Configuration = {
-  path: 'lifelog.realm', // Relative path in app's data directory
+  path: 'lifelog.realm', // Kept from first config
   schema: [
     UserSchema,
     ActivityLogSchema,
@@ -163,18 +181,18 @@ const config: Configuration = {
     DocumentSchema,
     RuleSchema,
     SyncEntrySchema,
+    DiscussionCountSchema,
+    ChangeLogSchema,
   ],
-  schemaVersion: 7,
+  schemaVersion: 9, // Incremented from 7 for ChangeLogSchema and uid removal
   onMigration: (oldRealm: Realm, newRealm: Realm) => {
-    // Handle schema changes from version 2 to 7
+    console.log(
+      'Migrating Realm schema from version',
+      oldRealm.schemaVersion,
+      'to 9'
+    );
     if (oldRealm.schemaVersion < 7) {
-      // Add new schemas (Logs, etc.)
-      console.log(
-        'Migrating Realm schema from version',
-        oldRealm.schemaVersion,
-        'to 7'
-      );
-      // Example: Initialize new fields
+      // Existing migration logic
       newRealm.objects('ActivityLog').forEach((log) => {
         if (!log.synced) log.synced = false;
         if (!log.syncTimestamp) log.syncTimestamp = null;
@@ -187,6 +205,12 @@ const config: Configuration = {
         if (!response.synced) response.synced = false;
         if (!response.syncTimestamp) response.syncTimestamp = null;
       });
+    }
+    if (oldRealm.schemaVersion < 9) {
+      console.log(
+        '[Migration] Adding ChangeLogSchema and DiscussionCountSchema, removing uid fields'
+      );
+      // No data migration needed for new schemas or uid removal
     }
   },
 };
@@ -212,4 +236,6 @@ export {
   DocumentSchema,
   RuleSchema,
   SyncEntrySchema,
+  DiscussionCountSchema,
+  ChangeLogSchema,
 };

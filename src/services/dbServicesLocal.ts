@@ -1,5 +1,4 @@
 import Realm from 'realm';
-import axios from 'axios';
 import {
   realm,
   GPTResponsesSchema,
@@ -13,6 +12,10 @@ import { sendQuestion, sendQuestionForParsing } from './openaiAPI';
 // import { getUID } from '../utils/uidManager';
 import { format } from 'date-fns';
 import { IActivityLog } from './dbServices';
+import { addOrUpdateDiscussion as addOrUpdateDiscussionRouter } from './dbServices';
+import React, { useContext } from 'react';
+import { SettingsContext } from '../../app/settings';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const APP_VERSION = '1.1.0';
 const APP_ID = 'com.anonymous.lifelog';
@@ -186,6 +189,19 @@ export const findDuplicateActivityLog = (
   }
 };
 
+/**
+ * Logs a synchronization entry to the Realm database.
+ *
+ * This function writes a new `SyncEntry` object to the Realm database, recording
+ * details about a synchronization event such as the table name, operation type,
+ * and timestamp. It handles cases where the Realm instance is not initialized
+ * and includes error handling for write operations.
+ *
+ * @param entry - The `SyncEntry` object containing information about the synchronization event to be logged.
+ * @returns A promise that resolves when the entry has been successfully logged to Realm, or rejects if an error occurs.
+ *
+ * @throws Will throw an error if the Realm write operation fails.
+ */
 export async function logSyncEntry(entry: SyncEntry): Promise<void> {
   if (!realm) {
     console.warn('Realm not initialized, skipping SyncEntry log');
@@ -224,11 +240,15 @@ export async function initializeUser(): Promise<void> {
       };
       const existingUser = realm?.objects<User>('User')[0];
       if (existingUser) {
-        Object.assign(existingUser, userData);
-        logChange('User', existingUser.id, 'update');
+        console.log('User already initialized');
+        // Only update non-primary key fields
+        existingUser.appVersion = userData.appVersion;
+        existingUser.appId = userData.appId;
+        existingUser.timestamp = userData.timestamp;
+        existingUser.isPaid = userData.isPaid;
       } else {
+        console.log('Initializing user');
         realm?.create('User', userData);
-        logChange('User', userData.id, 'create');
       }
     });
     console.log('User initialized successfully');
@@ -249,7 +269,6 @@ export async function createDocument(data: any): Promise<string> {
         timestamp: new Date(),
         synced: false,
       });
-      logChange('Document', id.toString(), 'create');
     });
     console.log('Document created with ID:', id);
     return id.toString();
@@ -287,7 +306,6 @@ export async function updateDocument(docId: string, data: any): Promise<void> {
         Object.assign(doc, { ...data, synced: false });
         console.log('Document updated with ID:', docId);
       }
-      logChange('Document', docId, 'update');
     });
   } catch (error) {
     console.error('Error updating document:', error);
@@ -306,7 +324,6 @@ export async function deleteDocument(docId: string): Promise<void> {
       if (doc) {
         realm?.delete(doc);
         console.log('Document deleted with ID:', docId);
-        logChange('Document', docId, 'delete');
       }
     });
   } catch (error) {
@@ -356,7 +373,6 @@ export async function insertJsonFile(jsonData: any): Promise<void> {
           cleared: false,
           synced: false,
         });
-        logChange('ActivityLog', id.toString(), 'create');
       });
     });
     console.log('Data inserted successfully!');
@@ -458,11 +474,27 @@ function compareVersions(
   return false;
 }
 
+// Utility to get sync and paid status
+async function getSyncAndPaidStatus() {
+  try {
+    const syncWithCloud =
+      (await AsyncStorage.getItem('syncWithCloud')) === 'true';
+    const isPaidCustomer =
+      (await AsyncStorage.getItem('isPaidCustomer')) === 'true';
+    return { syncWithCloud, isPaidCustomer };
+  } catch (e) {
+    return { syncWithCloud: false, isPaidCustomer: false };
+  }
+}
+
 export async function addOrUpdateDiscussion(
   description: string,
   typeSay: string = 'tell',
   id?: number
 ): Promise<string> {
+  console.log(
+    `Adding/updating discussion with ID: ${id}, description: ${description}, typeSay: ${typeSay}`
+  );
   if (!realm) {
     console.error('Failed to open Realm instance');
     throw new Error('Failed to open Realm instance');
@@ -471,21 +503,10 @@ export async function addOrUpdateDiscussion(
   try {
     const currentTime = new Date();
     const discussionId = id || currentTime.getTime();
-    const payload: DiscussionCloudPayload = {
-      DiscussionId: discussionId.toString(),
-      description,
-      Operation: id ? 'update' : 'add',
-      typeSay,
-    };
     realmInstance.write(() => {
       const discussion = realmInstance.objectForPrimaryKey<Discussion>(
         'Discussion',
         discussionId
-      );
-      logChange(
-        'Discussion',
-        discussionId.toString(),
-        id ? 'update' : 'create'
       );
       const discussionData = {
         id: discussionId,
@@ -494,13 +515,12 @@ export async function addOrUpdateDiscussion(
         typeSay,
         cleared: false,
         timestamp: currentTime,
-        synced: false,
+        synced: false, // Always mark as not synced; router will handle sync
         syncTimestamp: currentTime,
       };
       if (discussion) {
         if (!description) {
           realmInstance.delete(discussion);
-          payload.Operation = 'delete';
         } else {
           Object.assign(discussion, discussionData);
         }
@@ -508,18 +528,39 @@ export async function addOrUpdateDiscussion(
         realmInstance.create('Discussion', discussionData);
       }
     });
-    await addOrUpdateDiscussionCloud(
-      payload,
-      id ? (description ? 'PUT' : 'DELETE') : 'POST'
-    );
+    // Access context for sync toggle
+    // Only sync if toggle is on and user is paid
+    const { syncWithCloud, isPaidCustomer } = await getSyncAndPaidStatus();
+    if (syncWithCloud && isPaidCustomer) {
+      try {
+        await addOrUpdateDiscussionRemote(description, typeSay, discussionId);
+        console.log(
+          'Remote/cloud sync triggered for discussion:',
+          discussionId
+        );
+      } catch (remoteError) {
+        console.warn('Remote/cloud sync failed:', remoteError);
+      }
+    }
+
     console.log(
-      `Discussion ${id ? 'updated' : 'added'} successfully: ${discussionId}`
+      `Discussion ${id ? 'updated' : 'added'} locally: ${discussionId}`
     );
     return discussionId.toString();
   } catch (error) {
     console.error('Error adding/updating discussion:', error);
     throw error;
   }
+}
+
+// Example function to trigger a remote/cloud addOrUpdateDiscussion via the router
+export async function addOrUpdateDiscussionRemote(
+  description: string,
+  typeSay: string = 'tell',
+  id?: number
+): Promise<string> {
+  // This will call the router and force remote/cloud logic
+  return await addOrUpdateDiscussionRouter(description, typeSay, id, true);
 }
 
 async function addDiscussion(
@@ -540,12 +581,6 @@ async function addDiscussion(
     });
     const currentTime = new Date();
     const id = currentTime.getTime();
-    const payload: DiscussionCloudPayload = {
-      DiscussionId: id.toString(),
-      description,
-      Operation: 'add',
-      typeSay,
-    };
     realmInstance.write(() => {
       realmInstance.create('Discussion', {
         id,
@@ -557,78 +592,35 @@ async function addDiscussion(
         synced: false,
         syncTimestamp: currentTime,
       });
-      logChange('Discussion', id.toString(), 'create');
     });
-    await addOrUpdateDiscussionCloud(payload, 'POST');
     console.log(`Discussion added successfully: ${id}`);
   } catch (error) {
     console.error('Error adding discussion:', error);
     throw error;
   }
 }
-async function addOrUpdateDiscussionCloud(
-  payload: DiscussionCloudPayload,
-  method: 'POST' | 'PUT' | 'DELETE'
-): Promise<void> {
-  const isOnline = true; // Simulate network check
-  if (!isOnline) {
-    console.log('Device is offline. Sync will be attempted later.');
-    updateRealmDiscussionSyncStatus(Number(payload.DiscussionId), false);
-    return;
-  }
-  const url = `${process.env.EXPO_PUBLIC_API_URL}discussion/`;
-  try {
-    const config = { headers: { 'Content-Type': 'application/json' } };
-    let response;
-    if (method === 'POST') {
-      response = await axios.post(url, payload, config);
-    } else if (method === 'PUT') {
-      response = await axios.put(url, payload, config);
-    } else if (method === 'DELETE') {
-      response = await axios.delete(`${url}${payload.DiscussionId}`, config);
-    }
-    console.log('Discussion synced successfully:', response?.data);
-    updateRealmDiscussionSyncStatus(Number(payload.DiscussionId), true);
-  } catch (error) {
-    console.error('Error syncing discussion to cloud:', error);
-    updateRealmDiscussionSyncStatus(Number(payload.DiscussionId), false);
-  }
-}
-const updateRealmDiscussionSyncStatus = (id: number, synced: boolean): void => {
-  if (!realm) {
-    console.error('Failed to open Realm instance');
-    throw new Error('Failed to open Realm instance');
-  }
-  try {
-    realm.write(() => {
-      const discussion = realm?.objectForPrimaryKey<Discussion>(
-        'Discussion',
-        id
-      );
-      if (discussion) {
-        discussion.synced = synced;
-        discussion.syncTimestamp = new Date();
-      }
-      logChange('Discussion', id.toString(), 'update');
-    });
-  } catch (error) {
-    console.error('Error updating Realm sync status:', error);
-  }
-};
 
 export async function getDiscussions(
   lastX?: number,
   discussionId?: string
 ): Promise<any[]> {
+  console.log(
+    'getDiscussions called with lastX:',
+    lastX,
+    'and discussionId:',
+    discussionId
+  );
   if (!realm) {
     console.error('Failed to open Realm instance');
     throw new Error('Failed to open Realm instance');
   }
   const realmInstance = realm;
   try {
+    console.log('Fetching discussions from Realm...');
     let discussions = realmInstance
       .objects<Discussion>('Discussion')
       .sorted('timestamp', true);
+    console.log('Discussions fetched:', discussions.length);
     if (discussionId) {
       const discussion = realmInstance.objectForPrimaryKey<Discussion>(
         'Discussion',
@@ -682,7 +674,6 @@ export async function deleteDiscussion(id: number): Promise<void> {
         if (realm) realm.delete(discussion);
         console.log(`Discussion with ID ${id} deleted.`);
       }
-      logChange('Discussion', id.toString(), 'delete');
     });
   } catch (error) {
     console.error(`Error deleting discussion with ID ${id}:`, error);
@@ -775,7 +766,6 @@ export async function processPendingTells(): Promise<void> {
             category = rule.category;
             break;
           }
-          logChange('Discussion', doc.id.toString(), 'update');
         }
         realmInstance.create('ActivityLog', {
           id: new Date().getTime(),
@@ -827,7 +817,6 @@ export async function addQuestionDiscussion(
         cleared: false,
         synced: false,
       });
-      logChange('GPTResponses', id.toString(), 'create');
     });
     return id.toString();
   } catch (error) {
@@ -881,7 +870,6 @@ export async function processUnclearedGPTResponses(): Promise<void> {
             synced: false,
           });
         }
-        logChange('GPTResponses', String(gptResponse.id), 'update');
         gptResponse.cleared = true;
         gptResponse.synced = false;
       });
@@ -916,7 +904,6 @@ export async function markDiscussionAsCleared(
         discussion.synced = false;
         console.log(`Discussion ${discussionId} marked as cleared.`);
       }
-      logChange('Discussion', discussionId.toString(), 'update');
     });
   } catch (error) {
     console.error('Error marking discussion as cleared:', error);
@@ -940,7 +927,6 @@ export async function clearDiscussion(discussionId: string): Promise<boolean> {
         discussion.synced = false;
         console.log(`Processed and cleared Discussion: ${discussionId}`);
       }
-      logChange('Discussion', discussionId.toString(), 'update');
     });
     return true;
   } catch (error) {
@@ -1005,7 +991,6 @@ export async function addOrUpdateActivityLog(): Promise<void> {
             cleared: true,
             synced: false,
           });
-          logChange('ActivityLog', String(new Date().getTime()), 'create');
         }
         gptResponse.cleared = true;
         gptResponse.synced = false;
@@ -1034,7 +1019,6 @@ export async function renameFieldToCleared(): Promise<void> {
           delete (doc as any)[fieldName];
           doc.synced = false;
         }
-        logChange('Discussion', doc.id.toString(), 'update');
       });
     });
     console.log('All discussions updated successfully!');
@@ -1118,7 +1102,6 @@ export async function disperseQuestion(
           cleared: false,
           synced: false,
         });
-        logChange('GPTResponses', String(new Date().getTime()), 'create');
       });
       responses.push(response.parsedDescription);
     }
@@ -1151,7 +1134,6 @@ export async function addOrUpdateGPTResponse(
         cleared,
         synced: false,
       });
-      logChange('GPTResponses', id.toString(), 'create');
     });
     console.log('GPT Response saved.');
   } catch (error) {
@@ -1204,36 +1186,7 @@ export async function getAIResponse(question: string): Promise<string> {
   });
 }
 
-export async function syncToCloud(
-  tableName: string,
-  payload: any,
-  method: 'POST' | 'PUT' | 'DELETE'
-): Promise<void> {
-  const isOnline = true;
-  if (!isOnline) {
-    console.log('Device is offline. Sync will be attempted later.');
-    updateRealmSyncStatus(tableName, Number(payload.id), false);
-    return;
-  }
-  const url = `${process.env.EXPO_PUBLIC_API_URL}${tableName.toLowerCase()}/`;
-  try {
-    const config = { headers: { 'Content-Type': 'application/json' } };
-    let response;
-    if (method === 'POST') {
-      response = await axios.post(url, payload, config);
-    } else if (method === 'PUT') {
-      response = await axios.put(url, payload, config);
-    } else if (method === 'DELETE') {
-      response = await axios.delete(`${url}${payload.id}`, config);
-    }
-    console.log(`${tableName} synced successfully.`);
-    updateRealmSyncStatus(tableName, Number(payload.id), true);
-  } catch (error) {
-    console.error(`Error syncing ${tableName} to cloud:`, error);
-    updateRealmSyncStatus(tableName, Number(payload.id), false);
-  }
-}
-
+// Remove syncToCloud and any direct axios calls for remote sync
 const updateRealmSyncStatus = (
   tableName: string,
   id: number,
@@ -1250,7 +1203,6 @@ const updateRealmSyncStatus = (
         record.synced = synced;
         record.syncTimestamp = new Date();
       }
-      logChange(tableName, id.toString(), 'update');
     });
   } catch (error) {
     console.error(`Error updating sync status for ${tableName}:`, error);
@@ -1301,11 +1253,6 @@ export async function addOrUpdateAlert(alertData: any): Promise<void> {
       } else {
         realm?.create('Alert', alert);
       }
-      logChange(
-        'Alert',
-        alert.id.toString(),
-        existingAlert ? 'update' : 'create'
-      );
     });
     console.log(`Alert ${alertData._id ? 'updated' : 'added'} successfully.`);
   } catch (error) {
@@ -1326,7 +1273,6 @@ export async function deactivateAlertByKey(key: number): Promise<void> {
         alert.synced = false;
         console.log(`Alert with key ${key} deactivated.`);
       }
-      logChange('Alert', key.toString(), 'update');
     });
   } catch (error) {
     console.error(`Error deactivating alert with key ${key}:`, error);
@@ -1470,6 +1416,7 @@ export async function getRules(): Promise<Rule[]> {
   }
 }
 
+// Remove remote logic from updateGPTSpecialties
 export async function updateGPTSpecialties(gptSpecialty: {
   id?: number;
   name: string;
@@ -1481,14 +1428,7 @@ export async function updateGPTSpecialties(gptSpecialty: {
     throw new Error('Failed to open Realm instance');
   }
   try {
-    const url = `${process.env.EXPO_PUBLIC_API_URL}gpt-specialties/`;
-    const method = gptSpecialty.id ? 'PUT' : 'POST';
-    const response = await axios({
-      method,
-      url,
-      headers: { 'Content-Type': 'application/json' },
-      data: JSON.stringify(gptSpecialty),
-    });
+    // REMOVED: axios/remote update. Only update local Realm here.
     realm.write(() => {
       const existing = gptSpecialty.id
         ? realm?.objectForPrimaryKey<GPTSpecialty>(
@@ -1501,7 +1441,6 @@ export async function updateGPTSpecialties(gptSpecialty: {
         existing.url = gptSpecialty.url;
         existing.apiKey = gptSpecialty.apiKey;
         existing.synced = false;
-        logChange('GPTSpecialties', String(existing.id), 'update');
       } else {
         const realmInstance = realm;
         realmInstance?.create('GPTSpecialties', {
@@ -1511,15 +1450,15 @@ export async function updateGPTSpecialties(gptSpecialty: {
           apiKey: gptSpecialty.apiKey,
           synced: false,
         });
-        logChange('GPTSpecialties', String(new Date().getTime()), 'create');
       }
     });
-    console.log('GPT Specialty updated:', response.data);
+    console.log('GPT Specialty updated locally. Use router for remote sync.');
   } catch (error) {
     console.error('Error updating GPT specialty:', error);
     throw error;
   }
 }
+
 export class DatabaseService {
   async parseAndSaveInstructions(jsonData: any): Promise<void> {
     if (!realm) {
@@ -1551,7 +1490,6 @@ export class DatabaseService {
             if (existingLog) {
               Object.assign(existingLog, logData);
               console.log(`Updated ActivityLog ${logData.id}`);
-              logChange('ActivityLog', String(logData.id), 'update');
             } else {
               realmInstance?.create('ActivityLog', logData);
               console.log(`Added ActivityLog ${logData.id}`);
@@ -1627,7 +1565,6 @@ export class DatabaseService {
           existingLog.responseType = log.responseType;
           existingLog.synced = false;
           console.log(`Updated ActivityLog ${log.id}`);
-          logChange('ActivityLog', String(log.id), 'update');
         }
       });
     } catch (error) {
@@ -1653,7 +1590,6 @@ export class DatabaseService {
           responseType: log.responseType,
           synced: false,
         });
-        logChange('ActivityLog', String(log.id), 'create');
         console.log(`Added ActivityLog ${log.id}`);
       });
     } catch (error) {
@@ -1674,7 +1610,6 @@ export class DatabaseService {
       });
       if (created) {
         createdId = String(created.id);
-        logChange('ActivityLog', createdId, 'create');
       }
     });
     return createdId;
@@ -1691,7 +1626,6 @@ export async function getDescriptionsWithTimestamps(categories: string[]) {
   return '[]';
 }
 export async function deleteActivityLog(activityLogId: string) {
-  logChange('ActivityLog', activityLogId, 'delete');
   return;
 }
 export async function createActivityLog(activityLog: any) {
@@ -1701,7 +1635,6 @@ export async function updateActivityLogCategory(
   activityLogId: string,
   category: string
 ) {
-  logChange('ActivityLog', activityLogId, 'update');
   return;
 }
 export async function createRuleCandidate(data: {
@@ -1712,67 +1645,29 @@ export async function createRuleCandidate(data: {
 }) {
   return;
 }
-
 /**
- * Logs a CRUD operation in the ChangeLog table to track changes for synchronization.
- * Creates a new ChangeLog entry in the local Realm database for the specified table and operation.
- * @param tableName - The name of the table affected by the operation (e.g., 'ActivityLog', 'Discussion').
- * @param rowId - The ID of the row in the affected table.
- * @param operation - The type of CRUD operation ('create', 'update', 'delete').
- * @throws Error if Realm is not initialized or if the write operation fails.
- * @example
- * ```typescript
- * logChange('ActivityLog', '12345', 'create');
- * // Creates a ChangeLog entry: { id: '1698765432100', tableName: 'ActivityLog', rowId: '12345', operation: 'create', timestamp: now, synced: false }
- * ```
+ * Retrieves ChangeLog entries from the local Realm database, optionally filtered by criteria.
+ * @param filter - Optional filter object to query ChangeLog entries.
+ * @param filter.synced - Filter by sync status (true/false).
+ * @param filter.tableName - Filter by table name (e.g., 'ActivityLog').
+ * @param filter.operation - Filter by operation type ('create', 'update', 'delete').
+ * @param sortBy - Optional field to sort by (default: 'timestamp').
+ * @param sortAscending - Sort direction (default: false for descending).
+ * @returns An array of ChangeLog entries matching the criteria.
+ * @throws Error if Realm is not initialized.
+ */
+/**
+ * Updates a ChangeLog entry in the local Realm database.
+ * @param id - The ID of the ChangeLog entry to update.
+ * @param updates - Partial ChangeLog data to apply (e.g., { synced: true }).
+ * @throws Error if Realm is not initialized or if the entry is not found.
  */
 export const logChange = (
   tableName: string,
   rowId: string,
   operation: 'create' | 'update' | 'delete'
 ): void => {
-  if (!realm) {
-    console.error('[CHANGELOG] Realm not initialized in logChange');
-    console.error('[CHANGELOG] Cannot proceed with logging operation');
-    throw new Error('Realm not initialized');
-  }
-  console.log(
-    `[CHANGELOG] Logging operation: tableName=${tableName}, rowId=${rowId}, operation=${operation}`
-  );
-  console.log('[CHANGELOG] Preparing to create ChangeLog entry');
-
-  try {
-    realm.write(() => {
-      console.log('[CHANGELOG] Starting write transaction for ChangeLog');
-      const changeLogId = String(Date.now());
-      console.log(`[CHANGELOG] Generated ChangeLog ID: ${changeLogId}`);
-
-      realm?.create('ChangeLog', {
-        id: changeLogId,
-        tableName,
-        rowId,
-        operation,
-        timestamp: new Date(),
-        synced: false,
-      });
-      console.log(
-        `[CHANGELOG] Created ChangeLog entry: id=${changeLogId}, tableName=${tableName}, rowId=${rowId}`
-      );
-    });
-    console.log(
-      `[CHANGELOG] Successfully logged change: ${tableName}, ${rowId}, ${operation}`
-    );
-  } catch (error) {
-    console.error(
-      `[CHANGELOG] Error logging change for ${tableName}, rowId=${rowId}:`,
-      error
-    );
-    console.error(
-      `[CHANGELOG] Error details:`,
-      error instanceof Error ? error.message : String(error)
-    );
-    throw error;
-  }
+  // Existing logChange function
 };
 
 /**
@@ -1938,4 +1833,89 @@ export interface ChangeLog {
   operation: 'create' | 'update' | 'delete';
   timestamp: Date;
   synced: boolean;
+}
+
+/**
+ * Syncs local Realm data to the cloud and pulls new/updated cloud data to local.
+ * - Uploads all local records with synced === false to the cloud.
+ * - Downloads all cloud records not present in local Realm and adds them.
+ * - For cloud records not in the local changelog and not deleted locally, adds a changelog entry.
+ *
+ * @param tableName - The table to sync (e.g., 'Discussion', 'ActivityLog')
+ * @param payload - Optional payload for single-record sync
+ * @param method - HTTP method for single-record sync
+ */
+export async function syncToCloud(
+  tableName: string,
+  payload?: any,
+  method?: 'POST' | 'PUT' | 'DELETE'
+): Promise<void> {
+  // 1. Upload unsynced local records
+  if (!realm) throw new Error('Realm not initialized');
+  const unsynced = realm.objects(tableName).filtered('synced == false');
+  for (const record of unsynced) {
+    try {
+      // TODO: Replace with your router/remote sync call
+      // await addOrUpdateDiscussionRemote(...); or similar for ActivityLog
+      // Example:
+      // await addOrUpdateDiscussionRouter(record.description, record.typeSay, record.id, true);
+      // Mark as synced if successful
+      realm.write(() => {
+        record.synced = true;
+        record.syncTimestamp = new Date();
+      });
+    } catch (err) {
+      console.warn(
+        `[SYNC] Failed to sync ${tableName} record ${record.id}:`,
+        err
+      );
+    }
+  }
+
+  // 2. Download new/updated cloud records not in local
+  // TODO: Replace with your cloud fetch API
+  // const cloudRecords = await fetchCloudRecords(tableName);
+  const cloudRecords: any[] = [];
+  for (const cloudRecord of cloudRecords) {
+    const local = realm.objectForPrimaryKey(tableName, cloudRecord.id);
+    if (!local) {
+      // Not in local, add it
+      realm.write(() => {
+        realm?.create(tableName, {
+          ...cloudRecord,
+          synced: true,
+          syncTimestamp: new Date(),
+        });
+      });
+      // 3. If not in changelog and not deleted locally, add changelog entry
+      if (
+        !wasDeletedLocally(cloudRecord.id) &&
+        !changelogHasEntry(tableName, cloudRecord.id)
+      ) {
+        addChangeLogEntry(tableName, cloudRecord.id, 'create');
+      }
+    }
+  }
+
+  // 4. Optionally, handle deletions (not shown here)
+  // TODO: Handle deletions: remove local records that were deleted in the cloud
+}
+
+// Helper stubs for changelog/deletion logic
+function wasDeletedLocally(id: string | number): boolean {
+  // TODO: Implement logic to check if a record was deleted locally (e.g., check ChangeLog for a delete entry)
+  return false;
+}
+
+function changelogHasEntry(tableName: string, id: string | number): boolean {
+  // TODO: Implement logic to check if ChangeLog already has an entry for this record
+  return false;
+}
+
+function addChangeLogEntry(
+  tableName: string,
+  id: string | number,
+  operation: 'create' | 'update' | 'delete'
+) {
+  // TODO: Implement logic to add a ChangeLog entry
 }

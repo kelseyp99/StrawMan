@@ -26,7 +26,7 @@ import {
   synchronizeActivityLog,
   markDiscussionAsCleared,
   processPendingTells,
-} from '../../src/services/dbServicesLocal';
+} from '../../src/services/dbServices';
 import { transformInput } from '../../src/services/phraseProcessor';
 import {
   collection,
@@ -49,6 +49,8 @@ import { check, request, PERMISSIONS, RESULTS } from 'react-native-permissions';
 import { setUID } from '../../src/utils/uidManager';
 import * as FileSystem from 'expo-file-system';
 import * as DocumentPicker from 'expo-document-picker';
+import * as dbServices from '../../src/services/dbServices';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // App version from app.json
 const APP_VERSION = '1.1.0';
@@ -1049,6 +1051,27 @@ export default function AskJanet() {
   };
 
   const toggleMenu = () => setMenuVisible(!menuVisible);
+
+  useEffect(() => {
+    // Run syncToCloud in the background on app start if sync is enabled
+    (async () => {
+      try {
+        const syncWithCloud =
+          (await AsyncStorage.getItem('syncWithCloud')) === 'true';
+        if (syncWithCloud) {
+          // Sync both tables as a backup
+          dbServices
+            .syncToCloud('Discussion')
+            .catch((e) => console.warn('Discussion syncToCloud failed:', e));
+          dbServices
+            .syncToCloud('ActivityLog')
+            .catch((e) => console.warn('ActivityLog syncToCloud failed:', e));
+        }
+      } catch (e) {
+        console.warn('Could not check syncWithCloud:', e);
+      }
+    })();
+  }, []);
 
   if (loadingAuth) return <ActivityIndicator size="large" color="#0000ff" />;
 
