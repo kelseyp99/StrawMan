@@ -19,8 +19,8 @@ const ActivityLogSchema = {
   name: 'ActivityLog',
   primaryKey: 'id',
   properties: {
-    id: 'int',
-    discussionId: 'int',
+    id: 'string',
+    discussionId: 'string',
     category: 'string',
     description: 'string',
     timestamp: 'date',
@@ -35,8 +35,8 @@ const DiscussionSchema = {
   name: 'Discussion',
   primaryKey: 'id',
   properties: {
-    id: 'int',
-    discussionId: 'int',
+    id: 'string',
+    discussionId: 'string',
     description: 'string',
     timestamp: 'date',
     typeSay: 'string',
@@ -60,7 +60,7 @@ const LogsSchema = {
   name: 'Logs',
   primaryKey: 'id',
   properties: {
-    id: 'int',
+    id: 'string',
     timestamp: 'date',
     level: 'string',
     message: 'string',
@@ -72,8 +72,8 @@ const GPTResponsesSchema = {
   name: 'GPTResponses',
   primaryKey: 'id',
   properties: {
-    id: 'int',
-    discussionId: 'int',
+    id: 'string',
+    discussionId: 'string',
     timestamp: 'date',
     prompt: 'string',
     response: 'string',
@@ -88,7 +88,7 @@ const GPTSpecialtiesSchema = {
   name: 'GPTSpecialties',
   primaryKey: 'id',
   properties: {
-    id: 'int',
+    id: 'string',
     name: 'string',
     url: 'string',
     apiKey: 'string',
@@ -99,7 +99,7 @@ const AlertSchema = {
   name: 'Alert',
   primaryKey: 'id',
   properties: {
-    id: 'int', // Kept from first config for consistency
+    id: 'string', // Kept from first config for consistency
     description: 'string',
     frequency: 'string',
     date: 'date?',
@@ -115,7 +115,7 @@ const DocumentSchema = {
   name: 'Document',
   primaryKey: 'id',
   properties: {
-    id: 'int',
+    id: 'string',
     timestamp: 'date',
   },
 };
@@ -124,7 +124,7 @@ const RuleSchema = {
   name: 'Rule',
   primaryKey: 'id',
   properties: {
-    id: 'int',
+    id: 'string',
     pattern: 'string',
     isRegex: 'bool',
     category: 'string',
@@ -136,7 +136,7 @@ const SyncEntrySchema = {
   name: 'SyncEntry',
   primaryKey: 'id',
   properties: {
-    id: 'int',
+    id: 'string',
     tableName: 'string',
     operation: 'string',
     timestamp: 'date',
@@ -147,8 +147,8 @@ const DiscussionCountSchema = {
   name: 'DiscussionCount',
   primaryKey: 'id',
   properties: {
-    id: 'int',
-    discussionId: 'int',
+    id: 'string',
+    discussionId: 'string',
     count: 'int',
     description: 'string',
     timestamp: 'date',
@@ -184,7 +184,7 @@ const config: Configuration = {
     DiscussionCountSchema,
     ChangeLogSchema,
   ],
-  schemaVersion: 9, // Incremented from 7 for ChangeLogSchema and uid removal
+  schemaVersion: 11, // Bumped from 10 to 11 to force migration and resolve initialization errors
   onMigration: (oldRealm: Realm, newRealm: Realm) => {
     console.log(
       'Migrating Realm schema from version',

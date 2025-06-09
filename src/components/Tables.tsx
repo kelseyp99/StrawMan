@@ -15,7 +15,7 @@ import {
   Dimensions,
 } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { format } from 'date-fns';
+import { format, isToday } from 'date-fns';
 import { getUID } from '../utils/uidManager';
 import Swipeable from 'react-native-gesture-handler/Swipeable';
 import {
@@ -68,6 +68,37 @@ interface SwipeableTablePropsType {
     style?: any;
     flex?: number;
   }[];
+}
+
+// Helper to show 'Today' for today's date in Discussion Data
+function mapDiscussionRow(row: any) {
+  let dateObj: Date;
+  try {
+    if (!row.timestamp) {
+      throw new Error('Missing timestamp');
+    }
+    if (
+      typeof row.timestamp === 'string' ||
+      typeof row.timestamp === 'number'
+    ) {
+      dateObj = new Date(row.timestamp);
+    } else if (row.timestamp instanceof Date) {
+      dateObj = row.timestamp;
+    } else {
+      throw new Error('Unknown timestamp type');
+    }
+    if (isNaN(dateObj.getTime())) {
+      throw new Error('Invalid date');
+    }
+  } catch (e) {
+    console.warn('[mapDiscussionRow] Invalid timestamp for row', row, e);
+    dateObj = new Date();
+  }
+  return {
+    ...row,
+    timestamp: isToday(dateObj) ? 'Today' : format(dateObj, 'M/d/yy \n h:mm a'),
+    rawTimestamp: dateObj,
+  };
 }
 
 // Memoized RelatedLogEntry
@@ -248,8 +279,8 @@ const MainComponent: React.FC = () => {
         .filter((doc: any) => doc.uid === uid)
         .sort((a: any, b: any) => b.timestamp - a.timestamp);
       const discussionData = (await getDiscussions())
-        .filter((doc: any) => doc.uid === uid)
-        .sort((a: any, b: any) => b.timestamp - a.timestamp);
+        .map(mapDiscussionRow)
+        .sort((a: any, b: any) => b.rawTimestamp - a.rawTimestamp);
       const categories = await getDistinctCategories();
       setAllCategories((prev) => [...new Set([...prev, ...categories])]);
       setTables([
@@ -425,7 +456,7 @@ const MainComponent: React.FC = () => {
                     } else {
                       // Use router to create new ActivityLog entry
                       const newLog = {
-                        discussionId: Number(discussionTyped.id), // ensure number type
+                        discussionId: String(discussionTyped.id), // ensure string type
                         category:
                           activityAnalysis.category !== 'uncategorized'
                             ? activityAnalysis.category
@@ -681,7 +712,7 @@ const MainComponent: React.FC = () => {
               } else {
                 // Use router to create new ActivityLog entry
                 const newLog = {
-                  discussionId: Number(editItemId), // ensure number type for discussionId
+                  discussionId: String(editItemId), // ensure string type for discussionId
                   category:
                     activityLogCategories[editItemId] || 'uncategorized',
                   description: editDesc,
@@ -876,7 +907,7 @@ const MainComponent: React.FC = () => {
         } else {
           // Create new ActivityLog using router
           const newLog = {
-            discussionId: Number(editItemId), // ensure number type for discussionId
+            discussionId: String(editItemId), // ensure string type for discussionId
             category: activityLogCategories[editItemId] || 'uncategorized',
             description: editDesc,
             timestamp: editTimestamp,
@@ -1009,6 +1040,19 @@ const MainComponent: React.FC = () => {
     }),
     []
   );
+
+  // Extra debug: log getDiscussions() output on mount
+  useEffect(() => {
+    async function debugFetchDiscussions() {
+      try {
+        const discussions = await getDiscussions();
+        console.log('[EXTRA DEBUG] getDiscussions() raw output:', discussions);
+      } catch (e) {
+        console.error('[EXTRA DEBUG] Error calling getDiscussions:', e);
+      }
+    }
+    debugFetchDiscussions();
+  }, []);
 
   if (loading) {
     return (

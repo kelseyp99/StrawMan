@@ -27,6 +27,11 @@ import {
   markDiscussionAsCleared,
   processPendingTells,
 } from '../../src/services/dbServices';
+import {
+  printAllRealmDataToTerminal,
+  importLegacyActivityLogs,
+  importLegacyDiscussions,
+} from '../../src/services/dbServicesLocal';
 import { transformInput } from '../../src/services/phraseProcessor';
 import {
   collection,
@@ -51,6 +56,7 @@ import * as FileSystem from 'expo-file-system';
 import * as DocumentPicker from 'expo-document-picker';
 import * as dbServices from '../../src/services/dbServices';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useSync } from '../context/SyncContext';
 
 // App version from app.json
 const APP_VERSION = '1.1.0';
@@ -85,6 +91,7 @@ const IndexScreen: React.FC<{
   onApiKeyLoaded: (cachedApiKey: string | null) => void;
 }> = ({ onApiKeyLoaded }) => {
   const [loading, setLoading] = useState(true);
+  const { triggerSync } = useSync();
 
   useEffect(() => {
     async function loadApiKey() {
@@ -100,7 +107,9 @@ const IndexScreen: React.FC<{
       }
     }
     loadApiKey();
-  }, [onApiKeyLoaded]);
+    // Trigger sync on mount
+    triggerSync();
+  }, [onApiKeyLoaded, triggerSync]);
 
   if (loading) return <ActivityIndicator size="large" color="#0000ff" />;
   return null;
@@ -150,6 +159,7 @@ export default function AskJanet() {
   const dialogRef = useRef<View>(null);
   const [fetchAttempts, setFetchAttempts] = useState(0);
   const MAX_FETCH_ATTEMPTS = 5;
+  const { lastSync } = useSync();
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
@@ -228,6 +238,13 @@ export default function AskJanet() {
       setActivityLogEntries([]);
     }
   }, [dialogVisible, selectedCategories]);
+
+  useEffect(() => {
+    if (!loadingAuth) {
+      loadInitialData();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lastSync, loadingAuth]);
 
   async function loadInitialData() {
     if (!auth.currentUser?.uid) {
@@ -1081,6 +1098,34 @@ export default function AskJanet() {
       <Header />
       <InputField input={input} onChange={handleInputChange} />
       <ActionButtons isQuestion={isQuestion} onSubmit={handleSubmit} />
+      {/* --- TEMP BUTTON: Print all Realm data to terminal --- */}
+      <View
+        style={{
+          flexDirection: 'row',
+          justifyContent: 'center',
+          marginBottom: 10,
+        }}
+      >
+        <TouchableOpacity
+          style={{
+            backgroundColor: '#007AFF',
+            padding: 10,
+            borderRadius: 5,
+            marginRight: 10,
+          }}
+          onPress={() => {
+            printAllRealmDataToTerminal();
+            Alert.alert(
+              'Realm Dump',
+              'Printed all ActivityLog and Discussion data to terminal.'
+            );
+          }}
+        >
+          <Text style={{ color: '#fff', fontWeight: 'bold' }}>
+            Print Realm Data
+          </Text>
+        </TouchableOpacity>
+      </View>
       <FlatList
         data={history}
         keyExtractor={(item, index) => `${item.text}-${index}`}
@@ -1125,7 +1170,7 @@ export default function AskJanet() {
         <Pressable onPress={toggleMenu} style={styles.hamburger}>
           <Icon name="menu" size={24} color="#333" />
         </Pressable>
-        <SettingsButton style={styles.settingsButton} />
+        <SettingsButton />
       </View>
       <Modal
         visible={menuVisible}

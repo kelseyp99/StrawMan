@@ -13,7 +13,7 @@ import {
   query,
   getDocs,
 } from 'firebase/firestore';
-import { ActivityLog } from './backendService';
+import { ActivityLog } from './types';
 
 const useOpenAI = true;
 
@@ -216,7 +216,7 @@ export async function findDuplicateActivityLog(
 
   const docData = snapshot.docs[0].data();
   const activityLog: ActivityLog = {
-    id: parseInt(snapshot.docs[0].id),
+    id: snapshot.docs[0].id,
     discussionId: docData.discussionId || '',
     description: docData.description || '',
     category: docData.category || '',

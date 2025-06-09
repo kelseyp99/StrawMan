@@ -1,4 +1,10 @@
+// CHANGELOG (2025-06-02):
+// - Added syncRealmRowsToFirestore(tableName: string, realmRows: any[]): Promise<string[]> to upload only new/unsynced Realm rows to Firestore (Users/{uid}/{tableName}).
+//   This function does not perform any download or update from Firestore to Realm, and is not related to previous .NET API or bidirectional sync logic.
+//   Use this for one-way upload of new Realm data to Firestore only.
+
 import { auth, db } from '../firebaseConfig';
+import { realm } from '../realmConfig';
 import {
   collection,
   addDoc,
@@ -24,7 +30,7 @@ import {
 import { getUID } from '../utils/uidManager';
 import { format } from 'date-fns';
 import { sendQuestionForParsing, sendQuestion } from './openaiAPI';
-import { IActivityLog } from './dbServices';
+import { ActivityLog } from './types';
 // import { getRules } from './RulesService';
 
 // Constants to match dbServicesLocal.ts
@@ -33,8 +39,8 @@ const ENABLE_DISCUSSION_SYNC = false;
 
 // Interfaces (same as dbServicesLocal.ts)
 interface Discussion {
-  id: number;
-  discussionId?: number;
+  id: string;
+  discussionId?: string;
   description: string;
   timestamp: Date | string;
   typeSay?: string;
@@ -48,7 +54,7 @@ export interface Parameters {
 }
 
 interface Alert {
-  id: number;
+  id: string;
   message: string;
   timestamp: Date;
   severity: string;
@@ -59,7 +65,7 @@ interface Alert {
 }
 
 interface GPTSpecialty {
-  id: number;
+  id: string;
   name: string;
   url: string;
   apiKey: string;
@@ -67,8 +73,8 @@ interface GPTSpecialty {
 
 // Define DiscussionCount interface for Firebase
 export interface DiscussionCount {
-  id?: string | number;
-  discussionId: string | number;
+  id?: string;
+  discussionId: string;
   count: number;
   description: string;
   timestamp: Date | string;
@@ -82,7 +88,7 @@ export const findDuplicateActivityLog = async (
   category: string,
   description: string,
   uid: string
-): Promise<IActivityLog | null> => {
+): Promise<ActivityLog | null> => {
   const q = query(
     collection(db, 'ActivityLog'),
     where('discussionId', '==', discussionId),
@@ -96,7 +102,7 @@ export const findDuplicateActivityLog = async (
     : ({
         id: snapshot.docs[0].id,
         ...snapshot.docs[0].data(),
-      } as unknown as IActivityLog);
+      } as unknown as ActivityLog);
 };
 
 const getDiscussionCountsQuery = async () => {
@@ -137,12 +143,12 @@ export async function addOrUpdateDiscussion(
   const uid = await getUID();
   if (!uid) throw new Error('No UID available');
   try {
-    const discussionId = id || String(new Date().getTime());
+    const discussionId = id || Date.now().toString();
     await setDoc(
       doc(db, `Users/${uid}/Discussion`, discussionId),
       {
-        id: Number(discussionId),
-        discussionId: Number(discussionId),
+        id: discussionId,
+        discussionId: discussionId,
         description,
         typeSay,
         cleared: false,
@@ -164,7 +170,7 @@ export async function addOrUpdateDiscussion(
 // ... other existing functions (getDiscussions, addOrUpdateGPTResponse, etc.) ...
 
 // New functions
-export async function deactivateAlertByKey(key: number): Promise<void> {
+export async function deactivateAlertByKey(key: string): Promise<void> {
   const uid = await getUID();
   if (!uid) throw new Error('No UID available');
   try {
@@ -207,13 +213,13 @@ export async function updateGPTSpecialties(gptSpecialty: {
   }
 }
 
-export async function getActivityLogs(): Promise<IActivityLog[]> {
+export async function getActivityLogs(): Promise<ActivityLog[]> {
   const uid = await getUID();
   if (!uid) throw new Error('No UID available');
   try {
     const snapshot = await getDocs(collection(db, `Users/${uid}/ActivityLog`));
     return snapshot.docs.map((doc) => ({
-      id: Number(doc.id),
+      id: doc.id,
       discussionId: doc.data().discussionId,
       category: doc.data().category,
       description: doc.data().description,
@@ -223,6 +229,8 @@ export async function getActivityLogs(): Promise<IActivityLog[]> {
       uid: doc.data().uid,
       synced: doc.data().synced || false,
       syncTimestamp: doc.data().syncTimestamp?.toDate(),
+      lockedCategory: doc.data().lockedCategory ?? false,
+      lockedDescription: doc.data().lockedDescription ?? false,
     }));
   } catch (error) {
     console.error('Error in getActivityLogs:', error);
@@ -427,7 +435,7 @@ export async function queryAllFieldsByCategories(
     );
     const snapshot = await getDocs(q);
     return snapshot.docs.map((doc) => {
-      const data = doc.data() as IActivityLog;
+      const data = doc.data() as ActivityLog;
       const timestamp = new Date(data.timestamp);
       const formattedTimestamp = `${
         timestamp.getMonth() + 1
@@ -471,7 +479,7 @@ export async function synchronizeActivityLog(
     );
 
     for (const globalDoc of globalSnapshot.docs) {
-      const globalData = globalDoc.data() as IActivityLog;
+      const globalData = globalDoc.data() as ActivityLog;
       if (globalData.uid && globalData.uid !== uid) {
         console.log(
           `Skipping ActivityLog ${globalDoc.id} (owned by ${globalData.uid})`
@@ -511,7 +519,7 @@ export async function synchronizeActivityLog(
     console.log(`Found ${userSnapshot.docs.length} user ActivityLog entries`);
 
     for (const userDoc of userSnapshot.docs) {
-      const userData = userDoc.data() as IActivityLog;
+      const userData = userDoc.data() as ActivityLog;
       if (!userData.uid) {
         console.warn(
           `ActivityLog ${userDoc.id} in Users/${uid}/ActivityLog missing uid, skipping`
@@ -1459,52 +1467,243 @@ export async function getAIResponse(question: string): Promise<string> {
   });
 }
 
-//////////////////////////////////////////
-// Helper Functions for Cloud Sync //
-//////////////////////////////////////////
+// --- Changelog and legacy sync helpers ---
 
-export async function syncToCloud(
+/**
+ * Create a changelog entry in Firestore and return the new entry.
+ * All Realm writes must be handled by the local/router layer.
+ * @param tableName The table affected (e.g., 'ActivityLog')
+ * @param rowId The row/document ID affected
+ * @param operation 'create' | 'update' | 'delete'
+ * @returns Promise<ChangeLogEntry>
+ */
+export async function createAndSyncChangelogEntry(
   tableName: string,
-  payload?: any,
-  method?: 'POST' | 'PUT' | 'DELETE'
-): Promise<void> {
+  rowId: string,
+  operation: 'create' | 'update' | 'delete'
+): Promise<any> {
   const uid = await getUID();
-  if (!uid) {
-    throw new Error('No UID available for sync to cloud operation');
+  if (!uid) throw new Error('No UID available for changelog operation');
+  const timestamp = new Date();
+  // 1. Create changelog entry in Firestore
+  const changelogEntry = {
+    id: `${tableName}_${rowId}_${timestamp.getTime()}`,
+    tableName,
+    rowId,
+    operation,
+    timestamp,
+    uid,
+  };
+  await setDoc(
+    doc(db, `Users/${uid}/ChangeLog`, changelogEntry.id),
+    changelogEntry
+  );
+  console.log('Created changelog entry in Firestore:', changelogEntry);
+  // 2. Return the new changelog entry for local/router to write to Realm
+  return changelogEntry;
+}
+
+/**
+ * Download all new Firestore rows for a table that are not represented in the local changelog (rowIds),
+ * and return both the new rows and the changelog entries that should be created for them.
+ * All Realm writes must be handled by the local/router layer.
+ *
+ * @param tableName The Firestore collection/table name (e.g., 'ActivityLog')
+ * @param localChangeLogRowIds Set of rowIds already present in the local changelog
+ * @returns Promise<{ newRows: any[], changelogEntries: any[] }>
+ */
+export async function downloadNewRowsAndSyncChangelog(
+  tableName: string,
+  localChangeLogRowIds: Set<string>
+): Promise<{ newRows: any[]; changelogEntries: any[] }> {
+  const uid = await getUID();
+  if (!uid) throw new Error('No UID available for download/sync operation');
+  // 1. Get all remote rows from Firestore
+  const remoteSnap = await getDocs(collection(db, `Users/${uid}/${tableName}`));
+  const remoteRows = remoteSnap.docs.map((doc) => ({
+    id: doc.id,
+    ...doc.data(),
+  }));
+  // 2. Filter remote rows not in local changelog
+  const newRows = remoteRows.filter(
+    (row) => !localChangeLogRowIds.has(row.id.toString())
+  );
+  if (newRows.length === 0) {
+    console.log('No new remote rows to process.');
+    return { newRows: [], changelogEntries: [] };
   }
-  if (payload && method) {
-    // Single-record sync
-    const url = `http://localhost:5155/api/${tableName.toLowerCase()}`;
-    try {
-      const config = { headers: { 'Content-Type': 'application/json' } };
-      let response;
-      if (method === 'POST') {
-        response = await fetch(url, {
-          method,
-          headers: config.headers,
-          body: JSON.stringify(payload),
-        });
-      } else if (method === 'PUT') {
-        response = await fetch(url, {
-          method,
-          headers: config.headers,
-          body: JSON.stringify(payload),
-        });
-      } else if (method === 'DELETE') {
-        response = await fetch(`${url}/${payload.id}`, {
-          method,
-          headers: config.headers,
-        });
-      }
-      console.log(`${tableName} synced successfully.`);
-    } catch (error) {
-      console.error(`Error syncing ${tableName} to cloud:`, error);
+  // 3. For each new row, create changelog entry in Firestore and collect for local/router
+  const changelogEntries: any[] = [];
+  for (const row of newRows) {
+    let timestamp: Date = new Date();
+    if (
+      'syncTimestamp' in row &&
+      row.syncTimestamp &&
+      typeof row.syncTimestamp !== 'object' &&
+      row.syncTimestamp !== undefined
+    ) {
+      timestamp = new Date(String(row.syncTimestamp));
+    } else if (
+      'timestamp' in row &&
+      row.timestamp &&
+      typeof row.timestamp !== 'object' &&
+      row.timestamp !== undefined
+    ) {
+      timestamp = new Date(String(row.timestamp));
     }
-  } else {
-    // Full-table sync (stub: implement upload all unsynced, download new/updated, handle deletions)
-    console.log(`syncToCloud (full-table) called for: ${tableName}`);
-    // TODO: Implement full-table sync logic here
+    const changelogId = `${tableName}_${row.id}_${timestamp.getTime()}`;
+    const changelogEntry = {
+      id: changelogId,
+      tableName,
+      rowId: row.id,
+      operation: 'create',
+      timestamp,
+      uid,
+    };
+    await setDoc(
+      doc(db, `Users/${uid}/ChangeLog`, changelogId),
+      changelogEntry
+    );
+    changelogEntries.push(changelogEntry);
   }
+  console.log(`Processed ${newRows.length} new remote rows for changelog.`);
+  return { newRows, changelogEntries };
+}
+
+/**
+ * Download all Firestore rows for a table that are not represented in EITHER the local changelog OR the Firestore changelog,
+ * and return both the new rows and the changelog entries that should be created for them.
+ * All Realm writes must be handled by the local/router layer.
+ *
+ * @param tableName The Firestore collection/table name (e.g., 'ActivityLog')
+ * @param localChangeLogRowIds Set of rowIds already present in the local changelog
+ * @returns Promise<{ newRows: any[], changelogEntries: any[] }>
+ */
+export async function downloadLegacyRowsAndSyncChangelog(
+  tableName: string,
+  localChangeLogRowIds: Set<string>,
+  localChangeLogTimestamps?: Map<string, Date>
+): Promise<{ newRows: any[]; changelogEntries: any[] }> {
+  console.log(`Downloading legacy rows for table: ${tableName}`);
+  const uid = await getUID();
+  if (!uid) throw new Error('No UID available for download/sync operation');
+  // 1. Get all remote rows from Firestore
+  const remoteSnap = await getDocs(collection(db, `Users/${uid}/${tableName}`));
+  const remoteRows = remoteSnap.docs.map((doc) => ({
+    id: doc.id,
+    ...doc.data(),
+  }));
+  // 2. Get all Firestore changelog rowIds and timestamps for this table
+  const remoteChangeLogSnap = await getDocs(
+    collection(db, `Users/${uid}/ChangeLog`)
+  );
+  const remoteChangeLogMap = new Map<string, Date>();
+  remoteChangeLogSnap.docs.forEach((doc) => {
+    const cl = doc.data();
+    if (cl.tableName === tableName && cl.rowId) {
+      remoteChangeLogMap.set(cl.rowId.toString(), new Date(cl.timestamp));
+    }
+  });
+  // Optionally accept localChangeLogTimestamps for more robust comparison
+  const localChangeLogMap = localChangeLogTimestamps || new Map<string, Date>();
+  // 3. Build set of all rowIds in local changelog
+  const localRowIds = localChangeLogRowIds;
+  // 4. For each remote row, apply union logic
+  const legacyRows: any[] = [];
+  for (const row of remoteRows) {
+    const rowId = row.id?.toString?.();
+    const remoteTS = remoteChangeLogMap.get(rowId);
+    const localTS = localChangeLogMap.get(rowId);
+    if (!remoteTS && !localTS) {
+      // (B) No changelog entry in either place
+      legacyRows.push(row);
+    } else if (remoteTS && !localTS) {
+      // Remote changelog exists, local missing
+      legacyRows.push(row);
+    } else if (remoteTS && localTS && remoteTS > localTS) {
+      // Both exist, remote newer
+      legacyRows.push(row);
+    }
+    // else: skip (local is newer or equal)
+  }
+  // Convert Firestore Timestamp fields to JS Date for all legacyRows
+  const legacyRowsWithDates = legacyRows.map((row) => {
+    ensureDateField(row, 'timestamp');
+    ensureDateField(row, 'syncTimestamp');
+    return row;
+  });
+  // 5. For each legacy row, create a remote changelog entry if missing
+  const changelogEntries: any[] = [];
+  for (const row of legacyRowsWithDates) {
+    const rowId = row.id?.toString?.();
+    let timestamp: Date = new Date();
+    if (
+      'syncTimestamp' in row &&
+      row.syncTimestamp &&
+      typeof row.syncTimestamp !== 'object' &&
+      row.syncTimestamp !== undefined
+    ) {
+      timestamp = new Date(String(row.syncTimestamp));
+    } else if (
+      'timestamp' in row &&
+      row.timestamp &&
+      typeof row.timestamp !== 'object' &&
+      row.timestamp !== undefined
+    ) {
+      timestamp = new Date(String(row.timestamp));
+    }
+    if (!remoteChangeLogMap.has(rowId)) {
+      const changelogId = `${tableName}_${rowId}_${timestamp.getTime()}`;
+      const changelogEntry = {
+        id: changelogId,
+        tableName,
+        rowId,
+        operation: 'create',
+        timestamp,
+        uid,
+      };
+      await setDoc(
+        doc(db, `Users/${uid}/ChangeLog`, changelogId),
+        changelogEntry
+      );
+      changelogEntries.push(changelogEntry);
+    }
+  }
+  if (legacyRowsWithDates.length === 0) {
+    console.log(
+      'No legacy/unsynced remote rows to process for table: ' + tableName + '.'
+    );
+    return { newRows: [], changelogEntries: [] };
+  }
+  console.log(
+    `Processed ${legacyRowsWithDates.length} legacy/unsynced remote rows for changelog for table ${tableName} .`
+  );
+  return { newRows: legacyRowsWithDates, changelogEntries };
+}
+
+// Sync unsynced Realm rows to Firestore
+export async function syncRealmRowsToFirestore(
+  tableName: string,
+  realmRows: any[]
+): Promise<string[]> {
+  const uid = await getUID();
+  if (!uid) throw new Error('No UID available for sync operation');
+  const syncedIds: string[] = [];
+  for (const row of realmRows) {
+    try {
+      const docId = row.id?.toString() || new Date().getTime().toString();
+      await setDoc(
+        doc(db, `Users/${uid}/${tableName}`, docId),
+        { ...row, uid, synced: true, syncTimestamp: new Date() },
+        { merge: true }
+      );
+      syncedIds.push(docId);
+      console.log(`Synced Realm row to Firestore: ${docId}`);
+    } catch (error) {
+      console.error('Error syncing row to Firestore:', error, row);
+    }
+  }
+  return syncedIds;
 }
 
 //////////////////////////////////////////
@@ -1695,7 +1894,7 @@ export async function deleteActivityLog(activityLogId: string): Promise<void> {
 
 // Create ActivityLog
 export async function createActivityLog(
-  activityLog: Omit<IActivityLog, 'id'>
+  activityLog: Omit<ActivityLog, 'id'>
 ): Promise<string> {
   const uid = await getUID();
   if (!uid) throw new Error('No UID available for createActivityLog');
@@ -1706,6 +1905,8 @@ export async function createActivityLog(
       ? Timestamp.fromDate(new Date(activityLog.timestamp))
       : new Date(),
     cleared: activityLog.cleared ?? false,
+    lockedCategory: activityLog.lockedCategory ?? false,
+    lockedDescription: activityLog.lockedDescription ?? false,
   });
   console.log('ActivityLog created with ID:', docRef.id);
   return docRef.id;
@@ -1737,4 +1938,130 @@ export async function createRuleCandidate(data: {
     timestamp: new Date(),
   });
   console.log('RuleCandidate created:', data);
+}
+
+// --- SYNC HELPERS: Timestamp-based update/delete for robust sync ---
+
+/**
+ * Update a Firestore row only if the incoming syncTimestamp is newer than the existing one.
+ * @param tableName Firestore collection name (e.g., 'ActivityLog')
+ * @param rowId Document ID
+ * @param data Data to update (must include syncTimestamp)
+ * @returns true if updated, false if skipped (older)
+ */
+export async function updateRowIfNewer(
+  tableName: string,
+  rowId: string,
+  data: any
+): Promise<boolean> {
+  const uid = await getUID();
+  if (!uid) throw new Error('No UID available for updateRowIfNewer');
+  const docRef = doc(db, `Users/${uid}/${tableName}`, rowId);
+  const docSnap = await getDoc(docRef);
+  const incomingTS = new Date(data.syncTimestamp).getTime();
+  if (docSnap.exists()) {
+    const existingTS = docSnap.data().syncTimestamp
+      ? new Date(docSnap.data().syncTimestamp).getTime()
+      : 0;
+    if (incomingTS <= existingTS) {
+      console.log(`Skipped update for ${rowId}: incoming older or same.`);
+      return false;
+    }
+  }
+  await setDoc(docRef, data, { merge: true });
+  console.log(`Updated row ${rowId} in ${tableName}`);
+  return true;
+}
+
+/**
+ * Mark a Firestore row as deleted only if the incoming syncTimestamp is newer than the existing one.
+ * @param tableName Firestore collection name
+ * @param rowId Document ID
+ * @param deletedAt Timestamp of deletion
+ * @returns true if deleted, false if skipped (older)
+ */
+export async function deleteRowIfNewer(
+  tableName: string,
+  rowId: string,
+  deletedAt: Date
+): Promise<boolean> {
+  const uid = await getUID();
+  if (!uid) throw new Error('No UID available for deleteRowIfNewer');
+  const docRef = doc(db, `Users/${uid}/${tableName}`, rowId);
+  const docSnap = await getDoc(docRef);
+  const incomingTS = deletedAt.getTime();
+  if (docSnap.exists()) {
+    const existingTS = docSnap.data().syncTimestamp
+      ? new Date(docSnap.data().syncTimestamp).getTime()
+      : 0;
+    if (incomingTS <= existingTS) {
+      console.log(`Skipped delete for ${rowId}: incoming older or same.`);
+      return false;
+    }
+  }
+  await setDoc(
+    docRef,
+    { deleted: true, deletedAt, syncTimestamp: deletedAt },
+    { merge: true }
+  );
+  console.log(`Marked row ${rowId} as deleted in ${tableName}`);
+  return true;
+}
+
+/**
+ * Fetches all remote Firestore rows for a table updated after a given timestamp.
+ * @param tableName The Firestore collection/table name (e.g., 'ActivityLog')
+ * @param lastSyncTimestamp Only fetch rows with syncTimestamp or timestamp > this value
+ * @returns Promise<{ rows: any[] }>
+ */
+export async function fetchTableUpdates(
+  tableName: string,
+  lastSyncTimestamp: Date
+): Promise<{ rows: any[] }> {
+  const uid = await getUID();
+  if (!uid) throw new Error('No UID available');
+  const collectionRef = collection(db, `Users/${uid}/${tableName}`);
+  // Try to use syncTimestamp if present, else fallback to timestamp
+  const q = query(
+    collectionRef,
+    where('syncTimestamp', '>', lastSyncTimestamp)
+  );
+  const snapshot = await getDocs(q);
+  const rows = snapshot.docs.map((doc) => ({
+    id: doc.id,
+    ...doc.data(),
+  }));
+  // Fallback: If no rows and syncTimestamp is missing, try timestamp
+  if (rows.length === 0) {
+    const q2 = query(collectionRef, where('timestamp', '>', lastSyncTimestamp));
+    const snapshot2 = await getDocs(q2);
+    return {
+      rows: snapshot2.docs.map((doc) => ({ id: doc.id, ...doc.data() })),
+    };
+  }
+  return { rows };
+}
+
+// Helper: convert Firestore Timestamp to JS Date if needed
+function ensureDateField(obj: any, field: string) {
+  if (obj[field]) {
+    // Firestore Timestamp object: { seconds, nanoseconds }
+    if (
+      typeof obj[field] === 'object' &&
+      obj[field] !== null &&
+      typeof obj[field].seconds === 'number' &&
+      typeof obj[field].nanoseconds === 'number'
+    ) {
+      obj[field] = new Date(
+        obj[field].seconds * 1000 + Math.floor(obj[field].nanoseconds / 1e6)
+      );
+    } else if (typeof obj[field].toDate === 'function') {
+      obj[field] = obj[field].toDate();
+    } else if (
+      typeof obj[field] === 'number' ||
+      typeof obj[field] === 'string'
+    ) {
+      obj[field] = new Date(obj[field]);
+    }
+  }
 }

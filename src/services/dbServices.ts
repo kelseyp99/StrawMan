@@ -2,15 +2,13 @@
 import * as remote from './dbServicesRemote';
 import * as local from './dbServicesLocal';
 import { getUID } from '../utils/uidManager';
-import { addDoc, collection } from 'firebase/firestore';
-import { db } from '../firebaseConfig';
-import { ActivityLog, Parameters } from './dbServicesLocal';
+import { ActivityLog } from './types';
 
 const USE_REMOTE = false;
 
 interface Discussion {
-  id: number;
-  discussionId?: number;
+  id: string;
+  discussionId?: string;
   description: string;
   timestamp: Date | string;
   typeSay?: string;
@@ -18,43 +16,21 @@ interface Discussion {
   uid?: string;
 }
 
-export interface IActivityLog {
-  id: number;
-  discussionId: number;
-  category: string;
-  description: string;
-  timestamp: Date;
-  cleared: boolean;
-  responseType?: string;
-  uid: string;
-  synced: boolean;
-  syncTimestamp?: Date;
-}
-
 interface SyncEntry {
-  id: number;
+  id: string;
   tableName: string;
   operation: 'create' | 'update' | 'delete';
   timestamp: Date;
   uid: string;
 }
 
+// Update logSyncEntry to use only local (and remote if implemented in the future)
 async function logSyncEntry(entry: SyncEntry): Promise<void> {
   try {
     // Log to Realm via dbServicesLocal.ts
     await local.logSyncEntry(entry);
-
-    // Log to Firestore for paid users
-    if (await isPaidUser()) {
-      await addDoc(collection(db, `Users/${entry.uid}/SyncEntry`), {
-        id: entry.id,
-        tableName: entry.tableName,
-        operation: entry.operation,
-        timestamp: entry.timestamp,
-        uid: entry.uid,
-      });
-      console.log('Logged SyncEntry to Firestore:', entry);
-    }
+    // If remote logging is needed, implement in dbServicesRemote and call here
+    // For now, skip remote logging to Firestore directly
   } catch (error) {
     console.error('Error logging SyncEntry:', error);
   }
@@ -71,7 +47,7 @@ export const findDuplicateActivityLog = async (
   category: string,
   description: string,
   uid: string // keep for remote, but not for local
-): Promise<IActivityLog | null> => {
+): Promise<ActivityLog | null> => {
   console.log('findDuplicateActivityLog called');
   try {
     const uidVal = (await getUID()) || 'unknown';
@@ -109,7 +85,7 @@ export async function initializeUser(): Promise<void> {
 export async function addOrUpdateDiscussion(
   description: string,
   typeSay: string = 'tell',
-  id?: string | number,
+  id?: string,
   useRemote: boolean = USE_REMOTE
 ): Promise<string> {
   console.log(
@@ -119,7 +95,6 @@ export async function addOrUpdateDiscussion(
     id
   );
   try {
-    const numericId = id ? Number(id) : undefined;
     let result: string;
 
     if (useRemote) {
@@ -132,18 +107,14 @@ export async function addOrUpdateDiscussion(
     } else {
       console.log('[DISCUSSION] Calling local.addOrUpdateDiscussion');
       await local.initializeUser(); // Ensure user is initialized for local operations
-      result = await local.addOrUpdateDiscussion(
-        description,
-        typeSay,
-        numericId
-      );
+      result = await local.addOrUpdateDiscussion(description, typeSay, id);
     }
 
     console.log('[DISCUSSION] Operation completed, logging SyncEntry');
     if (useRemote || (await isPaidUser())) {
       const uid = (await getUID()) || 'unknown';
       await logSyncEntry({
-        id: Number(result),
+        id: result,
         tableName: 'Discussion',
         operation: id ? 'update' : 'create',
         timestamp: new Date(),
@@ -190,10 +161,10 @@ export async function deleteDiscussion(id: string): Promise<void> {
   console.log('deleteDiscussion called with:', id);
   try {
     await remote.deleteDiscussion(id);
-    await local.deleteDiscussion(Number(id));
+    await local.deleteDiscussion(id);
     const uid = (await getUID()) || 'unknown';
     await logSyncEntry({
-      id: Number(id),
+      id,
       tableName: 'Discussion',
       operation: 'delete',
       timestamp: new Date(),
@@ -218,7 +189,7 @@ export async function fetchInitialDiscussion(): Promise<any | null> {
   }
 }
 
-export async function getNextOpenDiscussion(lastVisibleId?: number): Promise<{
+export async function getNextOpenDiscussion(lastVisibleId?: string): Promise<{
   snapshot: any;
   hasMore: boolean;
   lastVisibleDoc: any;
@@ -227,7 +198,7 @@ export async function getNextOpenDiscussion(lastVisibleId?: number): Promise<{
   try {
     const result = USE_REMOTE
       ? await remote.getNextOpenDiscussion(lastVisibleId)
-      : await local.getNextOpenDiscussion(lastVisibleId);
+      : await local.getNextOpenDiscussion(lastVisibleId); // pass string
     return result;
   } catch (error) {
     console.error('Error in getNextOpenDiscussion:', error);
@@ -242,7 +213,7 @@ export async function processPendingTells(): Promise<void> {
     await local.processPendingTells();
     const uid = (await getUID()) || 'unknown';
     await logSyncEntry({
-      id: new Date().getTime(),
+      id: new Date().getTime().toString(),
       tableName: 'ActivityLog',
       operation: 'create',
       timestamp: new Date(),
@@ -267,7 +238,7 @@ export async function addQuestionDiscussion(
     await local.addQuestionDiscussion(question, discussionId);
     const uid = (await getUID()) || 'unknown';
     await logSyncEntry({
-      id: Number(remoteResult),
+      id: remoteResult,
       tableName: 'GPTResponses',
       operation: 'create',
       timestamp: new Date(),
@@ -287,7 +258,7 @@ export async function processUnclearedGPTResponses(): Promise<void> {
     await local.processUnclearedGPTResponses();
     const uid = (await getUID()) || 'unknown';
     await logSyncEntry({
-      id: new Date().getTime(),
+      id: new Date().getTime().toString(),
       tableName: 'GPTResponses',
       operation: 'update',
       timestamp: new Date(),
@@ -308,7 +279,7 @@ export async function markDiscussionAsCleared(
     await local.markDiscussionAsCleared(discussionId);
     const uid = (await getUID()) || 'unknown';
     await logSyncEntry({
-      id: Number(discussionId),
+      id: discussionId,
       tableName: 'Discussion',
       operation: 'update',
       timestamp: new Date(),
@@ -327,7 +298,7 @@ export async function clearDiscussion(discussionId: string): Promise<boolean> {
     const localResult = await local.clearDiscussion(discussionId);
     const uid = (await getUID()) || 'unknown';
     await logSyncEntry({
-      id: Number(discussionId),
+      id: discussionId,
       tableName: 'Discussion',
       operation: 'update',
       timestamp: new Date(),
@@ -347,7 +318,7 @@ export async function addOrUpdateActivityLog(): Promise<void> {
     await local.addOrUpdateActivityLog();
     const uid = (await getUID()) || 'unknown';
     await logSyncEntry({
-      id: new Date().getTime(),
+      id: new Date().getTime().toString(),
       tableName: 'ActivityLog',
       operation: 'create',
       timestamp: new Date(),
@@ -366,7 +337,7 @@ export async function renameFieldToCleared(): Promise<void> {
     await local.renameFieldToCleared();
     const uid = (await getUID()) || 'unknown';
     await logSyncEntry({
-      id: new Date().getTime(),
+      id: new Date().getTime().toString(),
       tableName: 'Discussion',
       operation: 'update',
       timestamp: new Date(),
@@ -436,7 +407,7 @@ export async function addOrUpdateGPTResponse(
     );
     const uid = (await getUID()) || 'unknown';
     await logSyncEntry({
-      id: new Date().getTime(),
+      id: new Date().getTime().toString(),
       tableName: 'GPTResponses',
       operation: 'create',
       timestamp: new Date(),
@@ -498,11 +469,11 @@ export async function syncToCloud(
     // Single-record sync
     console.log('syncToCloud (single-record) called with:', tableName, method);
     try {
-      await remote.syncToCloud(tableName, payload, method);
-      await local.syncToCloud(tableName, payload, method);
+      // Router-based upload to Firestore for a single record
+      await remote.syncRealmRowsToFirestore(tableName, [payload]);
       const uid = (await getUID()) || 'unknown';
       await logSyncEntry({
-        id: Number(payload.id) || new Date().getTime(),
+        id: Date.now().toString(),
         tableName,
         operation:
           method === 'POST' ? 'create' : method === 'PUT' ? 'update' : 'delete',
@@ -517,7 +488,7 @@ export async function syncToCloud(
     // Full-table sync
     console.log('syncToCloud (full-table) called for:', tableName);
     try {
-      await remote.syncToCloud(tableName, undefined, undefined);
+      // Use the local syncToCloud, which uploads all unsynced rows via the router
       await local.syncToCloud(tableName, undefined, undefined);
     } catch (error) {
       console.error('Error in syncToCloud (full-table):', error);
@@ -546,7 +517,7 @@ export async function addOrUpdateAlert(alertData: any): Promise<void> {
     await local.addOrUpdateAlert(alertData);
     const uid = (await getUID()) || 'unknown';
     await logSyncEntry({
-      id: alertData._id || new Date().getTime(),
+      id: alertData._id || new Date().getTime().toString(),
       tableName: 'Alert',
       operation: alertData._id ? 'update' : 'create',
       timestamp: new Date(),
@@ -558,14 +529,19 @@ export async function addOrUpdateAlert(alertData: any): Promise<void> {
   }
 }
 
-export async function deactivateAlertByKey(key: number): Promise<void> {
+export async function deactivateAlertByKey(
+  key: number | string
+): Promise<void> {
   console.log('deactivateAlertByKey called with:', key);
+  const keyStr = String(key);
   try {
-    await remote.deactivateAlertByKey(key);
-    await local.deactivateAlertByKey(key);
+    await remote.deactivateAlertByKey(keyStr);
+    // For local, if it still expects number, convert to number if possible
+    const keyNum = typeof key === 'number' ? key : parseInt(keyStr, 10);
+    await local.deactivateAlertByKey(keyNum);
     const uid = (await getUID()) || 'unknown';
     await logSyncEntry({
-      id: key,
+      id: keyStr,
       tableName: 'Alert',
       operation: 'update',
       timestamp: new Date(),
@@ -614,7 +590,7 @@ export async function restoreLostData(): Promise<void> {
     await local.restoreLostData();
     const uid = (await getUID()) || 'unknown';
     await logSyncEntry({
-      id: new Date().getTime(),
+      id: new Date().getTime().toString(),
       tableName: 'ActivityLog',
       operation: 'create',
       timestamp: new Date(),
@@ -651,7 +627,7 @@ export async function updateGPTSpecialties(gptSpecialty: {
     await local.updateGPTSpecialties(gptSpecialty);
     const uid = (await getUID()) || 'unknown';
     await logSyncEntry({
-      id: gptSpecialty.id || new Date().getTime(),
+      id: gptSpecialty.id ? String(gptSpecialty.id) : Date.now().toString(),
       tableName: 'GPTSpecialties',
       operation: gptSpecialty.id ? 'update' : 'create',
       timestamp: new Date(),
@@ -676,7 +652,7 @@ export async function getActivityLogs(): Promise<any[]> {
   }
 }
 
-export async function getParameters(): Promise<Parameters[]> {
+export async function getParameters(): Promise<any[]> {
   console.log('getParameters called');
   try {
     const result = USE_REMOTE
@@ -711,7 +687,7 @@ export async function createDocument(data: any): Promise<string> {
     await local.createDocument(data);
     const uid = (await getUID()) || 'unknown';
     await logSyncEntry({
-      id: Number(remoteResult),
+      id: remoteResult,
       tableName: 'Document',
       operation: 'create',
       timestamp: new Date(),
@@ -744,7 +720,7 @@ export async function updateDocument(docId: string, data: any): Promise<void> {
     await local.updateDocument(docId, data);
     const uid = (await getUID()) || 'unknown';
     await logSyncEntry({
-      id: Number(docId),
+      id: docId,
       tableName: 'Document',
       operation: 'update',
       timestamp: new Date(),
@@ -763,7 +739,7 @@ export async function deleteDocument(docId: string): Promise<void> {
     await local.deleteDocument(docId);
     const uid = (await getUID()) || 'unknown';
     await logSyncEntry({
-      id: Number(docId),
+      id: docId,
       tableName: 'Document',
       operation: 'delete',
       timestamp: new Date(),
@@ -795,7 +771,7 @@ export async function insertJsonFile(jsonData: any): Promise<void> {
     await local.insertJsonFile(jsonData);
     const uid = (await getUID()) || 'unknown';
     await logSyncEntry({
-      id: new Date().getTime(),
+      id: new Date().getTime().toString(),
       tableName: 'ActivityLog',
       operation: 'create',
       timestamp: new Date(),
@@ -831,7 +807,7 @@ export async function synchronizeActivityLog(
     await local.synchronizeActivityLog(appVersion);
     const uid = (await getUID()) || 'unknown';
     await logSyncEntry({
-      id: new Date().getTime(),
+      id: new Date().getTime().toString(),
       tableName: 'ActivityLog',
       operation: 'update',
       timestamp: new Date(),
@@ -852,7 +828,7 @@ export async function synchronizeDiscussions(
     await local.synchronizeDiscussions(appVersion);
     const uid = (await getUID()) || 'unknown';
     await logSyncEntry({
-      id: new Date().getTime(),
+      id: new Date().getTime().toString(),
       tableName: 'Discussion',
       operation: 'update',
       timestamp: new Date(),
@@ -873,7 +849,7 @@ export async function deleteActivityLog(activityLogId: string): Promise<void> {
   }
   const uid = (await getUID()) || 'unknown';
   await logSyncEntry({
-    id: Number(activityLogId),
+    id: activityLogId,
     tableName: 'ActivityLog',
     operation: 'delete',
     timestamp: new Date(),
@@ -883,7 +859,7 @@ export async function deleteActivityLog(activityLogId: string): Promise<void> {
 
 // Create ActivityLog (router)
 export async function createActivityLog(
-  activityLog: Omit<IActivityLog, 'id'>
+  activityLog: Omit<ActivityLog, 'id'>
 ): Promise<string> {
   if (USE_REMOTE) {
     return await remote.createActivityLog(activityLog);
@@ -909,7 +885,7 @@ export async function updateActivityLogCategory(
     }
     const uid = (await getUID()) || 'unknown';
     await logSyncEntry({
-      id: Number(activityLogId),
+      id: activityLogId,
       tableName: 'ActivityLog',
       operation: 'update',
       timestamp: new Date(),
@@ -936,7 +912,7 @@ export async function createRuleCandidate(data: {
     }
     const uid = (await getUID()) || 'unknown';
     await logSyncEntry({
-      id: new Date().getTime(),
+      id: new Date().getTime().toString(),
       tableName: 'RuleCandidate',
       operation: 'create',
       timestamp: new Date(),
@@ -947,3 +923,72 @@ export async function createRuleCandidate(data: {
     throw error;
   }
 }
+
+/**
+ * Syncs all remote ActivityLog and Discussion rows (including legacy/unsynced) into local Realm.
+ * This will populate Realm with any remote rows created by legacy apps or other clients.
+ */
+export async function syncFromRemote() {
+  // Tables to sync
+  const tables = ['ActivityLog', 'Discussion'];
+  for (const tableName of tables) {
+    // 1. Get all local changelog rowIds for this table
+    let localChangeLog: any[] = [];
+    try {
+      localChangeLog = local.readChangeLog({ tableName });
+    } catch (e) {
+      console.warn(
+        `[SYNC] Could not read local changelog for ${tableName}:`,
+        e
+      );
+    }
+    const localChangeLogRowIds = new Set(
+      (localChangeLog || []).map((cl: any) => cl.rowId?.toString())
+    );
+
+    // 2. Download legacy/unsynced remote rows and create remote changelog entries
+    let newRows: any[] = [];
+    let changelogEntries: any[] = [];
+    try {
+      const result = await remote.downloadLegacyRowsAndSyncChangelog(
+        tableName,
+        localChangeLogRowIds
+      );
+      newRows = result.newRows;
+      changelogEntries = result.changelogEntries;
+    } catch (e) {
+      console.warn(
+        `[SYNC] Could not download legacy rows for ${tableName}:`,
+        e
+      );
+    }
+
+    // 3. Insert newRows into Realm
+    if (newRows && newRows.length > 0) {
+      try {
+        await local.syncTableFromRemote(tableName, newRows);
+      } catch (e) {
+        console.warn(`[SYNC] Could not insert newRows for ${tableName}:`, e);
+      }
+    }
+
+    // 4. Add local changelog entries for each new row if not present
+    if (newRows && newRows.length > 0) {
+      for (const row of newRows) {
+        const rowId = row.id?.toString();
+        if (!localChangeLogRowIds.has(rowId)) {
+          try {
+            local.logChange(tableName, rowId, 'create');
+          } catch (e) {
+            console.warn(
+              `[SYNC] Could not add local changelog for ${tableName} row ${rowId}:`,
+              e
+            );
+          }
+        }
+      }
+    }
+  }
+}
+
+export { syncTableFromRemote } from './dbServicesLocal';

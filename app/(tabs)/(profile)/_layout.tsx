@@ -1,29 +1,28 @@
 import { Tabs } from 'expo-router';
 import { View, StyleSheet } from 'react-native';
-import { HapticTab } from '../../src/components/HapticTab';
-import { IconSymbol } from '../../src/components/ui/IconSymbol';
-import TabBarBackground from '../../src/components/ui/TabBarBackground';
-import { Colors } from '../../constants/Colors';
-import { useColorScheme } from '../../hooks/useColorScheme';
+// import { IconSymbol } from "../../src/components/ui/IconSymbol";
+// import TabBarBackground from "../../src/components/ui/TabBarBackground";
+// import { Colors } from "../../constants/Colors";
+// import { useColorScheme } from "../../hooks/useColorScheme";
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
-import FakeAdMobBanner from '../../src/components/FakeAdMobBanner';
-import InlineAd from '../../src/components/InlineAd';
+// import FakeAdMobBanner from "../../src/components/FakeAdMobBanner";
+// import InlineAd from "../../src/components/InlineAd";
 import Constants from 'expo-constants';
 import React from 'react';
 
 const isExpoGo = Constants.expoConfig?.extra?.EXPO_PUBLIC_IS_EXPO_GO === 'true';
 
 export default function TabLayout() {
-  const colorScheme = useColorScheme();
+  // const colorScheme = useColorScheme();
 
   return (
     <View style={styles.container}>
       <Tabs
         screenOptions={{
-          tabBarActiveTintColor: Colors[colorScheme ?? 'light'].tint,
+          // tabBarActiveTintColor: Colors[colorScheme ?? "light"].tint,
           headerShown: false,
-          tabBarButton: HapticTab,
-          tabBarBackground: TabBarBackground,
+          // tabBarButton: HapticTab, // Removed because HapticTab is missing
+          // tabBarBackground: TabBarBackground,
           tabBarStyle: { paddingBottom: 55 },
         }}
       >
@@ -31,18 +30,14 @@ export default function TabLayout() {
           name="index"
           options={{
             title: 'Home',
-            tabBarIcon: ({ color }) => (
-              <IconSymbol size={35} name="house.fill" color={color} />
-            ),
+            // tabBarIcon: ({ color }) => <IconSymbol size={35} name="house.fill" color={color} />, // Removed missing IconSymbol
           }}
         />
         <Tabs.Screen
           name="explore"
           options={{
             title: 'Explore',
-            tabBarIcon: ({ color }) => (
-              <IconSymbol size={33} name="paperplane.fill" color={color} />
-            ),
+            // tabBarIcon: ({ color }) => <IconSymbol size={33} name="paperplane.fill" color={color} />, // Removed missing IconSymbol
           }}
         />
         <Tabs.Screen
@@ -59,7 +54,7 @@ export default function TabLayout() {
           }}
         />
       </Tabs>
-      {isExpoGo ? <FakeAdMobBanner /> : <InlineAd />}
+      {/* {isExpoGo ? <FakeAdMobBanner /> : <InlineAd />} */}
     </View>
   );
 }

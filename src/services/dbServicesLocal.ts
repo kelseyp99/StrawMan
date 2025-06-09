@@ -1,6 +1,6 @@
 import Realm from 'realm';
+import { realm } from '../realmConfig';
 import {
-  realm,
   GPTResponsesSchema,
   GPTSpecialtiesSchema,
   ActivityLogSchema,
@@ -11,18 +11,17 @@ import {
 import { sendQuestion, sendQuestionForParsing } from './openaiAPI';
 // import { getUID } from '../utils/uidManager';
 import { format } from 'date-fns';
-import { IActivityLog } from './dbServices';
-import { addOrUpdateDiscussion as addOrUpdateDiscussionRouter } from './dbServices';
+// REMOVE: import { addOrUpdateDiscussion as addOrUpdateDiscussionRouter } from './dbServices';
 import React, { useContext } from 'react';
 import { SettingsContext } from '../../app/settings';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as remote from './dbServicesRemote';
+import { ENABLE_DISCUSSION_SYNC, ENABLE_ACTIVITYLOG_SYNC } from './syncConfig';
+import { ActivityLog, Discussion } from './types';
+import { addOrUpdateDiscussion as addOrUpdateDiscussionRouter } from './dbServices';
 
 const APP_VERSION = '1.1.0';
 const APP_ID = 'com.anonymous.lifelog';
-
-// Toggle for synchronization
-const ENABLE_DISCUSSION_SYNC = false;
-const ENABLE_ACTIVITYLOG_SYNC = false;
 
 // Interfaces matching realmConfig.ts schemas
 interface User {
@@ -31,29 +30,6 @@ interface User {
   appId: string;
   timestamp: Date;
   isPaid: boolean;
-}
-
-export interface ActivityLog {
-  id: number;
-  discussionId: number;
-  category: string;
-  description: string;
-  timestamp: Date;
-  cleared: boolean;
-  responseType?: string;
-  synced: boolean;
-  syncTimestamp?: Date;
-}
-
-interface Discussion {
-  id: number;
-  discussionId: number;
-  description: string;
-  timestamp: Date;
-  typeSay: string;
-  cleared: boolean;
-  synced: boolean;
-  syncTimestamp: Date;
 }
 
 export interface Parameters {
@@ -69,7 +45,7 @@ interface Rule {
 }
 
 interface GPTSpecialty {
-  id: number;
+  id: string;
   name: string;
   url: string;
   apiKey: string;
@@ -77,8 +53,8 @@ interface GPTSpecialty {
 }
 
 interface GPTResponse {
-  id: number;
-  discussionId: number;
+  id: string;
+  discussionId: string;
   timestamp: Date;
   prompt: string;
   response: string;
@@ -89,7 +65,7 @@ interface GPTResponse {
 }
 
 interface Alert {
-  id: number;
+  id: string;
   message: string;
   timestamp: Date;
   severity: string;
@@ -115,7 +91,7 @@ interface ActivityLogCloudPayload {
   Operation: string;
   typeSay?: string;
   cleared: boolean;
-  id: number;
+  id: string;
   category: string;
   timestamp: Date;
 }
@@ -139,7 +115,7 @@ interface LastOpenDiscussion {
 //import Realm from 'realm';
 
 interface SyncEntry {
-  id: number;
+  id: string;
   tableName: string;
   operation: 'create' | 'update' | 'delete';
   timestamp: Date;
@@ -149,7 +125,7 @@ export const findDuplicateActivityLog = (
   discussionId: string,
   category: string,
   description: string
-): IActivityLog | null => {
+): ActivityLog | null => {
   if (!realm) throw new Error('Realm not initialized');
   console.log(
     `Checking for duplicate ActivityLog: ${discussionId}, ${category}`
@@ -157,7 +133,7 @@ export const findDuplicateActivityLog = (
 
   try {
     const logs = realm
-      ?.objects<IActivityLog>('ActivityLog')
+      ?.objects<ActivityLog>('ActivityLog')
       .filtered(
         'discussionId == $0 AND category == $1 AND description == $2',
         discussionId,
@@ -182,7 +158,7 @@ export const findDuplicateActivityLog = (
       responseType: log.responseType,
       synced: log.synced,
       syncTimestamp: log.syncTimestamp,
-    } as IActivityLog;
+    } as ActivityLog;
   } catch (error) {
     console.error('Error finding duplicate ActivityLog:', error);
     throw error;
@@ -261,7 +237,7 @@ export async function initializeUser(): Promise<void> {
 export async function createDocument(data: any): Promise<string> {
   if (!realm) throw new Error('Realm not initialized');
   try {
-    const id = new Date().getTime();
+    const id = Date.now().toString();
     realm?.write(() => {
       realm?.create('Document', {
         id,
@@ -271,7 +247,7 @@ export async function createDocument(data: any): Promise<string> {
       });
     });
     console.log('Document created with ID:', id);
-    return id.toString();
+    return id;
   } catch (error) {
     console.error('Error creating document:', error);
     throw error;
@@ -301,7 +277,7 @@ export async function updateDocument(docId: string, data: any): Promise<void> {
   }
   try {
     realm?.write(() => {
-      const doc = realm?.objectForPrimaryKey('Document', Number(docId));
+      const doc = realm?.objectForPrimaryKey('Document', docId);
       if (doc) {
         Object.assign(doc, { ...data, synced: false });
         console.log('Document updated with ID:', docId);
@@ -320,7 +296,7 @@ export async function deleteDocument(docId: string): Promise<void> {
   }
   try {
     realm?.write(() => {
-      const doc = realm?.objectForPrimaryKey('Document', Number(docId));
+      const doc = realm?.objectForPrimaryKey('Document', docId);
       if (doc) {
         realm?.delete(doc);
         console.log('Document deleted with ID:', docId);
@@ -490,7 +466,7 @@ async function getSyncAndPaidStatus() {
 export async function addOrUpdateDiscussion(
   description: string,
   typeSay: string = 'tell',
-  id?: number
+  id?: string
 ): Promise<string> {
   console.log(
     `Adding/updating discussion with ID: ${id}, description: ${description}, typeSay: ${typeSay}`
@@ -502,7 +478,7 @@ export async function addOrUpdateDiscussion(
   const realmInstance = realm;
   try {
     const currentTime = new Date();
-    const discussionId = id || currentTime.getTime();
+    const discussionId = id ? id : Date.now().toString();
     realmInstance.write(() => {
       const discussion = realmInstance.objectForPrimaryKey<Discussion>(
         'Discussion',
@@ -533,10 +509,9 @@ export async function addOrUpdateDiscussion(
     const { syncWithCloud, isPaidCustomer } = await getSyncAndPaidStatus();
     if (syncWithCloud && isPaidCustomer) {
       try {
-        await addOrUpdateDiscussionRemote(description, typeSay, discussionId);
-        console.log(
-          'Remote/cloud sync triggered for discussion:',
-          discussionId
+        // If you need to call the router, throw an error or log a warning here instead.
+        throw new Error(
+          'Router logic should not be called from dbServicesLocal.ts. Refactor your code to call router logic from dbServices.ts or a dedicated router file.'
         );
       } catch (remoteError) {
         console.warn('Remote/cloud sync failed:', remoteError);
@@ -553,11 +528,11 @@ export async function addOrUpdateDiscussion(
   }
 }
 
-// Example function to trigger a remote/cloud addOrUpdateDiscussion via the router
+// Fix addOrUpdateDiscussionRemote to accept string id
 export async function addOrUpdateDiscussionRemote(
   description: string,
   typeSay: string = 'tell',
-  id?: number
+  id?: string
 ): Promise<string> {
   // This will call the router and force remote/cloud logic
   return await addOrUpdateDiscussionRouter(description, typeSay, id, true);
@@ -577,7 +552,7 @@ async function addDiscussion(
       const discussions = realmInstance
         .objects<Discussion>('Discussion')
         .filtered('description == null OR description == ""');
-      if (realm) realm.delete(discussions);
+      realmInstance.delete(discussions);
     });
     const currentTime = new Date();
     const id = currentTime.getTime();
@@ -620,11 +595,19 @@ export async function getDiscussions(
     let discussions = realmInstance
       .objects<Discussion>('Discussion')
       .sorted('timestamp', true);
-    console.log('Discussions fetched:', discussions.length);
+    // Extra debug: log all raw discussions
+    console.log(
+      '[getDiscussions] Raw Realm objects:',
+      discussions.map((d) => ({
+        id: d.id,
+        description: d.description,
+        timestamp: d.timestamp,
+      }))
+    );
     if (discussionId) {
       const discussion = realmInstance.objectForPrimaryKey<Discussion>(
         'Discussion',
-        Number(discussionId)
+        discussionId
       );
       if (discussion) {
         discussions = discussions.filtered(
@@ -644,21 +627,27 @@ export async function getDiscussions(
         )
         .sorted('timestamp', true);
     }
-    return discussions.map((doc) => ({
-      id: doc.id,
-      discussionId: doc.discussionId,
+    const result = discussions.map((doc) => ({
+      id: doc.id.toString(),
+      discussionId: doc.discussionId.toString(),
       description: doc.description,
       typeSay: doc.typeSay,
       cleared: doc.cleared,
       timestamp: format(new Date(doc.timestamp), 'M/d/yy \n h:mm a'),
     }));
+    console.log(
+      '[DEBUG] getDiscussions returning:',
+      result.length,
+      result.slice(0, 3)
+    ); // Show first 3
+    return result;
   } catch (error) {
     console.error('Error getting Discussions:', error);
     return [];
   }
 }
 
-export async function deleteDiscussion(id: number): Promise<void> {
+export async function deleteDiscussion(id: string): Promise<void> {
   if (!realm) {
     console.error('Failed to open Realm instance');
     throw new Error('Failed to open Realm instance');
@@ -668,7 +657,7 @@ export async function deleteDiscussion(id: number): Promise<void> {
     realmInstance.write(() => {
       const discussion = realm?.objectForPrimaryKey<Discussion>(
         'Discussion',
-        id
+        id.toString()
       );
       if (discussion && realm) {
         if (realm) realm.delete(discussion);
@@ -692,8 +681,8 @@ export async function fetchInitialDiscussion(): Promise<any | null> {
     if (discussions.length > 0) {
       const doc = discussions[0];
       return {
-        id: doc.id,
-        discussionId: doc.discussionId || doc.id,
+        id: doc.id.toString(),
+        discussionId: (doc.discussionId || doc.id).toString(),
         description: doc.description,
         timestamp: new Date(),
         typeSay: doc.typeSay || 'ask',
@@ -707,7 +696,7 @@ export async function fetchInitialDiscussion(): Promise<any | null> {
   }
 }
 
-export async function getNextOpenDiscussion(lastVisibleId?: number): Promise<{
+export async function getNextOpenDiscussion(lastVisibleId?: string): Promise<{
   snapshot: any;
   hasMore: boolean;
   lastVisibleDoc: any;
@@ -720,6 +709,7 @@ export async function getNextOpenDiscussion(lastVisibleId?: number): Promise<{
     let discussions = realm
       .objects<Discussion>('Discussion')
       .filtered('cleared == false AND typeSay == "ask"');
+    // If lastVisibleId is provided, filter using string comparison or convert as needed
     if (lastVisibleId) {
       discussions = discussions.filtered('id < $0', lastVisibleId);
     }
@@ -768,8 +758,8 @@ export async function processPendingTells(): Promise<void> {
           }
         }
         realmInstance.create('ActivityLog', {
-          id: new Date().getTime(),
-          discussionId: doc.id,
+          id: Date.now().toString(),
+          discussionId: doc.id.toString(),
           description: doc.description,
           category,
           timestamp: doc.timestamp,
@@ -796,7 +786,7 @@ export async function addQuestionDiscussion(
   }
   const realmInstance = realm;
   try {
-    await addOrUpdateDiscussion(question, 'ask', Number(discussionId));
+    await addOrUpdateDiscussion(question, 'ask', discussionId);
     const gpts_names = ['openAI', 'Gemini', 'ChatGPT', 'Claude', 'DeepSeek'];
     const categories = await getDistinctCategories();
     const response = await sendQuestionForParsing({
@@ -805,11 +795,11 @@ export async function addQuestionDiscussion(
       question,
       discussionId,
     });
-    const id = new Date().getTime();
+    const id = Date.now().toString();
     realmInstance.write(() => {
       realmInstance.create('GPTResponses', {
         id,
-        discussionId: Number(discussionId),
+        discussionId: discussionId.toString(),
         timestamp: new Date(),
         prompt: question,
         response: JSON.stringify(response),
@@ -861,8 +851,8 @@ export async function processUnclearedGPTResponses(): Promise<void> {
           activityLog.synced = false;
         } else {
           realmInstance?.create('ActivityLog', {
-            id: new Date().getTime(),
-            discussionId,
+            id: Date.now().toString(),
+            discussionId: discussionId.toString(),
             category: responseJson.category,
             description: responseJson.parsedDescription,
             timestamp,
@@ -897,7 +887,7 @@ export async function markDiscussionAsCleared(
     realmInstance.write(() => {
       const discussion = realmInstance.objectForPrimaryKey<Discussion>(
         'Discussion',
-        Number(discussionId)
+        discussionId
       );
       if (discussion) {
         discussion.cleared = true;
@@ -920,7 +910,7 @@ export async function clearDiscussion(discussionId: string): Promise<boolean> {
     realmInstance.write(() => {
       const discussion = realmInstance.objectForPrimaryKey<Discussion>(
         'Discussion',
-        Number(discussionId)
+        discussionId
       );
       if (discussion) {
         discussion.cleared = true;
@@ -983,8 +973,8 @@ export async function addOrUpdateActivityLog(): Promise<void> {
           activityLog.synced = false;
         } else {
           realmInstance.create('ActivityLog', {
-            id: new Date().getTime(),
-            discussionId,
+            id: Date.now().toString(),
+            discussionId: discussionId.toString(),
             category,
             description: parsedDescription,
             timestamp,
@@ -1065,15 +1055,15 @@ export async function disperseQuestion(
   try {
     const discussion = realmInstance.objectForPrimaryKey<Discussion>(
       'Discussion',
-      Number(discussionId)
+      discussionId
     );
     if (!discussion) {
       console.log(`No discussion found with ID: ${discussionId}`);
       return undefined;
     }
     const gptResponse = realmInstance.objectForPrimaryKey<GPTResponse>(
-      'GPTResponses',
-      Number(GPT_ResponseId)
+      'GPTResponse',
+      GPT_ResponseId
     );
     if (!gptResponse) {
       console.error('GPT Response not found');
@@ -1093,8 +1083,8 @@ export async function disperseQuestion(
       });
       realmInstance.write(() => {
         realmInstance.create('GPTResponses', {
-          id: new Date().getTime(),
-          discussionId: Number(discussionId),
+          id: Date.now().toString(),
+          discussionId: discussionId.toString(),
           timestamp: new Date(),
           prompt: question,
           response: response.parsedDescription,
@@ -1123,11 +1113,11 @@ export async function addOrUpdateGPTResponse(
   }
   const realmInstance = realm;
   try {
-    const id = new Date().getTime();
+    const id = Date.now().toString();
     realmInstance.write(() => {
       realmInstance.create('GPTResponses', {
         id,
-        discussionId: Number(discussionId),
+        discussionId: discussionId.toString(),
         response,
         responseType,
         timestamp: new Date(),
@@ -1149,7 +1139,7 @@ export async function getGPTResponses(discussionId: string): Promise<any[]> {
   try {
     const responses = realm
       .objects<GPTResponse>('GPTResponses')
-      .filtered('discussionId == $0', Number(discussionId));
+      .filtered('discussionId == $0', discussionId);
     return Array.from(responses);
   } catch (error) {
     console.error('Error getting GPT responses:', error);
@@ -1169,7 +1159,7 @@ export async function getParsedGPTResponses(
       .objects<GPTResponse>('GPTResponses')
       .filtered(
         'discussionId == $0 AND responseType == "parsed answer"',
-        Number(discussionId)
+        discussionId
       );
     return responses.map((doc) => doc.response);
   } catch (error) {
@@ -1187,9 +1177,9 @@ export async function getAIResponse(question: string): Promise<string> {
 }
 
 // Remove syncToCloud and any direct axios calls for remote sync
-const updateRealmSyncStatus = (
+export const updateRealmSyncStatus = (
   tableName: string,
-  id: number,
+  id: string,
   synced: boolean
 ): void => {
   if (!realm) {
@@ -1267,7 +1257,7 @@ export async function deactivateAlertByKey(key: number): Promise<void> {
   }
   try {
     realm.write(() => {
-      const alert = realm?.objectForPrimaryKey<Alert>('Alert', key);
+      const alert = realm?.objectForPrimaryKey<Alert>('Alert', key.toString());
       if (alert) {
         alert.isActive = false;
         alert.synced = false;
@@ -1364,7 +1354,7 @@ export async function restoreLostData(): Promise<void> {
     const realmInstance = realm;
     realmInstance?.write(() => {
       for (const entry of lostData) {
-        const id = Number(entry.id);
+        const id = entry.id.toString();
         const existing = realmInstance?.objectForPrimaryKey<ActivityLog>(
           'ActivityLog',
           id
@@ -1433,7 +1423,7 @@ export async function updateGPTSpecialties(gptSpecialty: {
       const existing = gptSpecialty.id
         ? realm?.objectForPrimaryKey<GPTSpecialty>(
             'GPTSpecialties',
-            gptSpecialty.id
+            gptSpecialty.id.toString()
           )
         : null;
       if (existing) {
@@ -1444,7 +1434,7 @@ export async function updateGPTSpecialties(gptSpecialty: {
       } else {
         const realmInstance = realm;
         realmInstance?.create('GPTSpecialties', {
-          id: new Date().getTime(),
+          id: Date.now().toString(),
           name: gptSpecialty.name,
           url: gptSpecialty.url,
           apiKey: gptSpecialty.apiKey,
@@ -1472,7 +1462,7 @@ export class DatabaseService {
         for (const instruction of instructions) {
           const discussion = realmInstance
             ?.objects<Discussion>('Discussion')
-            .filtered('id == $0', Number(instruction.id))[0];
+            .filtered('id == $0', instruction.id)[0];
           if (discussion) {
             const timestamp = new Date(discussion.timestamp);
             const existingLog = realmInstance
@@ -1514,7 +1504,7 @@ export class DatabaseService {
       const realmInstance = realm;
       const discussion = realmInstance?.objectForPrimaryKey<Discussion>(
         'Discussion',
-        Number(id)
+        id
       );
       return discussion || null;
     } catch (error) {
@@ -1606,7 +1596,7 @@ export class DatabaseService {
     realm.write(() => {
       const created = realm?.create('ActivityLog', {
         ...activityLog,
-        id: new Date().getTime(),
+        id: Date.now().toString(),
       });
       if (created) {
         createdId = String(created.id);
@@ -1617,7 +1607,35 @@ export class DatabaseService {
 }
 // --- STUBS FOR DB SERVICES ---
 export async function getActivityLogs() {
-  return [];
+  if (!realm) {
+    console.error('Failed to open Realm instance');
+    throw new Error('Failed to open Realm instance');
+  }
+  try {
+    const logs = realm.objects('ActivityLog');
+    console.log(
+      `[getActivityLogs] Found ${logs.length} ActivityLog records in Realm.`
+    );
+    // Convert Realm Results to plain JS objects
+    return Array.from(logs).map((log: any) => ({
+      id: log.id,
+      discussionId: log.discussionId,
+      category: log.category,
+      description: log.description,
+      timestamp: log.timestamp,
+      cleared: log.cleared,
+      responseType: log.responseType,
+      synced: log.synced,
+      syncTimestamp: log.syncTimestamp,
+      uid: log.uid,
+      lockedCategory: log.lockedCategory,
+      lockedDescription: log.lockedDescription,
+      attachedFile: log.attachedFile,
+    }));
+  } catch (error) {
+    console.error('Error getting ActivityLogs:', error);
+    return [];
+  }
 }
 export async function getParameters() {
   return [];
@@ -1675,7 +1693,7 @@ export const logChange = (
  * @param filter - Optional filter object to query ChangeLog entries.
  * @param filter.synced - Filter by sync status (true/false).
  * @param filter.tableName - Filter by table name (e.g., 'ActivityLog').
- * @param filter.operation - Filter by operation type ('create', 'update', 'delete').
+ * @param filter.operation - Filter by operation type ('create', 'update' | 'delete').
  * @param sortBy - Optional field to sort by (default: 'timestamp').
  * @param sortAscending - Sort direction (default: false for descending).
  * @returns An array of ChangeLog entries matching the criteria.
@@ -1850,66 +1868,53 @@ export async function syncToCloud(
   payload?: any,
   method?: 'POST' | 'PUT' | 'DELETE'
 ): Promise<void> {
-  // 1. Upload unsynced local records
+  // 1. Upload unsynced local records to Firestore using the remote sync function
   if (!realm) throw new Error('Realm not initialized');
   const unsynced = realm.objects(tableName).filtered('synced == false');
-  for (const record of unsynced) {
+  const unsyncedRows = Array.from(unsynced);
+  if (unsyncedRows.length > 0) {
     try {
-      // TODO: Replace with your router/remote sync call
-      // await addOrUpdateDiscussionRemote(...); or similar for ActivityLog
-      // Example:
-      // await addOrUpdateDiscussionRouter(record.description, record.typeSay, record.id, true);
+      await remote.syncRealmRowsToFirestore(tableName, unsyncedRows);
       // Mark as synced if successful
       realm.write(() => {
-        record.synced = true;
-        record.syncTimestamp = new Date();
+        for (const record of unsyncedRows) {
+          record.synced = true;
+          record.syncTimestamp = new Date();
+        }
       });
     } catch (err) {
       console.warn(
-        `[SYNC] Failed to sync ${tableName} record ${record.id}:`,
+        `[SYNC] Failed to sync ${tableName} records to Firestore:`,
         err
       );
     }
   }
-
   // 2. Download new/updated cloud records not in local
-  // TODO: Replace with your cloud fetch API
-  // const cloudRecords = await fetchCloudRecords(tableName);
-  const cloudRecords: any[] = [];
-  for (const cloudRecord of cloudRecords) {
-    const local = realm.objectForPrimaryKey(tableName, cloudRecord.id);
-    if (!local) {
-      // Not in local, add it
-      realm.write(() => {
-        realm?.create(tableName, {
-          ...cloudRecord,
-          synced: true,
-          syncTimestamp: new Date(),
-        });
-      });
-      // 3. If not in changelog and not deleted locally, add changelog entry
-      if (
-        !wasDeletedLocally(cloudRecord.id) &&
-        !changelogHasEntry(tableName, cloudRecord.id)
-      ) {
-        addChangeLogEntry(tableName, cloudRecord.id, 'create');
-      }
-    }
-  }
+  // NOTE: This is now handled by syncFromRemote and syncTableFromRemote logic.
+  // If you need to pull from Firestore, use those helpers instead.
 
-  // 4. Optionally, handle deletions (not shown here)
-  // TODO: Handle deletions: remove local records that were deleted in the cloud
+  // --- LEGACY ACTIVITYLOG SYNC LOGIC ---
+  // If you have downloaded legacy ActivityLog rows from the cloud (e.g., from Firestore),
+  // ensure they are written to Realm so they appear in the app UI.
+  // Example usage (replace 'legacyRows' with your downloaded array):
+  //   await syncTableFromRemote('ActivityLog', legacyRows);
+  // This will insert/update all legacy ActivityLog rows into Realm.
 }
-
 // Helper stubs for changelog/deletion logic
 function wasDeletedLocally(id: string | number): boolean {
-  // TODO: Implement logic to check if a record was deleted locally (e.g., check ChangeLog for a delete entry)
-  return false;
+  if (!realm) throw new Error('Realm not initialized');
+  const deleted = realm
+    .objects('ChangeLog')
+    .filtered('rowId == $0 AND operation == "delete"', String(id));
+  return deleted.length > 0;
 }
 
 function changelogHasEntry(tableName: string, id: string | number): boolean {
-  // TODO: Implement logic to check if ChangeLog already has an entry for this record
-  return false;
+  if (!realm) throw new Error('Realm not initialized');
+  const entry = realm
+    .objects('ChangeLog')
+    .filtered('tableName == $0 AND rowId == $1', tableName, String(id));
+  return entry.length > 0;
 }
 
 function addChangeLogEntry(
@@ -1917,5 +1922,286 @@ function addChangeLogEntry(
   id: string | number,
   operation: 'create' | 'update' | 'delete'
 ) {
-  // TODO: Implement logic to add a ChangeLog entry
+  if (!realm) throw new Error('Realm not initialized');
+  const realmInstance = realm;
+  const entryId = `${tableName}_${id}_${operation}_${Date.now()}`;
+  realmInstance.write(() => {
+    realmInstance.create('ChangeLog', {
+      id: entryId,
+      tableName,
+      rowId: String(id),
+      operation,
+      timestamp: new Date(),
+      synced: false,
+    });
+  });
 }
+
+// --- EXPORT SYNC FUNCTION FOR LEGACY DATA ---
+export async function syncTableFromRemote(tableName: string, remote: any) {
+  console.log(`[SYNC] syncTableFromRemote called for table: ${tableName}`);
+  if (!realm) {
+    console.error('[SYNC] Realm not initialized in syncTableFromRemote');
+    throw new Error('Realm not initialized');
+  }
+  const realmInstance = realm;
+  if (!remote || !Array.isArray(remote)) {
+    console.warn('[SYNC] No remote data provided or not an array:', remote);
+    return;
+  }
+  console.log(
+    `[SYNC] Remote data received (${remote.length} records):`,
+    remote.slice(0, 3)
+  ); // Show first 3 for brevity
+  try {
+    const beforeCount = realmInstance.objects(tableName).length;
+    let written = 0;
+    let skipped = 0;
+    realmInstance.write(() => {
+      for (const row of remote) {
+        const record = ensureStringIds(row);
+        // Only require id, skip all other checks
+        if (!record.id) {
+          console.warn(`[SYNC] Skipping record missing required id:`, record);
+          skipped++;
+          continue;
+        }
+        try {
+          // Debug: log each record before writing
+          console.log(`[SYNC] Writing record to Realm:`, record);
+          realmInstance.create(tableName, record, Realm.UpdateMode.Modified);
+          written++;
+        } catch (err) {
+          console.error(`[SYNC] Error writing record to Realm:`, record, err);
+          skipped++;
+        }
+      }
+    });
+    const afterCount = realmInstance.objects(tableName).length;
+    console.log(
+      `[SYNC] After sync, Realm has ${afterCount} records in ${tableName} (before: ${beforeCount}, written: ${written}, skipped: ${skipped})`
+    );
+  } catch (error) {
+    console.error('[SYNC] Error writing remote data to Realm:', error);
+    throw error;
+  }
+}
+
+// Helper: ensure a field is a JS Date (from Firestore Timestamp, string, or number)
+function ensureDateField(obj: any, field: string) {
+  if (obj[field]) {
+    if (typeof obj[field].toDate === 'function') {
+      obj[field] = obj[field].toDate();
+    } else if (
+      typeof obj[field] === 'number' ||
+      typeof obj[field] === 'string'
+    ) {
+      obj[field] = new Date(obj[field]);
+    }
+  }
+}
+
+export async function importLegacyActivityLogs(
+  rawRows: any[],
+  defaultCategory: string = 'uncategorized',
+  defaultTimestamp: Date | (() => Date) = () => new Date()
+) {
+  if (!Array.isArray(rawRows) || rawRows.length === 0) {
+    console.warn('[importLegacyActivityLogs] No data provided.');
+    return;
+  }
+  // Map Firebase fields to Realm schema, import ALL rows regardless of cleared
+  const legacyRows = rawRows.map((row) => {
+    // Convert Firestore Timestamp to Date if needed
+    ensureDateField(row, 'timestamp');
+    ensureDateField(row, 'syncTimestamp');
+    return {
+      id: String(row.activityLogId || row.id),
+      discussionId: String(row.discussionID || row.discussionId),
+      description: row.description || '',
+      category: row.category || defaultCategory,
+      timestamp: row.timestamp
+        ? row.timestamp
+        : typeof defaultTimestamp === 'function'
+        ? defaultTimestamp()
+        : defaultTimestamp,
+      cleared: row.cleared !== undefined ? row.cleared : false, // preserve cleared if present
+      synced: false,
+      responseType: row.responseType || 'tell',
+      syncTimestamp: row.syncTimestamp ? row.syncTimestamp : undefined,
+      uid: row.uid,
+    };
+  });
+  // Log a preview
+  console.log(
+    '[importLegacyActivityLogs] Mapped rows:',
+    legacyRows.slice(0, 3)
+  );
+  // Import into Realm
+  await syncTableFromRemote('ActivityLog', legacyRows);
+  // Add ChangeLog entries for each imported row
+  for (const row of legacyRows) {
+    addChangeLogEntry('ActivityLog', row.id, 'create');
+  }
+  // Debug print all ActivityLogs after import
+  await debugPrintAllActivityLogs();
+}
+
+export async function importLegacyDiscussions(
+  rawRows: any[],
+  defaultTypeSay: string = 'tell',
+  defaultTimestamp: Date | (() => Date) = () => new Date()
+) {
+  if (!Array.isArray(rawRows) || rawRows.length === 0) {
+    console.warn('[importLegacyDiscussions] No data provided.');
+    return;
+  }
+  // Map Firebase fields to Realm schema, import ALL rows regardless of cleared
+  const legacyRows = rawRows.map((row) => {
+    ensureDateField(row, 'timestamp');
+    ensureDateField(row, 'syncTimestamp');
+    return {
+      id: String(row.discussionId || row.id),
+      discussionId: String(row.discussionId || row.id),
+      description: row.description || '',
+      typeSay: row.typeSay || defaultTypeSay,
+      cleared: row.cleared !== undefined ? row.cleared : false, // preserve cleared if present
+      timestamp: row.timestamp
+        ? row.timestamp
+        : typeof defaultTimestamp === 'function'
+        ? defaultTimestamp()
+        : defaultTimestamp,
+      synced: false,
+      syncTimestamp: row.syncTimestamp ? row.syncTimestamp : undefined,
+      uid: row.uid,
+    };
+  });
+  console.log('[importLegacyDiscussions] Mapped rows:', legacyRows.slice(0, 3));
+  // Import into Realm
+  await syncTableFromRemote('Discussion', legacyRows);
+  // Add ChangeLog entries for each imported row
+  for (const row of legacyRows) {
+    addChangeLogEntry('Discussion', row.id, 'create');
+  }
+  // Debug print all Discussions after import
+  await debugPrintAllDiscussions();
+}
+
+/**
+ * Debug utility to print all ActivityLog records in Realm.
+ */
+export async function debugPrintAllActivityLogs() {
+  if (!realm) {
+    console.error('[debugPrintAllActivityLogs] Realm not initialized');
+    return;
+  }
+  try {
+    const logs = realm.objects('ActivityLog');
+    console.log(
+      `[debugPrintAllActivityLogs] Found ${logs.length} ActivityLog records in Realm.`
+    );
+    for (const log of logs) {
+      console.log('[ActivityLog]', {
+        id: log.id,
+        discussionId: log.discussionId,
+        category: log.category,
+        description: log.description,
+        timestamp: log.timestamp,
+        cleared: log.cleared,
+        synced: log.synced,
+      });
+    }
+  } catch (error) {
+    console.error('[debugPrintAllActivityLogs] Error:', error);
+  }
+}
+
+/**
+ * Debug utility to print all Discussion records in Realm.
+ */
+export async function debugPrintAllDiscussions() {
+  if (!realm) {
+    console.error('[debugPrintAllDiscussions] Realm not initialized');
+    return;
+  }
+  try {
+    const discussions = realm.objects('Discussion');
+    console.log(
+      `[debugPrintAllDiscussions] Found ${discussions.length} Discussion records in Realm.`
+    );
+    for (const d of discussions) {
+      console.log('[Discussion]', {
+        id: d.id,
+        discussionId: d.discussionId,
+        description: d.description,
+        typeSay: d.typeSay,
+        cleared: d.cleared,
+        timestamp: d.timestamp,
+        synced: d.synced,
+      });
+    }
+  } catch (error) {
+    console.error('[debugPrintAllDiscussions] Error:', error);
+  }
+}
+
+// --- TEMPORARY TERMINAL PRINT FUNCTION ---
+/**
+ * Prints all ActivityLog and Discussion data to the terminal (Node/Metro console).
+ * Call this from anywhere in the app to dump all data for verification.
+ */
+export async function printAllRealmDataToTerminal() {
+  if (!realm) {
+    console.error('[printAllRealmDataToTerminal] Realm not initialized');
+    return;
+  }
+  try {
+    const logs = realm.objects('ActivityLog');
+    const discussions = realm.objects('Discussion');
+    console.log('================= ActivityLog =================');
+    for (const log of logs) {
+      console.log('[ActivityLog]', {
+        id: log.id,
+        discussionId: log.discussionId,
+        category: log.category,
+        description: log.description,
+        timestamp: log.timestamp,
+        cleared: log.cleared,
+        synced: log.synced,
+        responseType: log.responseType,
+        uid: log.uid,
+        lockedCategory: log.lockedCategory,
+        lockedDescription: log.lockedDescription,
+        attachedFile: log.attachedFile,
+      });
+    }
+    console.log('================= Discussion =================');
+    for (const d of discussions) {
+      console.log('[Discussion]', {
+        id: d.id,
+        discussionId: d.discussionId,
+        description: d.description,
+        typeSay: d.typeSay,
+        cleared: d.cleared,
+        timestamp: d.timestamp,
+        synced: d.synced,
+      });
+    }
+    console.log('================= END REALM DUMP =================');
+  } catch (error) {
+    console.error('[printAllRealmDataToTerminal] Error:', error);
+  }
+}
+
+// Helper: ensure all IDs are strings (for Realm compatibility)
+export function ensureStringIds(row: any): any {
+  if (!row) return row;
+  const out: any = { ...row };
+  if (out.id !== undefined) out.id = String(out.id);
+  if (out.discussionId !== undefined)
+    out.discussionId = String(out.discussionId);
+  return out;
+}
+
+// Export addChangeLogEntry for use in scripts
+export { addChangeLogEntry };
