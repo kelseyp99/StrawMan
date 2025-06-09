@@ -31,6 +31,8 @@ import {
   printAllRealmDataToTerminal,
   importLegacyActivityLogs,
   importLegacyDiscussions,
+  debugPrintAllActivityLogs,
+  debugPrintAllDiscussions,
 } from '../../src/services/dbServicesLocal';
 import { transformInput } from '../../src/services/phraseProcessor';
 import {
@@ -1098,7 +1100,7 @@ export default function AskJanet() {
       <Header />
       <InputField input={input} onChange={handleInputChange} />
       <ActionButtons isQuestion={isQuestion} onSubmit={handleSubmit} />
-      {/* --- TEMP BUTTON: Print all Realm data to terminal --- */}
+      {/* --- TEMP BUTTONS: Print ActivityLog and Discussion separately --- */}
       <View
         style={{
           flexDirection: 'row',
@@ -1113,16 +1115,34 @@ export default function AskJanet() {
             borderRadius: 5,
             marginRight: 10,
           }}
-          onPress={() => {
-            printAllRealmDataToTerminal();
+          onPress={async () => {
+            await debugPrintAllActivityLogs();
             Alert.alert(
               'Realm Dump',
-              'Printed all ActivityLog and Discussion data to terminal.'
+              'Printed all ActivityLog data to terminal.'
             );
           }}
         >
           <Text style={{ color: '#fff', fontWeight: 'bold' }}>
-            Print Realm Data
+            Print ActivityLog
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={{
+            backgroundColor: '#28A745',
+            padding: 10,
+            borderRadius: 5,
+          }}
+          onPress={async () => {
+            await debugPrintAllDiscussions();
+            Alert.alert(
+              'Realm Dump',
+              'Printed all Discussion data to terminal.'
+            );
+          }}
+        >
+          <Text style={{ color: '#fff', fontWeight: 'bold' }}>
+            Print Discussion
           </Text>
         </TouchableOpacity>
       </View>

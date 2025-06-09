@@ -275,9 +275,26 @@ const MainComponent: React.FC = () => {
     try {
       setLoading(true);
       console.log('Fetching data...');
-      const activityLogData = (await getActivityLogs())
-        .filter((doc: any) => doc.uid === uid)
-        .sort((a: any, b: any) => b.timestamp - a.timestamp);
+      const activityLogRaw = await getActivityLogs();
+      console.log('[DEBUG] All ActivityLog from Realm:', activityLogRaw);
+      // TEMP: Remove uid filter for debug
+      // const activityLogData = activityLogRaw.filter((doc: any) => doc.uid === uid)
+      // Convert Date objects to string for rendering
+      const activityLogData = activityLogRaw
+        .map((log: any) => ({
+          ...log,
+          timestamp:
+            log.timestamp instanceof Date
+              ? format(log.timestamp, 'M/d/yy \n h:mm a')
+              : typeof log.timestamp === 'string'
+              ? log.timestamp
+              : String(log.timestamp),
+        }))
+        .sort(
+          (a: any, b: any) =>
+            new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+        );
+      console.log('[DEBUG] Filtered ActivityLog for uid', uid, activityLogData);
       const discussionData = (await getDiscussions())
         .map(mapDiscussionRow)
         .sort((a: any, b: any) => b.rawTimestamp - a.rawTimestamp);
