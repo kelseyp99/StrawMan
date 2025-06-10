@@ -59,6 +59,7 @@ import * as DocumentPicker from 'expo-document-picker';
 import * as dbServices from '../../src/services/dbServices';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSync } from '../context/SyncContext';
+import { extractAndImportLegacyFirestoreData } from '../../src/services/dbServicesRemote';
 
 // App version from app.json
 const APP_VERSION = '1.1.0';
@@ -1100,15 +1101,15 @@ export default function AskJanet() {
       <Header />
       <InputField input={input} onChange={handleInputChange} />
       <ActionButtons isQuestion={isQuestion} onSubmit={handleSubmit} />
-      {/* --- TEMP BUTTONS: Print ActivityLog and Discussion separately --- */}
-      <View
+      {/* --- TEMP BUTTONS: Print ActivityLog and Discussion separately, and copy Realm file --- */}
+      {/* <View
         style={{
           flexDirection: 'row',
           justifyContent: 'center',
           marginBottom: 10,
         }}
       >
-        <TouchableOpacity
+          <TouchableOpacity
           style={{
             backgroundColor: '#007AFF',
             padding: 10,
@@ -1123,15 +1124,16 @@ export default function AskJanet() {
             );
           }}
         >
-          <Text style={{ color: '#fff', fontWeight: 'bold' }}>
+          {/*  <Text style={{ color: '#fff', fontWeight: 'bold' }}>
             Print ActivityLog
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
+          </Text> }
+       </TouchableOpacity> */}
+      {/*  <TouchableOpacity
           style={{
             backgroundColor: '#28A745',
             padding: 10,
             borderRadius: 5,
+            marginRight: 10,
           }}
           onPress={async () => {
             await debugPrintAllDiscussions();
@@ -1145,7 +1147,53 @@ export default function AskJanet() {
             Print Discussion
           </Text>
         </TouchableOpacity>
+        <TouchableOpacity
+          style={{
+            backgroundColor: '#FF9500',
+            padding: 10,
+            borderRadius: 5,
+          }}
+          onPress={async () => {
+            try {
+              const src = RNFS.DocumentDirectoryPath + '/lifelog.realm';
+              const dest = 'C:/Users/philk/Downloads/lifelog.realm';
+              await RNFS.copyFile(src, dest);
+              Alert.alert('Realm File', 'Copied lifelog.realm to Downloads!');
+            } catch (e) {
+              Alert.alert('Copy Failed', String(e));
+            }
+          }}
+        >
+          {
+            <Text style={{ color: '#fff', fontWeight: 'bold' }}>
+              Copy Realm to Downloads
+            </Text>
+          }
+        </TouchableOpacity> 
       </View>
+      {/* NEW: Legacy Import All Tables Button */}
+      {/*  <TouchableOpacity
+        style={{
+          backgroundColor: '#6C63FF',
+          padding: 10,
+          borderRadius: 5,
+        }}
+        onPress={async () => {
+          try {
+            const result = await extractAndImportLegacyFirestoreData();
+            Alert.alert(
+              'Legacy Import Complete',
+              `Imported ${result.discussionCount} Discussion and ${result.activityLogCount} ActivityLog records.`
+            );
+          } catch (e) {
+            Alert.alert('Legacy Import Failed', String(e));
+          }
+        }}
+      >
+        <Text style={{ color: '#fff', fontWeight: 'bold' }}>
+          Import All Legacy Firestore Tables
+        </Text>
+      </TouchableOpacity> */}
       <FlatList
         data={history}
         keyExtractor={(item, index) => `${item.text}-${index}`}
@@ -1304,12 +1352,7 @@ export default function AskJanet() {
               >
                 <Text style={styles.modalButtonText}>Add</Text>
               </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.modalButton, styles.confirmButton]}
-                onPress={handleDialogConfirm}
-              >
-                <Text style={styles.modalButtonText}>Confirm</Text>
-              </TouchableOpacity>
+              {/* Confirm button removed */}
             </View>
           </View>
         </View>

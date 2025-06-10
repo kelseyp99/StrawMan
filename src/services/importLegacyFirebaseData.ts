@@ -34,8 +34,14 @@ export async function importLegacyFirebaseDataWithChangelog(filePath: string) {
     discussions = data.discussions.length;
     for (const d of data.discussions) {
       const discussion = ensureStringIds(d);
-      addChangeLogEntry('Discussion', discussion.id, 'create');
-      await createAndSyncChangelogEntry('Discussion', discussion.id, 'create');
+      const ts = getRowTimestamp(discussion);
+      addChangeLogEntry('Discussion', discussion.id, 'create', ts);
+      await createAndSyncChangelogEntry(
+        'Discussion',
+        discussion.id,
+        'create',
+        ts
+      );
       changelogEntries++;
     }
   }
@@ -46,11 +52,13 @@ export async function importLegacyFirebaseDataWithChangelog(filePath: string) {
     activityLogs = data.activityLogs.length;
     for (const a of data.activityLogs) {
       const activityLog = ensureStringIds(a);
-      addChangeLogEntry('ActivityLog', activityLog.id, 'create');
+      const ts = getRowTimestamp(activityLog);
+      addChangeLogEntry('ActivityLog', activityLog.id, 'create', ts);
       await createAndSyncChangelogEntry(
         'ActivityLog',
         activityLog.id,
-        'create'
+        'create',
+        ts
       );
       changelogEntries++;
     }

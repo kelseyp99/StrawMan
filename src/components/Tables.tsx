@@ -34,6 +34,7 @@ import {
   createRuleCandidate,
 } from '@/services/dbServices';
 import { processPhrase } from '@/services/phraseProcessor';
+import { extractAndImportLegacyFirestoreData } from '../services/dbServicesRemote';
 
 // Screen width for responsive design
 const SCREEN_WIDTH = Dimensions.get('window').width;
@@ -255,6 +256,8 @@ const MainComponent: React.FC = () => {
     (DiscussionCount & { description: string })[]
   >([]);
   const [uid, setUid] = useState<string | null>(null);
+  // Add state for legacy import loading
+  const [importingLegacy, setImportingLegacy] = useState(false);
 
   // Fetch UID once on mount
   useEffect(() => {
@@ -570,7 +573,10 @@ const MainComponent: React.FC = () => {
     console.log('Filtered data before applying filters:', sortedData());
     const data = sortedData().filter((row) =>
       Object.entries(filters).every(([column, value]) =>
-        row[column]?.toString().toLowerCase().includes(value.toLowerCase())
+        row[column]
+          ?.toString()
+          .toLowerCase()
+          .includes((value || '').toString().toLowerCase())
       )
     );
     console.log(
@@ -1011,6 +1017,23 @@ const MainComponent: React.FC = () => {
     fetchData,
   ]);
 
+  // Handler for legacy import button
+  const handleLegacyImport = async () => {
+    setImportingLegacy(true);
+    try {
+      const result = await extractAndImportLegacyFirestoreData();
+      Alert.alert(
+        'Legacy Import Complete',
+        `Imported ${result.discussionCount} Discussion and ${result.activityLogCount} ActivityLog records.`
+      );
+      await fetchData();
+    } catch (e: any) {
+      Alert.alert('Legacy Import Failed', e.message || String(e));
+    } finally {
+      setImportingLegacy(false);
+    }
+  };
+
   const renderRightActions = useCallback(
     (tableName: string, itemId: string) => (
       <TouchableOpacity
@@ -1090,11 +1113,24 @@ const MainComponent: React.FC = () => {
     );
   }
 
+  console.log('Rendering MainComponent - debug');
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       style={styles.container}
     >
+      {/* Top action/debug buttons: do not include Confirm button */}
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={{
+          flexDirection: 'row',
+          justifyContent: 'center',
+          marginVertical: 8,
+        }}
+      >
+        {/* Add any other original top buttons here as needed, but do not add Confirm */}
+      </ScrollView>
       {initialized && tables.length > 0 ? (
         <View style={styles.tableContainer}>
           <View style={styles.navigation}>
@@ -1129,7 +1165,11 @@ const MainComponent: React.FC = () => {
                   key={col.accessor}
                   style={[styles.filterInput, { flex: col.flex }]}
                   placeholder={`Filter ${col.Header}`}
-                  value={filters[col.accessor] || ''}
+                  value={
+                    typeof filters[col.accessor] === 'string'
+                      ? filters[col.accessor]
+                      : filters[col.accessor]?.toString() || ''
+                  }
                   onChangeText={(text) =>
                     setFilters((prev) => ({ ...prev, [col.accessor]: text }))
                   }
@@ -1391,13 +1431,15 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: 10,
     backgroundColor: '#f9f9f9',
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: 'flex-start', // align content to top
+    // Removed alignItems: 'flex-start' to allow full width
   },
   tableContainer: {
-    flex: 1,
+    // flex: 1, // Removed to prevent vertical stretching
     width: SCREEN_WIDTH - 20,
     alignSelf: 'center',
+    justifyContent: 'flex-start', // ensure table content starts at top
+    alignItems: 'flex-start',
   },
   navigation: {
     flexDirection: 'row',
@@ -1469,8 +1511,9 @@ const styles = StyleSheet.create({
     textAlign: 'left',
   },
   tableList: {
-    flex: 1,
+    // flex: 1, // Removed to prevent vertical stretching
     width: '100%',
+    alignSelf: 'stretch',
   },
   deleteButton: {
     backgroundColor: '#ff4444',

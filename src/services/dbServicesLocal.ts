@@ -1920,18 +1920,21 @@ function changelogHasEntry(tableName: string, id: string | number): boolean {
 function addChangeLogEntry(
   tableName: string,
   id: string | number,
-  operation: 'create' | 'update' | 'delete'
+  operation: 'create' | 'update' | 'delete',
+  timestamp?: Date
 ) {
   if (!realm) throw new Error('Realm not initialized');
   const realmInstance = realm;
-  const entryId = `${tableName}_${id}_${operation}_${Date.now()}`;
+  const entryId = `${tableName}_${id}_${operation}_${
+    timestamp ? timestamp.getTime() : Date.now()
+  }`;
   realmInstance.write(() => {
     realmInstance.create('ChangeLog', {
       id: entryId,
       tableName,
       rowId: String(id),
       operation,
-      timestamp: new Date(),
+      timestamp: timestamp || new Date(),
       synced: false,
     });
   });
@@ -2041,7 +2044,18 @@ export async function importLegacyActivityLogs(
   await syncTableFromRemote('ActivityLog', legacyRows);
   // Add ChangeLog entries for each imported row
   for (const row of legacyRows) {
-    addChangeLogEntry('ActivityLog', row.id, 'create');
+    const ts = row.syncTimestamp
+      ? new Date(row.syncTimestamp)
+      : row.timestamp
+      ? new Date(row.timestamp)
+      : undefined;
+    if (!ts) {
+      console.warn(
+        `[importLegacyActivityLogs] Row with id ${row.id} missing valid timestamp, skipping changelog entry.`
+      );
+      continue;
+    }
+    addChangeLogEntry('ActivityLog', row.id, 'create', ts);
   }
   // Debug print all ActivityLogs after import
   await debugPrintAllActivityLogs();
@@ -2081,7 +2095,18 @@ export async function importLegacyDiscussions(
   await syncTableFromRemote('Discussion', legacyRows);
   // Add ChangeLog entries for each imported row
   for (const row of legacyRows) {
-    addChangeLogEntry('Discussion', row.id, 'create');
+    const ts = row.syncTimestamp
+      ? new Date(row.syncTimestamp)
+      : row.timestamp
+      ? new Date(row.timestamp)
+      : undefined;
+    if (!ts) {
+      console.warn(
+        `[importLegacyDiscussions] Row with id ${row.id} missing valid timestamp, skipping changelog entry.`
+      );
+      continue;
+    }
+    addChangeLogEntry('Discussion', row.id, 'create', ts);
   }
   // Debug print all Discussions after import
   await debugPrintAllDiscussions();

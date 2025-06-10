@@ -31,7 +31,7 @@ import { getUID } from '../utils/uidManager';
 import { format } from 'date-fns';
 import { sendQuestionForParsing, sendQuestion } from './openaiAPI';
 import { ActivityLog } from './types';
-// import { getRules } from './RulesService';
+import { addChangeLogEntry } from './dbServicesLocal';
 
 // Constants to match dbServicesLocal.ts
 const ENABLE_ACTIVITYLOG_SYNC = false;
@@ -1480,18 +1480,18 @@ export async function getAIResponse(question: string): Promise<string> {
 export async function createAndSyncChangelogEntry(
   tableName: string,
   rowId: string,
-  operation: 'create' | 'update' | 'delete'
+  operation: 'create' | 'update' | 'delete',
+  timestamp?: Date
 ): Promise<any> {
   const uid = await getUID();
   if (!uid) throw new Error('No UID available for changelog operation');
-  const timestamp = new Date();
-  // 1. Create changelog entry in Firestore
+  const ts = timestamp || new Date();
   const changelogEntry = {
-    id: `${tableName}_${rowId}_${timestamp.getTime()}`,
+    id: `${tableName}_${rowId}_${ts.getTime()}`,
     tableName,
     rowId,
     operation,
-    timestamp,
+    timestamp: ts,
     uid,
   };
   await setDoc(
@@ -1499,7 +1499,6 @@ export async function createAndSyncChangelogEntry(
     changelogEntry
   );
   console.log('Created changelog entry in Firestore:', changelogEntry);
-  // 2. Return the new changelog entry for local/router to write to Realm
   return changelogEntry;
 }
 
@@ -1955,7 +1954,7 @@ export async function updateRowIfNewer(
   data: any
 ): Promise<boolean> {
   const uid = await getUID();
-  if (!uid) throw new Error('No UID available for updateRowIfNewer');
+  if (!uid) throw new Error('No UID available');
   const docRef = doc(db, `Users/${uid}/${tableName}`, rowId);
   const docSnap = await getDoc(docRef);
   const incomingTS = new Date(data.syncTimestamp).getTime();
@@ -1986,7 +1985,7 @@ export async function deleteRowIfNewer(
   deletedAt: Date
 ): Promise<boolean> {
   const uid = await getUID();
-  if (!uid) throw new Error('No UID available for deleteRowIfNewer');
+  if (!uid) throw new Error('No UID available');
   const docRef = doc(db, `Users/${uid}/${tableName}`, rowId);
   const docSnap = await getDoc(docRef);
   const incomingTS = deletedAt.getTime();
@@ -2064,4 +2063,141 @@ function ensureDateField(obj: any, field: string) {
       obj[field] = new Date(obj[field]);
     }
   }
+}
+
+/**
+ * Extract unique records from root-level Firestore 'Discussion' and 'ActivityLog', deduplicate by timestamp,
+ * insert into both Realm and user-level Firestore, and create changelog entries with correct historical timestamps.
+ * No deletion of Firebase records. For 'Discussion', can be run continuously; for 'ActivityLog', one-time.
+ */
+export async function extractAndImportLegacyFirestoreData({
+  continuous = false,
+}: { continuous?: boolean } = {}) {
+  const uid = await getUID();
+  if (!uid) throw new Error('No UID available');
+  if (!realm) throw new Error('Realm not initialized');
+
+  // Helper: deduplicate by timestamp
+  function deduplicateByTimestamp<T extends { timestamp?: any }>(
+    rows: T[]
+  ): T[] {
+    const seen = new Set<number>();
+    return rows.filter((row) => {
+      let ts: number = 0;
+      if (row.timestamp?.toMillis) ts = row.timestamp.toMillis();
+      else if (row.timestamp instanceof Date) ts = row.timestamp.getTime();
+      else if (typeof row.timestamp === 'number') ts = row.timestamp;
+      else if (typeof row.timestamp === 'string')
+        ts = new Date(row.timestamp).getTime();
+      if (seen.has(ts)) return false;
+      seen.add(ts);
+      return true;
+    });
+  }
+
+  // Helper: upsert to user-level Firestore
+  async function upsertToUserFirestore(tableName: string, row: any) {
+    const userDocRef = doc(db, `Users/${uid}/${tableName}`, row.id);
+    await setDoc(userDocRef, { ...row, uid }, { merge: true });
+  }
+
+  // Helper: upsert to Realm
+  function upsertToRealm(tableName: string, row: any) {
+    realm!.write(() => {
+      realm!.create(tableName, { ...row }, Realm.UpdateMode.Modified);
+    });
+  }
+
+  // Helper: create changelog entry (local and remote)
+  async function createChangelog(tableName: string, row: any) {
+    const ts = row.syncTimestamp
+      ? new Date(row.syncTimestamp)
+      : row.timestamp
+      ? new Date(row.timestamp)
+      : undefined;
+    if (!ts) {
+      console.warn(
+        `[createChangelog] Row with id ${row.id} missing valid timestamp, skipping changelog entry.`
+      );
+      return;
+    }
+    addChangeLogEntry(tableName, row.id, 'create', ts);
+    await createAndSyncChangelogEntry(tableName, row.id, 'create', ts);
+  }
+
+  // Main extraction logic for a table
+  async function extractTable<
+    T extends {
+      id: string;
+      timestamp?: any;
+      discussionId?: string;
+      discussionID?: string;
+      synced?: boolean;
+      cleared?: boolean;
+      typeSay?: string;
+    }
+  >(tableName: string, rootCollection: string) {
+    const snap = await getDocs(collection(db, rootCollection));
+    let rows: T[] = snap.docs.map(
+      (docSnap) => ({ id: docSnap.id, ...docSnap.data() } as T)
+    );
+    rows = deduplicateByTimestamp(rows);
+    for (const row of rows) {
+      // Ensure discussionId is always set for Realm schema
+      if (tableName === 'Discussion') {
+        row.discussionId = row.discussionId || row.id;
+        row.synced = typeof row.synced === 'boolean' ? row.synced : false;
+        row.cleared = typeof row.cleared === 'boolean' ? row.cleared : false;
+        (row as any).typeSay = (row as any).typeSay || 'tell';
+      } else if (tableName === 'ActivityLog') {
+        row.discussionId = row.discussionId || row.discussionID || row.id;
+        row.synced = typeof row.synced === 'boolean' ? row.synced : false;
+        row.cleared = typeof row.cleared === 'boolean' ? row.cleared : false;
+        (row as any).responseType = (row as any).responseType || 'tell';
+      }
+      // Convert Firestore Timestamp to JS Date ONLY if needed, but NEVER use current date as fallback
+      if (row.timestamp && typeof row.timestamp.toDate === 'function') {
+        row.timestamp = row.timestamp.toDate();
+      } else if (
+        row.timestamp &&
+        typeof row.timestamp === 'object' &&
+        row.timestamp.seconds
+      ) {
+        row.timestamp = new Date(row.timestamp.seconds * 1000);
+      } else if (
+        typeof row.timestamp === 'string' ||
+        typeof row.timestamp === 'number'
+      ) {
+        row.timestamp = new Date(row.timestamp);
+      } else {
+        // If timestamp is missing or invalid, do NOT use current date; instead, skip or log error
+        console.warn(
+          `[extractTable] Row with id ${row.id} is missing a valid timestamp. Skipping.`
+        );
+        continue;
+      }
+      // Upsert to Realm
+      upsertToRealm(tableName, row);
+      // Upsert to user-level Firestore
+      await upsertToUserFirestore(tableName, row);
+      // Create changelog entry
+      await createChangelog(tableName, row);
+    }
+    return rows.length;
+  }
+
+  // Extract from root-level 'Discussion' and 'ActivityLog'
+  const discussionCount = await extractTable('Discussion', 'Discussion');
+  const activityLogCount = await extractTable('ActivityLog', 'ActivityLog');
+
+  // If continuous, set up a timer for 'Discussion' (not implemented here, just call this periodically)
+  if (continuous) {
+    // setTimeout(() => extractAndImportLegacyFirestoreData({ continuous: true }), 5 * 60 * 1000);
+    // Or use a scheduler in your app
+  }
+
+  console.log(
+    `Imported ${discussionCount} unique Discussion and ${activityLogCount} unique ActivityLog records from root-level Firestore.`
+  );
+  return { discussionCount, activityLogCount };
 }
