@@ -15,30 +15,47 @@ import {
   Dimensions,
 } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { format, isToday, parse } from 'date-fns';
-import { getUID } from '../utils/uidManager';
-import Swipeable from 'react-native-gesture-handler/Swipeable';
+import { parse, isToday, format } from 'date-fns';
 import {
-  getDiscussions,
   getActivityLogs,
-  getDistinctCategories,
-  deleteDiscussion,
-  addOrUpdateDiscussion,
-  addOrUpdateActivityLog,
+  getDiscussions,
   markDiscussionAsCleared,
-  findDuplicateActivityLog,
-  addOrUpdateGPTResponse,
-  deleteActivityLog,
   createActivityLog,
   updateActivityLogCategory,
   createRuleCandidate,
-  runAllSyncFunctions,
+  deleteActivityLog,
+  deleteDiscussion,
+  addOrUpdateDiscussion,
   deleteAllLocalAndRemoteRows,
   insertTestRowsAndExit,
-} from '@/services/dbServices';
-import { processPhrase } from '@/services/phraseProcessor';
+  runAllSyncFunctions,
+  getDistinctCategories,
+  addOrUpdateGPTResponse,
+  addOrUpdateActivityLog,
+} from '../services/dbServices';
 import { extractAndImportLegacyFirestoreData } from '../services/dbServicesRemote';
+import { findDuplicateActivityLog } from '../services/phraseProcessor';
 import RNFS from 'react-native-fs';
+import { db } from '../firebaseConfig';
+import {
+  collection,
+  doc,
+  getDocs,
+  deleteDoc,
+  updateDoc,
+  addDoc,
+  DocumentData,
+  QuerySnapshot,
+  query,
+  getDoc,
+  writeBatch,
+  where,
+  Timestamp,
+  onSnapshot,
+} from 'firebase/firestore';
+import { getUID } from '../utils/uidManager';
+import Swipeable from 'react-native-gesture-handler/Swipeable';
+import { processPhrase } from '../services/phraseProcessor';
 
 // Screen width for responsive design
 const SCREEN_WIDTH = Dimensions.get('window').width;
@@ -1415,6 +1432,20 @@ const MainComponent: React.FC = () => {
                     }}
                   />
                 )}
+                <View style={styles.switchContainer}>
+                  <Text style={styles.modalLabel}>Category:</Text>
+                  <TouchableOpacity
+                    style={styles.categorySelectButton}
+                    onPress={() => {
+                      setSelectedActivityLogId(editItemId);
+                      setCategoryModalVisible(true);
+                    }}
+                  >
+                    <Text style={styles.categoryText}>
+                      {activityLogCategories[editItemId] || 'uncategorized'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
                 {/* Always show related Activity Log entries if any */}
                 {relatedActivityLogs.length > 0 && (
                   <View style={styles.relatedLogsContainer}>

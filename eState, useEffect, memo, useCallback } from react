@@ -1,0 +1,1298 @@
+[1mdiff --git a/src/components/Tables.tsx b/src/components/Tables.tsx[m
+[1mindex 8d4d10c..143e078 100644[m
+[1m--- a/src/components/Tables.tsx[m
+[1m+++ b/src/components/Tables.tsx[m
+[36m@@ -15,32 +15,30 @@[m [mimport {[m
+   Dimensions,[m
+ } from 'react-native';[m
+ import DateTimePicker from '@react-native-community/datetimepicker';[m
+[31m-import { format } from 'date-fns';[m
+[31m-import { db } from '../firebaseConfig';[m
+[31m-import {[m
+[31m-  collection,[m
+[31m-  doc,[m
+[31m-  getDocs,[m
+[31m-  deleteDoc,[m
+[31m-  updateDoc,[m
+[31m-  addDoc,[m
+[31m-  DocumentData,[m
+[31m-  QuerySnapshot,[m
+[31m-  query,[m
+[31m-  getDoc,[m
+[31m-  writeBatch,[m
+[31m-  where,[m
+[31m-  Timestamp,[m
+[31m-  onSnapshot,[m
+[31m-} from 'firebase/firestore';[m
+[32m+[m[32mimport { format, isToday, parse } from 'date-fns';[m[41m[m
+ import { getUID } from '../utils/uidManager';[m
+ import Swipeable from 'react-native-gesture-handler/Swipeable';[m
+ import {[m
+[32m+[m[32m  getDiscussions,[m[41m[m
+[32m+[m[32m  getActivityLogs,[m[41m[m
+[32m+[m[32m  getDistinctCategories,[m[41m[m
+[32m+[m[32m  deleteDiscussion,[m[41m[m
+[32m+[m[32m  addOrUpdateDiscussion,[m[41m[m
+   addOrUpdateActivityLog,[m
+[32m+[m[32m  markDiscussionAsCleared,[m[41m[m
+[32m+[m[32m  findDuplicateActivityLog,[m[41m[m
+   addOrUpdateGPTResponse,[m
+[31m-  getDistinctCategories,[m
+[31m-} from '@/services/databaseService';[m
+[31m-import { processPhrase } from '../services/phraseProcessor';[m
+[32m+[m[32m  deleteActivityLog,[m[41m[m
+[32m+[m[32m  createActivityLog,[m[41m[m
+[32m+[m[32m  updateActivityLogCategory,[m[41m[m
+[32m+[m[32m  createRuleCandidate,[m[41m[m
+[32m+[m[32m  runAllSyncFunctions,[m[41m[m
+[32m+[m[32m  deleteAllLocalAndRemoteRows,[m[41m[m
+[32m+[m[32m  insertTestRowsAndExit,[m[41m[m
+[32m+[m[32m} from '@/services/dbServices';[m[41m[m
+[32m+[m[32mimport { processPhrase } from '@/services/phraseProcessor';[m[41m[m
+[32m+[m[32mimport { extractAndImportLegacyFirestoreData } from '../services/dbServicesRemote';[m[41m[m
+[32m+[m[32mimport RNFS from 'react-native-fs';[m[41m[m
+ [m
+ // Screen width for responsive design[m
+ const SCREEN_WIDTH = Dimensions.get('window').width;[m
+[36m@@ -77,6 +75,46 @@[m [minterface SwipeableTablePropsType {[m
+   }[];[m
+ }[m
+ [m
+[32m+[m[32m// Helper to show 'Today' for today's date in Discussion Data[m[41m[m
+[32m+[m[32mfunction mapDiscussionRow(row: any) {[m[41m[m
+[32m+[m[32m  let dateObj: Date;[m[41m[m
+[32m+[m[32m  try {[m[41m[m
+[32m+[m[32m    if (!row.timestamp) {[m[41m[m
+[32m+[m[32m      throw new Error('Missing timestamp');[m[41m[m
+[32m+[m[32m    }[m[41m[m
+[32m+[m[32m    if (typeof row.timestamp === 'string') {[m[41m[m
+[32m+[m[32m      // Try parsing with date-fns for the expected format: M/d/yy  h:mm a[m[41m[m
+[32m+[m[32m      dateObj = parse(row.timestamp, 'M/d/yy  h:mm a', new Date());[m[41m[m
+[32m+[m[32m      if (isNaN(dateObj.getTime())) {[m[41m[m
+[32m+[m[32m        // Try fallback with single space (in case of inconsistent spacing)[m[41m[m
+[32m+[m[32m        dateObj = parse([m[41m[m
+[32m+[m[32m          row.timestamp.replace(/\s+/g, ' '),[m[41m[m
+[32m+[m[32m          'M/d/yy h:mm a',[m[41m[m
+[32m+[m[32m          new Date()[m[41m[m
+[32m+[m[32m        );[m[41m[m
+[32m+[m[32m      }[m[41m[m
+[32m+[m[32m    } else if (typeof row.timestamp === 'number') {[m[41m[m
+[32m+[m[32m      dateObj = new Date(row.timestamp);[m[41m[m
+[32m+[m[32m    } else if (row.timestamp instanceof Date) {[m[41m[m
+[32m+[m[32m      dateObj = row.timestamp;[m[41m[m
+[32m+[m[32m    } else {[m[41m[m
+[32m+[m[32m      throw new Error('Unknown timestamp type');[m[41m[m
+[32m+[m[32m    }[m[41m[m
+[32m+[m[32m    if (isNaN(dateObj.getTime())) {[m[41m[m
+[32m+[m[32m      throw new Error('Invalid date');[m[41m[m
+[32m+[m[32m    }[m[41m[m
+[32m+[m[32m  } catch (e) {[m[41m[m
+[32m+[m[32m    console.warn('[mapDiscussionRow] Invalid timestamp for row', row, e);[m[41m[m
+[32m+[m[32m    dateObj = new Date();[m[41m[m
+[32m+[m[32m  }[m[41m[m
+[32m+[m[32m  return {[m[41m[m
+[32m+[m[32m    ...row,[m[41m[m
+[32m+[m[32m    timestamp: isToday(dateObj) ? 'Today' : format(dateObj, 'M/d/yy \n h:mm a'),[m[41m[m
+[32m+[m[32m    rawTimestamp: dateObj,[m[41m[m
+[32m+[m[32m    cleared: row.cleared ? '✔️ Yes' : '❌ No', // Ensure cleared is formatted for display[m[41m[m
+[32m+[m[32m  };[m[41m[m
+[32m+[m[32m}[m[41m[m
+[32m+[m[41m[m
+ // Memoized RelatedLogEntry[m
+ const RelatedLogEntry = memo([m
+   ({[m
+[36m@@ -92,7 +130,7 @@[m [mconst RelatedLogEntry = memo([m
+     onCategoryChange: (id: string) => void;[m
+     onDelete: (id: string) => void;[m
+   }) => {[m
+[31m-    console.log(`Rendering RelatedLogEntry for ID: ${log.id}`);[m
+[32m+[m[32m    //console.log(`Rendering RelatedLogEntry for ID: ${log.id}`);[m[41m[m
+     return ([m
+       <View style={styles.relatedLogEntry}>[m
+         <Text style={styles.modalLabel}>ID: {log.id}</Text>[m
+[36m@@ -149,7 +187,7 @@[m [mconst RowItem = memo([m
+       currentTypeSay: string[m
+     ) => JSX.Element;[m
+   }) => {[m
+[31m-    console.log(`Rendering RowItem for ID: ${item.id}`);[m
+[32m+[m[32m    // console.log(`Rendering RowItem for ID: ${item.id}`);[m[41m[m
+     return ([m
+       <Swipeable[m
+         renderRightActions={() => renderRightActions(item.tableName, item.id)}[m
+[36m@@ -209,10 +247,7 @@[m [mconst MainComponent: React.FC = () => {[m
+   const [showTimePicker, setShowTimePicker] = useState(false);[m
+   const [editTableName, setEditTableName] = useState('');[m
+   const [editItemId, setEditItemId] = useState('');[m
+[31m-  const [discussionSnapshot, setDiscussionSnapshot] = useState<QuerySnapshot<[m
+[31m-    DocumentData,[m
+[31m-    DocumentData[m
+[31m-  > | null>(null);[m
+[32m+[m[32m  const [discussionSnapshot, setDiscussionSnapshot] = useState<any>(null);[m[41m[m
+   const [relatedActivityLogs, setRelatedActivityLogs] = useState<ActivityLog[]>([m
+     [][m
+   );[m
+[36m@@ -234,6 +269,10 @@[m [mconst MainComponent: React.FC = () => {[m
+     (DiscussionCount & { description: string })[][m
+   >([]);[m
+   const [uid, setUid] = useState<string | null>(null);[m
+[32m+[m[32m  // Add state for legacy import loading[m[41m[m
+[32m+[m[32m  const [importingLegacy, setImportingLegacy] = useState(false);[m[41m[m
+[32m+[m[32m  // Debug: state for debug button loading[m[41m[m
+[32m+[m[32m  const [debugLoading, setDebugLoading] = useState(false);[m[41m[m
+ [m
+   // Fetch UID once on mount[m
+   useEffect(() => {[m
+[36m@@ -248,126 +287,37 @@[m [mconst MainComponent: React.FC = () => {[m
+     fetchUid();[m
+   }, []);[m
+ [m
+[31m-  // Function to check for duplicate ActivityLog entries[m
+[31m-  const findDuplicateActivityLog = async ([m
+[31m-    discussionId: string,[m
+[31m-    category: string,[m
+[31m-    description: string,[m
+[31m-    uid: string[m
+[31m-  ): Promise<ActivityLog | null> => {[m
+[31m-    const q = query([m
+[31m-      collection(db, 'ActivityLog'),[m
+[31m-      where('discussionId', '==', discussionId),[m
+[31m-      where('category', '==', category),[m
+[31m-      where('description', '==', description),[m
+[31m-      where('uid', '==', uid)[m
+[31m-    );[m
+[31m-    const snapshot = await getDocs(q);[m
+[31m-    return snapshot.empty[m
+[31m-      ? null[m
+[31m-      : ({[m
+[31m-          id: snapshot.docs[0].id,[m
+[31m-          ...snapshot.docs[0].data(),[m
+[31m-        } as ActivityLog);[m
+[31m-  };[m
+[31m-[m
+[32m+[m[32m  // Fetch data using dbServices router[m[41m[m
+   const fetchData = useCallback(async () => {[m
+     if (!uid) return;[m
+     try {[m
+       setLoading(true);[m
+[31m-      console.log('Fetching data from Firestore...');[m
+[31m-      const activityLogSnapshot = await getDocs(collection(db, 'ActivityLog'));[m
+[31m-      const discussionSnap = await getDocs(collection(db, 'Discussion'));[m
+[31m-      setDiscussionSnapshot(discussionSnap);[m
+[31m-[m
+[32m+[m[32m      // console.log('Fetching data...'); // Removed to prevent printing tables[m[41m[m
+[32m+[m[32m      const activityLogRaw = await getActivityLogs();[m[41m[m
+[32m+[m[32m      //    console.log('[DEBUG] All ActivityLog from Realm:', activityLogRaw); // Removed[m[41m[m
+[32m+[m[32m      // TEMP: Remove uid filter for debug[m[41m[m
+[32m+[m[32m      // const activityLogData = activityLogRaw.filter((doc: any) => doc.uid === uid)[m[41m[m
+[32m+[m[32m      // Convert Date objects to string for rendering[m[41m[m
+[32m+[m[32m      const activityLogData = activityLogRaw[m[41m[m
+[32m+[m[32m        .map((log: any) => ({[m[41m[m
+[32m+[m[32m          ...log,[m[41m[m
+[32m+[m[32m          timestamp:[m[41m[m
+[32m+[m[32m            log.timestamp instanceof Date[m[41m[m
+[32m+[m[32m              ? format(log.timestamp, 'M/d/yy \n h:mm a')[m[41m[m
+[32m+[m[32m              : typeof log.timestamp === 'string'[m[41m[m
+[32m+[m[32m              ? log.timestamp[m[41m[m
+[32m+[m[32m              : String(log.timestamp),[m[41m[m
+[32m+[m[32m        }))[m[41m[m
+[32m+[m[32m        .sort([m[41m[m
+[32m+[m[32m          (a: any, b: any) =>[m[41m[m
+[32m+[m[32m            new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()[m[41m[m
+[32m+[m[32m        );[m[41m[m
+[32m+[m[32m      //     console.log('[DEBUG] Filtered ActivityLog for uid', uid, activityLogData); // Removed[m[41m[m
+[32m+[m[32m      const discussionData = (await getDiscussions())[m[41m[m
+[32m+[m[32m        .map(mapDiscussionRow)[m[41m[m
+[32m+[m[32m        .sort((a: any, b: any) => b.rawTimestamp - a.rawTimestamp);[m[41m[m
+       const categories = await getDistinctCategories();[m
+       setAllCategories((prev) => [...new Set([...prev, ...categories])]);[m
+[31m-[m
+[31m-      const q = query(collection(db, `Users/${uid}/DiscussionCounts`));[m
+[31m-      const querySnapshot = await getDocs(q);[m
+[31m-      const countsPromises = querySnapshot.docs.map(async (document) => {[m
+[31m-        const data = document.data() as DiscussionCount;[m
+[31m-        const activityLogRef = doc(db, 'ActivityLog', data.activityLogId);[m
+[31m-        const activityLogSnap = await getDoc(activityLogRef);[m
+[31m-        if (activityLogSnap.exists()) {[m
+[31m-          const activityLogData = activityLogSnap.data() as ActivityLog;[m
+[31m-          return {[m
+[31m-            discussionID: document.id,[m
+[31m-            activityLogId: data.activityLogId,[m
+[31m-            count: data.count,[m
+[31m-            description: activityLogData.description || '',[m
+[31m-          };[m
+[31m-        }[m
+[31m-        return null;[m
+[31m-      });[m
+[31m-[m
+[31m-      const counts = (await Promise.all(countsPromises))[m
+[31m-        .filter([m
+[31m-          (count): count is DiscussionCount & { description: string } =>[m
+[31m-            count !== null[m
+[31m-        )[m
+[31m-        .sort((a, b) => b.count - a.count);[m
+[31m-      setDiscussionCounts(counts);[m
+[31m-      console.log('✅ Fetched DiscussionCounts:', counts);[m
+[31m-[m
+[31m-      console.log('Fetching table data...');[m
+[31m-      const activityLogData = activityLogSnapshot.docs[m
+[31m-        .map((doc) => {[m
+[31m-          const data = doc.data() as ActivityLog;[m
+[31m-          if (!doc.id || !data.uid) {[m
+[31m-            console.warn([m
+[31m-              `Invalid ActivityLog document: ${JSON.stringify(data)}`[m
+[31m-            );[m
+[31m-            return null;[m
+[31m-          }[m
+[31m-          return {[m
+[31m-            ...data,[m
+[31m-            id: doc.id,[m
+[31m-            timestamp: data.timestamp[m
+[31m-              ? format(new Date(data.timestamp.toDate()), 'M/d/yy \n h:mm a')[m
+[31m-              : 'N/A',[m
+[31m-            cleared: data.cleared ? '✔️ Yes' : '❌ No',[m
+[31m-            uid: data.uid,[m
+[31m-            rawTimestamp: data.timestamp ? data.timestamp.toDate() : new Date(),[m
+[31m-            tableName: 'Activity Log Data',[m
+[31m-          };[m
+[31m-        })[m
+[31m-        .filter([m
+[31m-          (item): item is NonNullable<typeof item> =>[m
+[31m-            item !== null && item.id !== undefined[m
+[31m-        )[m
+[31m-        .filter((doc) => doc.uid === uid)[m
+[31m-        .sort((a, b) => b.rawTimestamp - a.rawTimestamp);[m
+[31m-[m
+[31m-      const discussionData = discussionSnap.docs[m
+[31m-        .map((doc) => {[m
+[31m-          const data = doc.data();[m
+[31m-          if (!doc.id || !data.uid) {[m
+[31m-            console.warn([m
+[31m-              `Invalid Discussion document: ${JSON.stringify(data)}`[m
+[31m-            );[m
+[31m-            return null;[m
+[31m-          }[m
+[31m-          return {[m
+[31m-            ...data,[m
+[31m-            id: doc.id,[m
+[31m-            timestamp: data.timestamp[m
+[31m-              ? format(new Date(data.timestamp.toDate()), 'M/d/yy \n h:mm a')[m
+[31m-              : 'N/A',[m
+[31m-            cleared: data.cleared ? '✔️ Yes' : '❌ No',[m
+[31m-            typeSay: data.typeSay || 'tell',[m
+[31m-            uid: data.uid,[m
+[31m-            rawTimestamp: data.timestamp ? data.timestamp.toDate() : new Date(),[m
+[31m-            tableName: 'Discussion Data',[m
+[31m-          };[m
+[31m-        })[m
+[31m-        .filter([m
+[31m-          (item): item is NonNullable<typeof item> =>[m
+[31m-            item !== null && item.id !== undefined[m
+[31m-        )[m
+[31m-        .filter((doc) => doc.uid === uid)[m
+[31m-        .sort((a, b) => b.rawTimestamp - a.rawTimestamp);[m
+[31m-[m
+       setTables([[m
+         {[m
+           name: 'Activity Log Data',[m
+[36m@@ -424,7 +374,7 @@[m [mconst MainComponent: React.FC = () => {[m
+       ]);[m
+       setInitialized(true);[m
+     } catch (error) {[m
+[31m-      console.error('Error fetching data from Firestore:', error);[m
+[32m+[m[32m      console.error('Error fetching data:', error);[m[41m[m
+       setError('Failed to fetch data. Please try again.');[m
+     } finally {[m
+       setLoading(false);[m
+[36m@@ -449,7 +399,7 @@[m [mconst MainComponent: React.FC = () => {[m
+   }, [currentTableIndex, initialized, discussionSnapshot]);[m
+ [m
+   const prompt2UpdateActivityLog = useCallback([m
+[31m-    (discussionSnapshot: QuerySnapshot<DocumentData, DocumentData>): void => {[m
+[32m+[m[32m    (discussionSnapshot: any): void => {[m[41m[m
+       console.log([m
+         'Inside prompt2UpdateActivityLog, snapshot size:',[m
+         discussionSnapshot.size[m
+[36m@@ -460,7 +410,7 @@[m [mconst MainComponent: React.FC = () => {[m
+       }[m
+ [m
+       const unclearedDocs = discussionSnapshot.docs.filter([m
+[31m-        (doc) => doc.data().cleared === false[m
+[32m+[m[32m        (doc: any) => doc.data().cleared === false[m[41m[m
+       );[m
+ [m
+       console.log('Uncleared documents:', unclearedDocs.length);[m
+[36m@@ -470,7 +420,7 @@[m [mconst MainComponent: React.FC = () => {[m
+       }[m
+ [m
+       const discussionList = unclearedDocs[m
+[31m-        .map((doc) => `"${doc.data().description || 'No description'}"`)[m
+[32m+[m[32m        .map((doc: any) => `"${doc.data().description || 'No description'}"`)[m[41m[m
+         .join(', ');[m
+ [m
+       Alert.alert([m
+[36m@@ -530,70 +480,38 @@[m [mconst MainComponent: React.FC = () => {[m
+                       activityAnalysis.parsedDescription,[m
+                       uid[m
+                     );[m
+[31m-[m
+                     let newActivityLogId: string;[m
+                     if (existingLog) {[m
+[31m-                      // Update existing ActivityLog entry[m
+[31m-                      const logRef = doc(db, 'ActivityLog', existingLog.id);[m
+[31m-                      await updateDoc(logRef, {[m
+[31m-                        timestamp: Timestamp.fromDate([m
+[31m-                          discussionTyped.timestamp[m
+[31m-                        ),[m
+[31m-                        cleared: false,[m
+[31m-                        lockedCategory: false,[m
+[31m-                        lockedDescription: false,[m
+[31m-                      });[m
+[31m-                      newActivityLogId = existingLog.id;[m
+[32m+[m[32m                      // Use router to update existing ActivityLog entry (calls all pending updates)[m[41m[m
+[32m+[m[32m                      await addOrUpdateActivityLog(); // No parameters allowed[m[41m[m
+[32m+[m[32m                      newActivityLogId = String(existingLog.id);[m[41m[m
+                       console.log([m
+                         `Updated existing ActivityLog entry ${existingLog.id} for discussionId ${discussionTyped.id}`[m
+                       );[m
+                     } else {[m
+[31m-                      // Create new ActivityLog entry[m
+[31m-                      const newActivityLog = await addDoc([m
+[31m-                        collection(db, 'ActivityLog'),[m
+[31m-                        {[m
+[31m-                          discussionId: discussionTyped.id,[m
+[31m-                          category:[m
+[31m-                            activityAnalysis.category !== 'uncategorized'[m
+[31m-                              ? activityAnalysis.category[m
+[31m-                              : 'uncategorized',[m
+[31m-                          description: activityAnalysis.parsedDescription,[m
+[31m-                          timestamp: Timestamp.fromDate([m
+[31m-                            discussionTyped.timestamp[m
+[31m-                          ),[m
+[31m-                          cleared: false,[m
+[31m-                          uid: uid,[m
+[31m-                          lockedCategory: false,[m
+[31m-                          lockedDescription: false,[m
+[31m-                        }[m
+[31m-                      );[m
+[31m-                      newActivityLogId = newActivityLog.id;[m
+[32m+[m[32m                      // Use router to create new ActivityLog entry[m[41m[m
+[32m+[m[32m                      const newLog = {[m[41m[m
+[32m+[m[32m                        discussionId: String(discussionTyped.id), // ensure string type[m[41m[m
+[32m+[m[32m                        category:[m[41m[m
+[32m+[m[32m                          activityAnalysis.category !== 'uncategorized'[m[41m[m
+[32m+[m[32m                            ? activityAnalysis.category[m[41m[m
+[32m+[m[32m                            : 'uncategorized',[m[41m[m
+[32m+[m[32m                        description: activityAnalysis.parsedDescription,[m[41m[m
+[32m+[m[32m                        timestamp: discussionTyped.timestamp,[m[41m[m
+[32m+[m[32m                        cleared: false,[m[41m[m
+[32m+[m[32m                        uid: uid,[m[41m[m
+[32m+[m[32m                        lockedCategory: false,[m[41m[m
+[32m+[m[32m                        lockedDescription: false,[m[41m[m
+[32m+[m[32m                        synced: false,[m[41m[m
+[32m+[m[32m                      };[m[41m[m
+[32m+[m[32m                      newActivityLogId = await createActivityLog(newLog);[m[41m[m
+                       console.log([m
+                         `Created new ActivityLog entry ${newActivityLogId} for discussionId ${discussionTyped.id}`[m
+                       );[m
+                     }[m
+ [m
+[31m-                    const docRef = doc(db, 'Discussion', discussionTyped.id);[m
+[31m-                    await updateDoc(docRef, { cleared: true });[m
+[31m-                    console.log([m
+[31m-                      `Marked Discussion ${discussionTyped.id} as cleared`[m
+[31m-                    );[m
+[31m-[m
+[31m-                    const newDiscussionCount = {[m
+[31m-                      discussionID: discussionTyped.id,[m
+[31m-                      activityLogId: newActivityLogId,[m
+[31m-                      count: 1,[m
+[31m-                      description: activityAnalysis.parsedDescription || '',[m
+[31m-                    };[m
+[31m-                    await addDoc([m
+[31m-                      collection(db, `Users/${uid}/DiscussionCounts`),[m
+[31m-                      newDiscussionCount[m
+[31m-                    );[m
+[31m-                    setDiscussionCounts((prev) =>[m
+[31m-                      [...prev, newDiscussionCount].sort([m
+[31m-                        (a, b) => b.count - a.count[m
+[31m-                      )[m
+[31m-                    );[m
+[32m+[m[32m                    // Replace direct Firestore/Realm calls with router function[m[41m[m
+[32m+[m[32m                    await markDiscussionAsCleared(discussionTyped.id);[m[41m[m
+                   }[m
+                 }[m
+                 console.log('Activity Log update completed successfully.');[m
+[36m@@ -627,9 +545,20 @@[m [mconst MainComponent: React.FC = () => {[m
+   }, []);[m
+ [m
+   const sortedData = useCallback(() => {[m
+[32m+[m[32m    /*     console.log([m[41m[m
+[32m+[m[32m      'Current table index:',[m[41m[m
+[32m+[m[32m      currentTableIndex,[m[41m[m
+[32m+[m[32m      'sortBy:',[m[41m[m
+[32m+[m[32m      sortBy,[m[41m[m
+[32m+[m[32m      'tables.length:',[m[41m[m
+[32m+[m[32m      tables.length[m[41m[m
+[32m+[m[32m    ); */[m[41m[m
+     if (!sortBy || tables.length === 0)[m
+       return tables[currentTableIndex]?.data || [];[m
+     const { column, order } = sortBy;[m
+[32m+[m[32m    console.log([m[41m[m
+[32m+[m[32m      `Sorting by column: ${column}, order: ${order}, currentTableIndex: ${currentTableIndex}`[m[41m[m
+[32m+[m[32m    );[m[41m[m
+     return [...tables[currentTableIndex].data].sort((a, b) => {[m
+       const valueA = a[column] || '';[m
+       const valueB = b[column] || '';[m
+[36m@@ -649,79 +578,37 @@[m [mconst MainComponent: React.FC = () => {[m
+   }, [sortBy, tables, currentTableIndex]);[m
+ [m
+   const filteredData = useCallback(() => {[m
+[32m+[m[32m    /*  console.log([m[41m[m
+[32m+[m[32m      'Current table index:',[m[41m[m
+[32m+[m[32m      currentTableIndex,[m[41m[m
+[32m+[m[32m      'tables.length:',[m[41m[m
+[32m+[m[32m      tables.length[m[41m[m
+[32m+[m[32m    ); */[m[41m[m
+     if (tables.length === 0) return sortedData();[m
+[32m+[m[32m    //console.log('Filtered data before applying filters:', sortedData());[m[41m[m
+     const data = sortedData().filter((row) =>[m
+       Object.entries(filters).every(([column, value]) =>[m
+[31m-        row[column]?.toString().toLowerCase().includes(value.toLowerCase())[m
+[32m+[m[32m        row[column][m[41m[m
+[32m+[m[32m          ?.toString()[m[41m[m
+[32m+[m[32m          .toLowerCase()[m[41m[m
+[32m+[m[32m          .includes((value || '').toString().toLowerCase())[m[41m[m
+       )[m
+     );[m
+[31m-    console.log([m
+[32m+[m[32m    /*  console.log([m[41m[m
+       'Filtered data:',[m
+       data.map((item) => item.id)[m
+[31m-    );[m
+[32m+[m[32m    ); */[m[41m[m
+     return data;[m
+   }, [tables, filters, sortBy, currentTableIndex, sortedData]);[m
+ [m
+   const handleDelete = useCallback([m
+     async (tableName: string, itemId: string) => {[m
+       try {[m
+[31m-        const collectionName =[m
+[31m-          tableName === 'Activity Log Data' ? 'ActivityLog' : 'Discussion';[m
+[31m-        const batch = writeBatch(db);[m
+[31m-[m
+[31m-        // Delete the primary document[m
+[31m-        const primaryRef = doc(db, collectionName, itemId);[m
+[31m-        batch.delete(primaryRef);[m
+[31m-        console.log(`Deleting ${collectionName} ${itemId}`);[m
+[31m-[m
+[31m-        // If deleting a Discussion, delete related ActivityLog entries[m
+[31m-        if (tableName === 'Discussion Data') {[m
+[31m-          const activityLogQuery = query([m
+[31m-            collection(db, 'ActivityLog'),[m
+[31m-            where('discussionId', '==', itemId),[m
+[31m-            where('uid', '==', uid)[m
+[31m-          );[m
+[31m-          const activityLogSnapshot = await getDocs(activityLogQuery);[m
+[31m-          activityLogSnapshot.forEach((doc) => {[m
+[31m-            batch.delete(doc.ref);[m
+[31m-            console.log([m
+[31m-              `Deleting ActivityLog ${doc.id} for discussionId ${itemId}`[m
+[31m-            );[m
+[31m-          });[m
+[31m-[m
+[31m-          // Delete related DiscussionCounts[m
+[31m-          const discussionCountsQuery = query([m
+[31m-            collection(db, `Users/${uid}/DiscussionCounts`),[m
+[31m-            where('discussionID', '==', itemId)[m
+[31m-          );[m
+[31m-          const discussionCountsSnapshot = await getDocs(discussionCountsQuery);[m
+[31m-          discussionCountsSnapshot.forEach((doc) => {[m
+[31m-            batch.delete(doc.ref);[m
+[31m-            console.log([m
+[31m-              `Deleting DiscussionCount ${doc.id} for discussionId ${itemId}`[m
+[31m-            );[m
+[31m-          });[m
+[31m-        }[m
+[31m-[m
+[31m-        // If deleting an ActivityLog, delete related DiscussionCounts[m
+         if (tableName === 'Activity Log Data') {[m
+[31m-          const discussionCountsQuery = query([m
+[31m-            collection(db, `Users/${uid}/DiscussionCounts`),[m
+[31m-            where('activityLogId', '==', itemId)[m
+[31m-          );[m
+[31m-          const discussionCountsSnapshot = await getDocs(discussionCountsQuery);[m
+[31m-          discussionCountsSnapshot.forEach((doc) => {[m
+[31m-            batch.delete(doc.ref);[m
+[31m-            console.log([m
+[31m-              `Deleting DiscussionCount ${doc.id} for activityLogId ${itemId}`[m
+[31m-            );[m
+[31m-          });[m
+[32m+[m[32m          await deleteActivityLog(itemId);[m[41m[m
+[32m+[m[32m        } else {[m[41m[m
+[32m+[m[32m          await deleteDiscussion(itemId);[m[41m[m
+         }[m
+[31m-[m
+[31m-        await batch.commit();[m
+[31m-        console.log(`Deleted ${collectionName} ${itemId} and related data`);[m
+[31m-[m
+[31m-        // Update UI[m
+         setTables((prevTables) =>[m
+           prevTables.map((table) =>[m
+             table.name === tableName[m
+[36m@@ -747,7 +634,7 @@[m [mconst MainComponent: React.FC = () => {[m
+           )[m
+         );[m
+         Alert.alert('Success', 'Item and related data deleted successfully.');[m
+[31m-        fetchData(); // Refresh tables after delete[m
+[32m+[m[32m        fetchData();[m[41m[m
+       } catch (error) {[m
+         console.error('Error deleting item:', error);[m
+         Alert.alert('Error', 'Failed to delete item.');[m
+[36m@@ -778,58 +665,49 @@[m [mconst MainComponent: React.FC = () => {[m
+       let discussionId = itemId;[m
+ [m
+       try {[m
+[31m-        const activityLogSnapshot = await getDocs([m
+[31m-          collection(db, 'ActivityLog')[m
+[31m-        );[m
+[32m+[m[32m        // Use router to get activity logs[m[41m[m
+[32m+[m[32m        const activityLogs = await getActivityLogs();[m[41m[m
+         if (tableName === 'Discussion Data') {[m
+[31m-          const relatedLogs = activityLogSnapshot.docs[m
+[31m-            .map((doc) => ({ id: doc.id, ...doc.data() } as ActivityLog))[m
+[31m-            .filter((log) => log.discussionId === itemId);[m
+[31m-          console.log([m
+[31m-            `Found ${relatedLogs.length} related ActivityLog entries for discussionId ${itemId}`[m
+[32m+[m[32m          const relatedLogs = activityLogs.filter([m[41m[m
+[32m+[m[32m            (log: any) => log.discussionId === itemId[m[41m[m
+           );[m
+           setRelatedActivityLogs(relatedLogs);[m
+[31m-          const descriptions = relatedLogs.reduce((acc, log) => {[m
+[32m+[m[32m          const descriptions = relatedLogs.reduce((acc: any, log: any) => {[m[41m[m
+             acc[log.id] = log.description || '';[m
+             return acc;[m
+[31m-          }, {} as { [key: string]: string });[m
+[31m-          const categories = relatedLogs.reduce((acc, log) => {[m
+[32m+[m[32m          }, {});[m[41m[m
+[32m+[m[32m          const categories = relatedLogs.reduce((acc: any, log: any) => {[m[41m[m
+             acc[log.id] = log.category || 'uncategorized';[m
+             return acc;[m
+[31m-          }, {} as { [key: string]: string });[m
+[32m+[m[32m          }, {});[m[41m[m
+           setActivityLogDescriptions(descriptions);[m
+           setActivityLogCategories(categories);[m
+         } else if (tableName === 'Activity Log Data') {[m
+[31m-          const activityLog = activityLogSnapshot.docs.find([m
+[31m-            (doc) => doc.id === itemId[m
+[32m+[m[32m          const activityLog = activityLogs.find([m[41m[m
+[32m+[m[32m            (log: any) => log.id === itemId[m[41m[m
+           );[m
+           if (activityLog) {[m
+[31m-            const activityData = activityLog.data() as ActivityLog;[m
+[31m-            discussionId = activityData.discussionId;[m
+[31m-            const discussionSnapshot = await getDocs([m
+[31m-              collection(db, 'Discussion')[m
+[31m-            );[m
+[31m-            const relatedDiscussion = discussionSnapshot.docs.find([m
+[31m-              (doc) => doc.id === discussionId[m
+[32m+[m[32m            discussionId = activityLog.discussionId;[m[41m[m
+[32m+[m[32m            // Use router to get discussions[m[41m[m
+[32m+[m[32m            const discussions = await getDiscussions();[m[41m[m
+[32m+[m[32m            const relatedDiscussion = discussions.find([m[41m[m
+[32m+[m[32m              (d: any) => d.id === discussionId[m[41m[m
+             );[m
+             if (relatedDiscussion) {[m
+[31m-              const discussionData = relatedDiscussion.data();[m
+[31m-              descriptionToProcess = discussionData.description || '';[m
+[31m-              const relatedLogs = activityLogSnapshot.docs[m
+[31m-                .map((doc) => ({ id: doc.id, ...doc.data() } as ActivityLog))[m
+[31m-                .filter([m
+[31m-                  (log) =>[m
+[31m-                    log.discussionId === discussionId && log.id !== itemId[m
+[31m-                );[m
+[32m+[m[32m              descriptionToProcess = relatedDiscussion.description || '';[m[41m[m
+[32m+[m[32m              const relatedLogs = activityLogs.filter([m[41m[m
+[32m+[m[32m                (log: any) =>[m[41m[m
+[32m+[m[32m                  log.discussionId === discussionId && log.id !== itemId[m[41m[m
+[32m+[m[32m              );[m[41m[m
+               setRelatedActivityLogs(relatedLogs);[m
+[31m-              const descriptions = relatedLogs.reduce((acc, log) => {[m
+[32m+[m[32m              const descriptions = relatedLogs.reduce((acc: any, log: any) => {[m[41m[m
+                 acc[log.id] = log.description || '';[m
+                 return acc;[m
+[31m-              }, {} as { [key: string]: string });[m
+[31m-              const categories = relatedLogs.reduce((acc, log) => {[m
+[32m+[m[32m              }, {});[m[41m[m
+[32m+[m[32m              const categories = relatedLogs.reduce((acc: any, log: any) => {[m[41m[m
+                 acc[log.id] = log.category || 'uncategorized';[m
+                 return acc;[m
+[31m-              }, {} as { [key: string]: string });[m
+[32m+[m[32m              }, {});[m[41m[m
+               setActivityLogDescriptions(descriptions);[m
+               setActivityLogCategories(categories);[m
+             }[m
+[36m@@ -846,9 +724,11 @@[m [mconst MainComponent: React.FC = () => {[m
+           );[m
+ [m
+           if (activityAnalysis.category !== 'uncategorized') {[m
+[31m-            const existingLogs = activityLogSnapshot.docs[m
+[31m-              .map((doc) => ({ id: doc.id, ...doc.data() } as ActivityLog))[m
+[31m-              .filter((log) => log.discussionId === discussionId);[m
+[32m+[m[32m            // Use router to get all logs for this discussion[m[41m[m
+[32m+[m[32m            const allLogs = await getActivityLogs();[m[41m[m
+[32m+[m[32m            const existingLogs = allLogs.filter([m[41m[m
+[32m+[m[32m              (log: any) => log.discussionId === discussionId[m[41m[m
+[32m+[m[32m            );[m[41m[m
+ [m
+             if (existingLogs.length === 0) {[m
+               // Check for duplicate before creating[m
+[36m@@ -861,34 +741,28 @@[m [mconst MainComponent: React.FC = () => {[m
+ [m
+               let newActivityLogId: string;[m
+               if (existingLog) {[m
+[31m-                // Update existing ActivityLog entry[m
+[31m-                const logRef = doc(db, 'ActivityLog', existingLog.id);[m
+[31m-                await updateDoc(logRef, {[m
+[31m-                  timestamp: Timestamp.fromDate(editTimestamp),[m
+[31m-                  cleared: false,[m
+[31m-                  lockedCategory: false,[m
+[31m-                  lockedDescription: false,[m
+[31m-                });[m
+[31m-                newActivityLogId = existingLog.id;[m
+[32m+[m[32m                // Use router to update existing ActivityLog entry (calls all pending updates)[m[41m[m
+[32m+[m[32m                await addOrUpdateActivityLog(); // No parameters allowed[m[41m[m
+[32m+[m[32m                newActivityLogId = String(existingLog.id);[m[41m[m
+                 console.log([m
+                   `Updated existing ActivityLog entry ${existingLog.id} for discussionId ${discussionId}`[m
+                 );[m
+               } else {[m
+[31m-                // Create new ActivityLog entry[m
+[31m-                const newActivityLog = await addDoc([m
+[31m-                  collection(db, 'ActivityLog'),[m
+[31m-                  {[m
+[31m-                    discussionId: discussionId,[m
+[31m-                    category: activityAnalysis.category,[m
+[31m-                    description: activityAnalysis.parsedDescription,[m
+[31m-                    timestamp: Timestamp.fromDate(editTimestamp),[m
+[31m-                    cleared: false,[m
+[31m-                    uid: uid,[m
+[31m-                    lockedCategory: false,[m
+[31m-                    lockedDescription: false,[m
+[31m-                  }[m
+[31m-                );[m
+[31m-                newActivityLogId = newActivityLog.id;[m
+[32m+[m[32m                // Use router to create new ActivityLog entry[m[41m[m
+[32m+[m[32m                const newLog = {[m[41m[m
+[32m+[m[32m                  discussionId: String(editItemId), // ensure string type for discussionId[m[41m[m
+[32m+[m[32m                  category:[m[41m[m
+[32m+[m[32m                    activityLogCategories[editItemId] || 'uncategorized',[m[41m[m
+[32m+[m[32m                  description: editDesc,[m[41m[m
+[32m+[m[32m                  timestamp: editTimestamp,[m[41m[m
+[32m+[m[32m                  cleared: editCleared,[m[41m[m
+[32m+[m[32m                  uid: uid,[m[41m[m
+[32m+[m[32m                  lockedCategory: false,[m[41m[m
+[32m+[m[32m                  lockedDescription: false,[m[41m[m
+[32m+[m[32m                  synced: false,[m[41m[m
+[32m+[m[32m                  typeSay: editTypeSay, // add typeSay to match ActivityLog shape if needed[m[41m[m
+[32m+[m[32m                };[m[41m[m
+[32m+[m[32m                newActivityLogId = await createActivityLog(newLog);[m[41m[m
+                 console.log([m
+                   `Created new ActivityLog entry ${newActivityLogId} for discussionId ${discussionId}`[m
+                 );[m
+[36m@@ -918,8 +792,8 @@[m [mconst MainComponent: React.FC = () => {[m
+               }));[m
+             }[m
+ [m
+[31m-            const discussionRef = doc(db, 'Discussion', discussionId);[m
+[31m-            await updateDoc(discussionRef, { cleared: true });[m
+[32m+[m[32m            // Mark discussion as cleared using router[m[41m[m
+[32m+[m[32m            await markDiscussionAsCleared(discussionId);[m[41m[m
+             setEditCleared(true);[m
+           }[m
+         }[m
+[36m@@ -953,11 +827,8 @@[m [mconst MainComponent: React.FC = () => {[m
+           [selectedActivityLogId]: category,[m
+         }));[m
+ [m
+[31m-        const logRef = doc(db, 'ActivityLog', selectedActivityLogId);[m
+[31m-        await updateDoc(logRef, {[m
+[31m-          category,[m
+[31m-          lockedCategory: true,[m
+[31m-        });[m
+[32m+[m[32m        // Use router to update ActivityLog category[m[41m[m
+[32m+[m[32m        await updateActivityLogCategory(selectedActivityLogId, category);[m[41m[m
+         console.log([m
+           `Updated ActivityLog ${selectedActivityLogId} category to ${category}`[m
+         );[m
+[36m@@ -966,15 +837,16 @@[m [mconst MainComponent: React.FC = () => {[m
+           setAllCategories((prev) => [...prev, category]);[m
+         }[m
+ [m
+[31m-        await addDoc(collection(db, 'RuleCandidates'), {[m
+[32m+[m[32m        // Use router to create RuleCandidate[m[41m[m
+[32m+[m[32m        await createRuleCandidate({[m[41m[m
+           discussionId: editItemId,[m
+           category,[m
+           description: activityLogDescriptions[selectedActivityLogId] || '',[m
+[31m-          uid: uid,[m
+[32m+[m[32m          uid: uid!,[m[41m[m
+         });[m
+ [m
+[31m-        const discussionRef = doc(db, 'Discussion', editItemId);[m
+[31m-        await updateDoc(discussionRef, { cleared: true });[m
+[32m+[m[32m        // Use router to mark discussion as cleared[m[41m[m
+[32m+[m[32m        await markDiscussionAsCleared(editItemId);[m[41m[m
+         setEditCleared(true);[m
+ [m
+         setCategoryModalVisible(false);[m
+[36m@@ -1005,29 +877,7 @@[m [mconst MainComponent: React.FC = () => {[m
+   const handleDeleteActivityLog = useCallback([m
+     async (activityLogId: string) => {[m
+       try {[m
+[31m-        const batch = writeBatch(db);[m
+[31m-        const logRef = doc(db, 'ActivityLog', activityLogId);[m
+[31m-        batch.delete(logRef);[m
+[31m-        console.log(`Deleting ActivityLog ${activityLogId}`);[m
+[31m-[m
+[31m-        // Delete related DiscussionCounts[m
+[31m-        const discussionCountsQuery = query([m
+[31m-          collection(db, `Users/${uid}/DiscussionCounts`),[m
+[31m-          where('activityLogId', '==', activityLogId)[m
+[31m-        );[m
+[31m-        const discussionCountsSnapshot = await getDocs(discussionCountsQuery);[m
+[31m-        discussionCountsSnapshot.forEach((doc) => {[m
+[31m-          batch.delete(doc.ref);[m
+[31m-          console.log([m
+[31m-            `Deleting DiscussionCount ${doc.id} for activityLogId ${activityLogId}`[m
+[31m-          );[m
+[31m-        });[m
+[31m-[m
+[31m-        await batch.commit();[m
+[31m-        console.log([m
+[31m-          `Deleted ActivityLog ${activityLogId} and related DiscussionCounts`[m
+[31m-        );[m
+[31m-[m
+[32m+[m[32m        await deleteActivityLog(activityLogId);[m[41m[m
+         // Update UI[m
+         setRelatedActivityLogs((prev) =>[m
+           prev.filter((log) => log.id !== activityLogId)[m
+[36m@@ -1062,7 +912,7 @@[m [mconst MainComponent: React.FC = () => {[m
+         Alert.alert('Error', `Failed to delete Activity Log entry: ${error}`);[m
+       }[m
+     },[m
+[31m-    [uid, fetchData][m
+[32m+[m[32m    [fetchData][m[41m[m
+   );[m
+ [m
+   const saveEdit = useCallback(async () => {[m
+[36m@@ -1070,7 +920,6 @@[m [mconst MainComponent: React.FC = () => {[m
+       Alert.alert('Error', 'Description cannot be empty.');[m
+       return;[m
+     }[m
+[31m-[m
+     if (!uid || !editItemId || !editTableName) {[m
+       console.error('Invalid saveEdit inputs:', {[m
+         uid,[m
+[36m@@ -1080,170 +929,37 @@[m [mconst MainComponent: React.FC = () => {[m
+       Alert.alert('Error', 'Missing user ID or item data. Please try again.');[m
+       return;[m
+     }[m
+[31m-[m
+     try {[m
+[31m-      console.log('Starting saveEdit for:', {[m
+[31m-        editTableName,[m
+[31m-        editItemId,[m
+[31m-        editDesc,[m
+[31m-        editCleared,[m
+[31m-        editTypeSay,[m
+[31m-        editTimestamp,[m
+[31m-      });[m
+[31m-      console.log([m
+[31m-        'saveEdit UID:',[m
+[31m-        uid,[m
+[31m-        'Document UIDs:',[m
+[31m-        relatedActivityLogs.map((log) => ({ id: log.id, uid: log.uid }))[m
+[31m-      );[m
+[31m-[m
+[31m-      const batch = writeBatch(db);[m
+[31m-      const collectionName =[m
+[31m-        editTableName === 'Activity Log Data' ? 'ActivityLog' : 'Discussion';[m
+[31m-[m
+[31m-      // Discussion Update[m
+[31m-      try {[m
+[31m-        const primaryRef = doc(db, collectionName, editItemId);[m
+[31m-        const primaryUpdates = {[m
+[31m-          description: editDesc,[m
+[31m-          cleared: editCleared,[m
+[31m-          typeSay: editTypeSay,[m
+[31m-          timestamp: Timestamp.fromDate(editTimestamp),[m
+[31m-        };[m
+[31m-        console.log([m
+[31m-          `Updating ${collectionName} ${editItemId}:`,[m
+[31m-          primaryUpdates[m
+[31m-        );[m
+[31m-        batch.update(primaryRef, primaryUpdates);[m
+[31m-      } catch (error) {[m
+[31m-        console.error('Error in Discussion update:', error);[m
+[31m-        throw error;[m
+[31m-      }[m
+[31m-[m
+[31m-      // ActivityLog Updates[m
+[31m-      if (relatedActivityLogs.length > 0) {[m
+[31m-        for (const log of relatedActivityLogs) {[m
+[31m-          const newDescription = activityLogDescriptions[log.id]?.trim();[m
+[31m-          const newCategory = activityLogCategories[log.id];[m
+[31m-          const updates: {[m
+[31m-            description?: string;[m
+[31m-            category?: string;[m
+[31m-            cleared?: boolean;[m
+[31m-            timestamp: any;[m
+[31m-            lockedCategory?: boolean;[m
+[31m-            lockedDescription?: boolean;[m
+[31m-          } = { timestamp: Timestamp.fromDate(editTimestamp) };[m
+[31m-[m
+[31m-          if (newDescription && newDescription !== log.description) {[m
+[31m-            console.log([m
+[31m-              `Checking for duplicate ActivityLog: discussionId=${[m
+[31m-                log.discussionId[m
+[31m-              }, category=${[m
+[31m-                newCategory || log.category[m
+[31m-              }, description=${newDescription}`[m
+[31m-            );[m
+[31m-            try {[m
+[31m-              const existingLog = await findDuplicateActivityLog([m
+[31m-                log.discussionId,[m
+[31m-                newCategory || log.category,[m
+[31m-                newDescription,[m
+[31m-                uid[m
+[31m-              );[m
+[31m-[m
+[31m-              if (existingLog && existingLog.id !== log.id) {[m
+[31m-                console.log([m
+[31m-                  `Found duplicate ActivityLog ${existingLog.id}, updating and deleting ${log.id}`[m
+[31m-                );[m
+[31m-                const existingRef = doc(db, 'ActivityLog', existingLog.id);[m
+[31m-                batch.update(existingRef, {[m
+[31m-                  timestamp: Timestamp.fromDate(editTimestamp),[m
+[31m-                  cleared: false,[m
+[31m-                  lockedCategory: false,[m
+[31m-                  lockedDescription: false,[m
+[31m-                });[m
+[31m-                const currentRef = doc(db, 'ActivityLog', log.id);[m
+[31m-                batch.delete(currentRef);[m
+[31m-                console.log([m
+[31m-                  `Replacing ActivityLog ${log.id} with existing ${existingLog.id}`[m
+[31m-                );[m
+[31m-              } else {[m
+[31m-                updates.description = newDescription;[m
+[31m-                updates.lockedDescription = true;[m
+[31m-                console.log(`Skipping RuleCandidate for ActivityLog ${log.id}`);[m
+[31m-              }[m
+[31m-            } catch (error) {[m
+[31m-              console.error('Error in ActivityLog duplicate check:', error);[m
+[31m-              throw error;[m
+[31m-            }[m
+[31m-          }[m
+[31m-[m
+[31m-          if ([m
+[31m-            newCategory &&[m
+[31m-            newCategory !== log.category &&[m
+[31m-            !log.lockedCategory[m
+[31m-          ) {[m
+[31m-            updates.category = newCategory;[m
+[31m-          }[m
+[31m-          updates.lockedCategory = log.lockedCategory || false;[m
+[31m-          updates.lockedDescription = log.lockedDescription || false;[m
+[31m-[m
+[31m-          if (Object.keys(updates).length > 1) {[m
+[31m-            try {[m
+[31m-              const logRef = doc(db, 'ActivityLog', log.id);[m
+[31m-              console.log(`Updating ActivityLog ${log.id}:`, updates);[m
+[31m-              batch.update(logRef, updates);[m
+[31m-            } catch (error) {[m
+[31m-              console.error(`Error updating ActivityLog ${log.id}:`, error);[m
+[31m-              throw error;[m
+[31m-            }[m
+[31m-          }[m
+[31m-        }[m
+[31m-[m
+[31m-        if (editTableName === 'Discussion Data') {[m
+[31m-          try {[m
+[31m-            const discussionRef = doc(db, 'Discussion', editItemId);[m
+[31m-            console.log(`Marking Discussion ${editItemId} as cleared`);[m
+[31m-            batch.update(discussionRef, { cleared: true });[m
+[31m-          } catch (error) {[m
+[31m-            console.error('Error in Discussion cleared update:', error);[m
+[31m-            throw error;[m
+[31m-          }[m
+[31m-        }[m
+[31m-      }[m
+[31m-[m
+[31m-      // GPTResponses Update[m
+       if (editTableName === 'Discussion Data') {[m
+[31m-        console.log('Checking for GPTResponses entry:', editItemId);[m
+[31m-        try {[m
+[31m-          const gptSnapshot = await getDocs(collection(db, 'GPTResponses'));[m
+[31m-          const relatedGPT = gptSnapshot.docs.find([m
+[31m-            (doc) => doc.id === editItemId[m
+[31m-          );[m
+[31m-          if (relatedGPT) {[m
+[31m-            const gptRef = doc(db, 'GPTResponses', editItemId);[m
+[31m-            console.log([m
+[31m-              `Updating GPTResponses ${editItemId} timestamp to ${editTimestamp}`[m
+[31m-            );[m
+[31m-            batch.update(gptRef, {[m
+[31m-              timestamp: Timestamp.fromDate(editTimestamp),[m
+[31m-              uid: uid, // Ensure uid is set[m
+[31m-            });[m
+[31m-          } else {[m
+[31m-            console.log([m
+[31m-              `No GPTResponses entry found for ${editItemId}, skipping update`[m
+[31m-            );[m
+[31m-          }[m
+[31m-        } catch (error) {[m
+[31m-          console.error('Error in GPTResponses update:', error);[m
+[31m-          throw error;[m
+[32m+[m[32m        await addOrUpdateDiscussion(editDesc, editTypeSay, editItemId);[m[41m[m
+[32m+[m[32m        await markDiscussionAsCleared(editItemId);[m[41m[m
+[32m+[m[32m      } else {[m[41m[m
+[32m+[m[32m        // Use router to update or create ActivityLog[m[41m[m
+[32m+[m[32m        // Find the log to update, or create a new one if not found[m[41m[m
+[32m+[m[32m        const activityLogs = await getActivityLogs();[m[41m[m
+[32m+[m[32m        const logToUpdate = activityLogs.find([m[41m[m
+[32m+[m[32m          (log: any) => log.id === editItemId[m[41m[m
+[32m+[m[32m        );[m[41m[m
+[32m+[m[32m        if (logToUpdate) {[m[41m[m
+[32m+[m[32m          await addOrUpdateActivityLog(); // No parameters allowed, batch update only[m[41m[m
+[32m+[m[32m        } else {[m[41m[m
+[32m+[m[32m          // Create new ActivityLog using router[m[41m[m
+[32m+[m[32m          const newLog = {[m[41m[m
+[32m+[m[32m            discussionId: String(editItemId), // ensure string type for discussionId[m[41m[m
+[32m+[m[32m            category: activityLogCategories[editItemId] || 'uncategorized',[m[41m[m
+[32m+[m[32m            description: editDesc,[m[41m[m
+[32m+[m[32m            timestamp: editTimestamp,[m[41m[m
+[32m+[m[32m            cleared: editCleared,[m[41m[m
+[32m+[m[32m            uid: uid,[m[41m[m
+[32m+[m[32m            lockedCategory: false,[m[41m[m
+[32m+[m[32m            lockedDescription: false,[m[41m[m
+[32m+[m[32m            synced: false,[m[41m[m
+[32m+[m[32m            typeSay: editTypeSay, // add typeSay to match ActivityLog shape if needed[m[41m[m
+[32m+[m[32m          };[m[41m[m
+[32m+[m[32m          const newId = await createActivityLog(newLog);[m[41m[m
+[32m+[m[32m          setEditItemId(newId); // update state with new ID[m[41m[m
+         }[m
+       }[m
+[31m-[m
+[31m-      // Commit Batch[m
+[31m-      console.log('Committing Firestore batch...');[m
+[31m-      await batch.commit();[m
+[31m-      console.log('Firestore batch committed successfully');[m
+[31m-[m
+       setTables((prevTables) =>[m
+         prevTables.map((table) =>[m
+           table.name === editTableName[m
+[36m@@ -1287,10 +1003,6 @@[m [mconst MainComponent: React.FC = () => {[m
+             : table[m
+         )[m
+       );[m
+[31m-[m
+[31m-      console.log([m
+[31m-        `Updated item ${editItemId} in ${collectionName} and related data`[m
+[31m-      );[m
+       setEditModalVisible(false);[m
+       setShowDatePicker(false);[m
+       setShowTimePicker(false);[m
+[36m@@ -1303,15 +1015,7 @@[m [mconst MainComponent: React.FC = () => {[m
+       );[m
+       fetchData(); // Refresh tables after save[m
+     } catch (error) {[m
+[31m-      console.error('Error in saveEdit:', error, {[m
+[31m-        editTableName,[m
+[31m-        editItemId,[m
+[31m-        editDesc,[m
+[31m-        editCleared,[m
+[31m-        editTypeSay,[m
+[31m-        editTimestamp,[m
+[31m-        relatedActivityLogs,[m
+[31m-      });[m
+[32m+[m[32m      console.error('Error in saveEdit:', error);[m[41m[m
+       Alert.alert('Error', `Failed to save changes: ${error}`);[m
+     }[m
+   }, [[m
+[36m@@ -1328,6 +1032,77 @@[m [mconst MainComponent: React.FC = () => {[m
+     fetchData,[m
+   ]);[m
+ [m
+[32m+[m[32m  // Handler for legacy import button[m[41m[m
+[32m+[m[32m  const handleLegacyImport = async () => {[m[41m[m
+[32m+[m[32m    setImportingLegacy(true);[m[41m[m
+[32m+[m[32m    try {[m[41m[m
+[32m+[m[32m      const result = await extractAndImportLegacyFirestoreData();[m[41m[m
+[32m+[m[32m      Alert.alert([m[41m[m
+[32m+[m[32m        'Legacy Import Complete',[m[41m[m
+[32m+[m[32m        `Imported ${result.discussionCount} Discussion and ${result.activityLogCount} ActivityLog records.`[m[41m[m
+[32m+[m[32m      );[m[41m[m
+[32m+[m[32m      await fetchData();[m[41m[m
+[32m+[m[32m    } catch (e: any) {[m[41m[m
+[32m+[m[32m      Alert.alert('Legacy Import Failed', e.message || String(e));[m[41m[m
+[32m+[m[32m    } finally {[m[41m[m
+[32m+[m[32m      setImportingLegacy(false);[m[41m[m
+[32m+[m[32m    }[m[41m[m
+[32m+[m[32m  };[m[41m[m
+[32m+[m[41m[m
+[32m+[m[32m  // Handler for debug: delete all local/remote rows[m[41m[m
+[32m+[m[32m  const handleDebugDeleteAll = async () => {[m[41m[m
+[32m+[m[32m    setDebugLoading(true);[m[41m[m
+[32m+[m[32m    try {[m[41m[m
+[32m+[m[32m      await deleteAllLocalAndRemoteRows();[m[41m[m
+[32m+[m[32m      Alert.alert('Debug: All local and remote ChangeLog data deleted.');[m[41m[m
+[32m+[m[32m      await fetchData();[m[41m[m
+[32m+[m[32m    } catch (e: any) {[m[41m[m
+[32m+[m[32m      Alert.alert('Debug Delete Failed', e.message || String(e));[m[41m[m
+[32m+[m[32m    } finally {[m[41m[m
+[32m+[m[32m      setDebugLoading(false);[m[41m[m
+[32m+[m[32m    }[m[41m[m
+[32m+[m[32m  };[m[41m[m
+[32m+[m[41m[m
+[32m+[m[32m  // Handler for debug: run all syncs and repopulate Realm (10 rows per table)[m[41m[m
+[32m+[m[32m  const handleDebugSyncAndPopulate = async () => {[m[41m[m
+[32m+[m[32m    setDebugLoading(true);[m[41m[m
+[32m+[m[32m    try {[m[41m[m
+[32m+[m[32m      // Optionally insert 10 test rows per table for debug[m[41m[m
+[32m+[m[32m      await insertTestRowsAndExit();[m[41m[m
+[32m+[m[32m      // Then run all sync functions[m[41m[m
+[32m+[m[32m      await runAllSyncFunctions();[m[41m[m
+[32m+[m[32m      Alert.alert([m[41m[m
+[32m+[m[32m        'Debug: Ran all syncs and repopulated Realm (10 rows per table).'[m[41m[m
+[32m+[m[32m      );[m[41m[m
+[32m+[m[32m      await fetchData();[m[41m[m
+[32m+[m[32m    } catch (e: any) {[m[41m[m
+[32m+[m[32m      Alert.alert('Debug Sync/Populate Failed', e.message || String(e));[m[41m[m
+[32m+[m[32m    } finally {[m[41m[m
+[32m+[m[32m      setDebugLoading(false);[m[41m[m
+[32m+[m[32m    }[m[41m[m
+[32m+[m[32m  };[m[41m[m
+[32m+[m[41m[m
+[32m+[m[32m  // TEMP: Copy Realm DB to Downloads folder[m[41m[m
+[32m+[m[32m  const handleCopyRealmToDownloads = async () => {[m[41m[m
+[32m+[m[32m    setDebugLoading(true);[m[41m[m
+[32m+[m[32m    try {[m[41m[m
+[32m+[m[32m      const realmPath = '/data/data/com.anonymous.lifelog/files/lifelog.realm';[m[41m[m
+[32m+[m[32m      const downloadsPath = `${RNFS.DownloadDirectoryPath}/lifelog.realm`;[m[41m[m
+[32m+[m[32m      await RNFS.copyFile(realmPath, downloadsPath);[m[41m[m
+[32m+[m[32m      Alert.alert('Success', 'Realm DB copied to Downloads folder!');[m[41m[m
+[32m+[m[32m    } catch (e) {[m[41m[m
+[32m+[m[32m      const message = e instanceof Error ? e.message : String(e);[m[41m[m
+[32m+[m[32m      Alert.alert('Copy Failed', message);[m[41m[m
+[32m+[m[32m    } finally {[m[41m[m
+[32m+[m[32m      setDebugLoading(false);[m[41m[m
+[32m+[m[32m    }[m[41m[m
+[32m+[m[32m  };[m[41m[m
+[32m+[m[41m[m
+[32m+[m[32m  // Cast 'e' to Error type[m[41m[m
+[32m+[m[32m  const alertCopyFailed = (e: unknown) => {[m[41m[m
+[32m+[m[32m    Alert.alert('Copy Failed', (e as Error).message || String(e));[m[41m[m
+[32m+[m[32m  };[m[41m[m
+[32m+[m[41m[m
+   const renderRightActions = useCallback([m
+     (tableName: string, itemId: string) => ([m
+       <TouchableOpacity[m
+[36m@@ -1375,6 +1150,19 @@[m [mconst MainComponent: React.FC = () => {[m
+     [][m
+   );[m
+ [m
+[32m+[m[32m  // Extra debug: log getDiscussions() output on mount[m[41m[m
+[32m+[m[32m  useEffect(() => {[m[41m[m
+[32m+[m[32m    async function debugFetchDiscussions() {[m[41m[m
+[32m+[m[32m      try {[m[41m[m
+[32m+[m[32m        const discussions = await getDiscussions();[m[41m[m
+[32m+[m[32m        //console.log('[EXTRA DEBUG] getDiscussions() raw output:', discussions); // Removed[m[41m[m
+[32m+[m[32m      } catch (e) {[m[41m[m
+[32m+[m[32m        console.error('[EXTRA DEBUG] Error calling getDiscussions:', e);[m[41m[m
+[32m+[m[32m      }[m[41m[m
+[32m+[m[32m    }[m[41m[m
+[32m+[m[32m    debugFetchDiscussions();[m[41m[m
+[32m+[m[32m  }, []);[m[41m[m
+[32m+[m[41m[m
+   if (loading) {[m
+     return ([m
+       <View style={styles.container}>[m
+[36m@@ -1394,11 +1182,67 @@[m [mconst MainComponent: React.FC = () => {[m
+     );[m
+   }[m
+ [m
+[32m+[m[32m  //console.log('Rendering MainComponent - debug');[m[41m[m
+   return ([m
+     <KeyboardAvoidingView[m
+       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}[m
+       style={styles.container}[m
+     >[m
+[32m+[m[32m      {/* TEMP DEBUG BUTTONS - REMOVE IN PRODUCTION */}[m[41m[m
+[32m+[m[32m      <ScrollView[m[41m[m
+[32m+[m[32m        horizontal={false}[m[41m[m
+[32m+[m[32m        showsVerticalScrollIndicator={false}[m[41m[m
+[32m+[m[32m        contentContainerStyle={{[m[41m[m
+[32m+[m[32m          flexDirection: 'column',[m[41m[m
+[32m+[m[32m          alignItems: 'center',[m[41m[m
+[32m+[m[32m          marginVertical: 8,[m[41m[m
+[32m+[m[32m        }}[m[41m[m
+[32m+[m[32m      >[m[41m[m
+[32m+[m[32m        <TouchableOpacity[m[41m[m
+[32m+[m[32m          style={{[m[41m[m
+[32m+[m[32m            backgroundColor: '#ff4444',[m[41m[m
+[32m+[m[32m            padding: 10,[m[41m[m
+[32m+[m[32m            borderRadius: 5,[m[41m[m
+[32m+[m[32m            marginBottom: 10,[m[41m[m
+[32m+[m[32m            opacity: debugLoading ? 0.5 : 1,[m[41m[m
+[32m+[m[32m          }}[m[41m[m
+[32m+[m[32m          onPress={handleDebugDeleteAll}[m[41m[m
+[32m+[m[32m          disabled={debugLoading}[m[41m[m
+[32m+[m[32m        >[m[41m[m
+[32m+[m[32m          <Text style={{ color: '#fff', fontWeight: 'bold' }}>[m[41m[m
+[32m+[m[32m            DEBUG: Delete All Local/Remote (ChangeLog)[m[41m[m
+[32m+[m[32m          </Text>[m[41m[m
+[32m+[m[32m        </TouchableOpacity>[m[41m[m
+[32m+[m[32m        <TouchableOpacity[m[41m[m
+[32m+[m[32m          style={{[m[41m[m
+[32m+[m[32m            backgroundColor: '#007bff',[m[41m[m
+[32m+[m[32m            padding: 10,[m[41m[m
+[32m+[m[32m            borderRadius: 5,[m[41m[m
+[32m+[m[32m            marginBottom: 10,[m[41m[m
+[32m+[m[32m            opacity: debugLoading ? 0.5 : 1,[m[41m[m
+[32m+[m[32m          }}[m[41m[m
+[32m+[m[32m          onPress={handleDebugSyncAndPopulate}[m[41m[m
+[32m+[m[32m          disabled={debugLoading}[m[41m[m
+[32m+[m[32m        >[m[41m[m
+[32m+[m[32m          <Text style={{ color: '#fff', fontWeight: 'bold' }}>[m[41m[m
+[32m+[m[32m            DEBUG: Sync & Repopulate (10 rows/table)[m[41m[m
+[32m+[m[32m          </Text>[m[41m[m
+[32m+[m[32m        </TouchableOpacity>[m[41m[m
+[32m+[m[32m        <TouchableOpacity[m[41m[m
+[32m+[m[32m          style={{[m[41m[m
+[32m+[m[32m            backgroundColor: '#00b894',[m[41m[m
+[32m+[m[32m            padding: 10,[m[41m[m
+[32m+[m[32m            borderRadius: 5,[m[41m[m
+[32m+[m[32m            opacity: debugLoading ? 0.5 : 1,[m[41m[m
+[32m+[m[32m          }}[m[41m[m
+[32m+[m[32m          onPress={handleCopyRealmToDownloads}[m[41m[m
+[32m+[m[32m          disabled={debugLoading}[m[41m[m
+[32m+[m[32m        >[m[41m[m
+[32m+[m[32m          <Text style={{ color: '#fff', fontWeight: 'bold' }}>[m[41m[m
+[32m+[m[32m            DEBUG: Copy Realm DB to Downloads[m[41m[m
+[32m+[m[32m          </Text>[m[41m[m
+[32m+[m[32m        </TouchableOpacity>[m[41m[m
+[32m+[m[32m      </ScrollView>[m[41m[m
+       {initialized && tables.length > 0 ? ([m
+         <View style={styles.tableContainer}>[m
+           <View style={styles.navigation}>[m
+[36m@@ -1433,7 +1277,11 @@[m [mconst MainComponent: React.FC = () => {[m
+                   key={col.accessor}[m
+                   style={[styles.filterInput, { flex: col.flex }]}[m
+                   placeholder={`Filter ${col.Header}`}[m
+[31m-                  value={filters[col.accessor] || ''}[m
+[32m+[m[32m                  value={[m[41m[m
+[32m+[m[32m                    typeof filters[col.accessor] === 'string'[m[41m[m
+[32m+[m[32m                      ? filters[col.accessor][m[41m[m
+[32m+[m[32m                      : filters[col.accessor]?.toString() || ''[m[41m[m
+[32m+[m[32m                  }[m[41m[m
+                   onChangeText={(text) =>[m
+                     setFilters((prev) => ({ ...prev, [col.accessor]: text }))[m
+                   }[m
+[36m@@ -1567,33 +1415,32 @@[m [mconst MainComponent: React.FC = () => {[m
+                     }}[m
+                   />[m
+                 )}[m
+[31m-                {(editTableName === 'Discussion Data' ||[m
+[31m-                  editTableName === 'Activity Log Data') &&[m
+[31m-                  relatedActivityLogs.length > 0 && ([m
+[31m-                    <View style={styles.relatedLogsContainer}>[m
+[31m-                      <Text style={styles.modalSubtitle}>[m
+[31m-                        Related Activity Log Entries[m
+[31m-                      </Text>[m
+[31m-                      {relatedActivityLogs.slice(0, 5).map((item) => ([m
+[31m-                        <RelatedLogEntry[m
+[31m-                          key={item.id}[m
+[31m-                          log={item}[m
+[31m-                          description={activityLogDescriptions[item.id] || ''}[m
+[31m-                          onDescriptionChange={(id, text) =>[m
+[31m-                            setActivityLogDescriptions((prev) => ({[m
+[31m-                              ...prev,[m
+[31m-                              [id]: text,[m
+[31m-                            }))[m
+[31m-                          }[m
+[31m-                          onCategoryChange={(id) => {[m
+[31m-                            setSelectedActivityLogId(id);[m
+[31m-                            setCategoryModalVisible(true);[m
+[31m-                          }}[m
+[31m-                          onDelete={handleDeleteActivityLog}[m
+[31m-                        />[m
+[31m-                      ))}[m
+[31m-                    </View>[m
+[31m-                  )}[m
+[32m+[m[32m                {/* Always show related Activity Log entries if any */}[m[41m[m
+[32m+[m[32m                {relatedActivityLogs.length > 0 && ([m[41m[m
+[32m+[m[32m                  <View style={styles.relatedLogsContainer}>[m[41m[m
+[32m+[m[32m                    <Text style={styles.modalSubtitle}>[m[41m[m
+[32m+[m[32m                      Related Activity Log Entries[m[41m[m
+[32m+[m[32m                    </Text>[m[41m[m
+[32m+[m[32m                    {relatedActivityLogs.slice(0, 5).map((item) => ([m[41m[m
+[32m+[m[32m                      <RelatedLogEntry[m[41m[m
+[32m+[m[32m                        key={item.id}[m[41m[m
+[32m+[m[32m                        log={item}[m[41m[m
+[32m+[m[32m                        description={activityLogDescriptions[item.id] || ''}[m[41m[m
+[32m+[m[32m                        onDescriptionChange={(id, text) =>[m[41m[m
+[32m+[m[32m                          setActivityLogDescriptions((prev) => ({[m[41m[m
+[32m+[m[32m                            ...prev,[m[41m[m
+[32m+[m[32m                            [id]: text,[m[41m[m
+[32m+[m[32m                          }))[m[41m[m
+[32m+[m[32m                        }[m[41m[m
+[32m+[m[32m                        onCategoryChange={(id) => {[m[41m[m
+[32m+[m[32m                          setSelectedActivityLogId(id);[m[41m[m
+[32m+[m[32m                          setCategoryModalVisible(true);[m[41m[m
+[32m+[m[32m                        }}[m[41m[m
+[32m+[m[32m                        onDelete={handleDeleteActivityLog}[m[41m[m
+[32m+[m[32m                      />[m[41m[m
+[32m+[m[32m                    ))}[m[41m[m
+[32m+[m[32m                  </View>[m[41m[m
+[32m+[m[32m                )}[m[41m[m
+                 <View style={styles.modalButtons}>[m
+                   <TouchableOpacity[m
+                     style={styles.modalButton}[m
+[36m@@ -1618,7 +1465,6 @@[m [mconst MainComponent: React.FC = () => {[m
+               </ScrollView>[m
+             </View>[m
+           </Modal>[m
+[31m-[m
+           <Modal[m
+             animationType="slide"[m
+             transparent={true}[m
+[36m@@ -1695,13 +1541,15 @@[m [mconst styles = StyleSheet.create({[m
+     flex: 1,[m
+     padding: 10,[m
+     backgroundColor: '#f9f9f9',[m
+[31m-    justifyContent: 'center',[m
+[31m-    alignItems: 'center',[m
+[32m+[m[32m    justifyContent: 'flex-start', // align content to top[m[41m[m
+[32m+[m[32m    // Removed alignItems: 'flex-start' to allow full width[m[41m[m
+   },[m
+   tableContainer: {[m
+[31m-    flex: 1,[m
+[32m+[m[32m    // flex: 1, // Removed to prevent vertical stretching[m[41m[m
+     width: SCREEN_WIDTH - 20,[m
+     alignSelf: 'center',[m
+[32m+[m[32m    justifyContent: 'flex-start', // ensure table content starts at top[m[41m[m
+[32m+[m[32m    alignItems: 'flex-start',[m[41m[m
+   },[m
+   navigation: {[m
+     flexDirection: 'row',[m
+[36m@@ -1773,8 +1621,9 @@[m [mconst styles = StyleSheet.create({[m
+     textAlign: 'left',[m
+   },[m
+   tableList: {[m
+[31m-    flex: 1,[m
+[32m+[m[32m    // flex: 1, // Removed to prevent vertical stretching[m[41m[m
+     width: '100%',[m
+[32m+[m[32m    alignSelf: 'stretch',[m[41m[m
+   },[m
+   deleteButton: {[m
+     backgroundColor: '#ff4444',[m
