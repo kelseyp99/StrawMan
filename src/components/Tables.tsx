@@ -15,7 +15,7 @@ import {
   Dimensions,
 } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { format, isToday } from 'date-fns';
+import { format, isToday, parse } from 'date-fns';
 import { getUID } from '../utils/uidManager';
 import Swipeable from 'react-native-gesture-handler/Swipeable';
 import {
@@ -82,10 +82,18 @@ function mapDiscussionRow(row: any) {
     if (!row.timestamp) {
       throw new Error('Missing timestamp');
     }
-    if (
-      typeof row.timestamp === 'string' ||
-      typeof row.timestamp === 'number'
-    ) {
+    if (typeof row.timestamp === 'string') {
+      // Try parsing with date-fns for the expected format: M/d/yy  h:mm a
+      dateObj = parse(row.timestamp, 'M/d/yy  h:mm a', new Date());
+      if (isNaN(dateObj.getTime())) {
+        // Try fallback with single space (in case of inconsistent spacing)
+        dateObj = parse(
+          row.timestamp.replace(/\s+/g, ' '),
+          'M/d/yy h:mm a',
+          new Date()
+        );
+      }
+    } else if (typeof row.timestamp === 'number') {
       dateObj = new Date(row.timestamp);
     } else if (row.timestamp instanceof Date) {
       dateObj = row.timestamp;
@@ -283,9 +291,9 @@ const MainComponent: React.FC = () => {
     if (!uid) return;
     try {
       setLoading(true);
-      console.log('Fetching data...');
+      // console.log('Fetching data...'); // Removed to prevent printing tables
       const activityLogRaw = await getActivityLogs();
-      console.log('[DEBUG] All ActivityLog from Realm:', activityLogRaw);
+      //    console.log('[DEBUG] All ActivityLog from Realm:', activityLogRaw); // Removed
       // TEMP: Remove uid filter for debug
       // const activityLogData = activityLogRaw.filter((doc: any) => doc.uid === uid)
       // Convert Date objects to string for rendering
@@ -303,7 +311,7 @@ const MainComponent: React.FC = () => {
           (a: any, b: any) =>
             new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
         );
-      console.log('[DEBUG] Filtered ActivityLog for uid', uid, activityLogData);
+      //     console.log('[DEBUG] Filtered ActivityLog for uid', uid, activityLogData); // Removed
       const discussionData = (await getDiscussions())
         .map(mapDiscussionRow)
         .sort((a: any, b: any) => b.rawTimestamp - a.rawTimestamp);
@@ -536,14 +544,14 @@ const MainComponent: React.FC = () => {
   }, []);
 
   const sortedData = useCallback(() => {
-    console.log(
+    /*     console.log(
       'Current table index:',
       currentTableIndex,
       'sortBy:',
       sortBy,
       'tables.length:',
       tables.length
-    );
+    ); */
     if (!sortBy || tables.length === 0)
       return tables[currentTableIndex]?.data || [];
     const { column, order } = sortBy;
@@ -569,14 +577,14 @@ const MainComponent: React.FC = () => {
   }, [sortBy, tables, currentTableIndex]);
 
   const filteredData = useCallback(() => {
-    console.log(
+    /*  console.log(
       'Current table index:',
       currentTableIndex,
       'tables.length:',
       tables.length
-    );
+    ); */
     if (tables.length === 0) return sortedData();
-    console.log('Filtered data before applying filters:', sortedData());
+    //console.log('Filtered data before applying filters:', sortedData());
     const data = sortedData().filter((row) =>
       Object.entries(filters).every(([column, value]) =>
         row[column]
@@ -585,10 +593,10 @@ const MainComponent: React.FC = () => {
           .includes((value || '').toString().toLowerCase())
       )
     );
-    console.log(
+    /*  console.log(
       'Filtered data:',
       data.map((item) => item.id)
-    );
+    ); */
     return data;
   }, [tables, filters, sortBy, currentTableIndex, sortedData]);
 
@@ -1146,7 +1154,7 @@ const MainComponent: React.FC = () => {
     async function debugFetchDiscussions() {
       try {
         const discussions = await getDiscussions();
-        //console.log('[EXTRA DEBUG] getDiscussions() raw output:', discussions);
+        //console.log('[EXTRA DEBUG] getDiscussions() raw output:', discussions); // Removed
       } catch (e) {
         console.error('[EXTRA DEBUG] Error calling getDiscussions:', e);
       }

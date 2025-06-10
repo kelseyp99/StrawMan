@@ -37,15 +37,6 @@ export default function TabLayout() {
           }}
         />
         <Tabs.Screen
-          name="explore"
-          options={{
-            title: 'Explore',
-            tabBarIcon: ({ color }) => (
-              <IconSymbol size={33} name="paperplane.fill" color={color} />
-            ),
-          }}
-        />
-        <Tabs.Screen
           name="tables"
           options={{
             title: 'Tables',
@@ -64,6 +55,15 @@ export default function TabLayout() {
             title: 'Tools',
             tabBarIcon: ({ color }) => (
               <MaterialCommunityIcons name="tools" size={30} color={color} />
+            ),
+          }}
+        />{' '}
+        <Tabs.Screen
+          name="explore"
+          options={{
+            title: 'Explore',
+            tabBarIcon: ({ color }) => (
+              <IconSymbol size={33} name="paperplane.fill" color={color} />
             ),
           }}
         />
