@@ -111,6 +111,7 @@ function mapDiscussionRow(row: any) {
     ...row,
     timestamp: isToday(dateObj) ? 'Today' : format(dateObj, 'M/d/yy \n h:mm a'),
     rawTimestamp: dateObj,
+    cleared: row.cleared ? '✔️ Yes' : '❌ No', // Ensure cleared is formatted for display
   };
 }
 
@@ -1414,33 +1415,32 @@ const MainComponent: React.FC = () => {
                     }}
                   />
                 )}
-                {(editTableName === 'Discussion Data' ||
-                  editTableName === 'Activity Log Data') &&
-                  relatedActivityLogs.length > 0 && (
-                    <View style={styles.relatedLogsContainer}>
-                      <Text style={styles.modalSubtitle}>
-                        Related Activity Log Entries
-                      </Text>
-                      {relatedActivityLogs.slice(0, 5).map((item) => (
-                        <RelatedLogEntry
-                          key={item.id}
-                          log={item}
-                          description={activityLogDescriptions[item.id] || ''}
-                          onDescriptionChange={(id, text) =>
-                            setActivityLogDescriptions((prev) => ({
-                              ...prev,
-                              [id]: text,
-                            }))
-                          }
-                          onCategoryChange={(id) => {
-                            setSelectedActivityLogId(id);
-                            setCategoryModalVisible(true);
-                          }}
-                          onDelete={handleDeleteActivityLog}
-                        />
-                      ))}
-                    </View>
-                  )}
+                {/* Always show related Activity Log entries if any */}
+                {relatedActivityLogs.length > 0 && (
+                  <View style={styles.relatedLogsContainer}>
+                    <Text style={styles.modalSubtitle}>
+                      Related Activity Log Entries
+                    </Text>
+                    {relatedActivityLogs.slice(0, 5).map((item) => (
+                      <RelatedLogEntry
+                        key={item.id}
+                        log={item}
+                        description={activityLogDescriptions[item.id] || ''}
+                        onDescriptionChange={(id, text) =>
+                          setActivityLogDescriptions((prev) => ({
+                            ...prev,
+                            [id]: text,
+                          }))
+                        }
+                        onCategoryChange={(id) => {
+                          setSelectedActivityLogId(id);
+                          setCategoryModalVisible(true);
+                        }}
+                        onDelete={handleDeleteActivityLog}
+                      />
+                    ))}
+                  </View>
+                )}
                 <View style={styles.modalButtons}>
                   <TouchableOpacity
                     style={styles.modalButton}
@@ -1465,7 +1465,6 @@ const MainComponent: React.FC = () => {
               </ScrollView>
             </View>
           </Modal>
-
           <Modal
             animationType="slide"
             transparent={true}
