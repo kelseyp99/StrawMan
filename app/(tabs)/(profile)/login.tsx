@@ -9,7 +9,7 @@ export default function Login() {
 
   const handleLogin = () => {
     setIsLogged(true);
-    router.replace('/(tabs)/(profile)/index');
+    router.replace('/(tabs)/index');
   };
 
   return (

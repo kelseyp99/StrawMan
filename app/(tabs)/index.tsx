@@ -111,7 +111,7 @@ const IndexScreen: React.FC<{
     }
     loadApiKey();
     // Trigger sync on mount
-    triggerSync();
+    // triggerSync();
   }, [onApiKeyLoaded, triggerSync]);
 
   if (loading) return <ActivityIndicator size="large" color="#0000ff" />;
@@ -172,11 +172,11 @@ export default function AskJanet() {
         setUID(user.uid);
         setTimeout(async () => {
           try {
-            await synchronizeDiscussions('1.1.0');
-            await synchronizeActivityLog('1.1.0');
+            // await synchronizeDiscussions('1.1.0');
+            // await synchronizeActivityLog('1.1.0');
             await initializeUser();
             await loadInitialData();
-            await processPendingTells();
+            // await processPendingTells();
           } catch (error) {
             console.error('Init err:', error);
           }
@@ -194,11 +194,11 @@ export default function AskJanet() {
       setUID(auth.currentUser.uid);
       setTimeout(async () => {
         try {
-          await synchronizeDiscussions('1.1.0');
-          await synchronizeActivityLog('1.1.0');
+          // await synchronizeDiscussions('1.1.0');
+          // await synchronizeActivityLog('1.1.0');
           await initializeUser();
           await loadInitialData();
-          await processPendingTells();
+          // await processPendingTells();
         } catch (error) {
           console.error('Fallback init err:', error);
         }

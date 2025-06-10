@@ -964,6 +964,7 @@ export async function syncFromRemote() {
     }
 
     // 3. Insert newRows into Realm
+    console.log(`[SYNC] Inserting ${newRows.length} new rows for ${tableName}`);
     if (newRows && newRows.length > 0) {
       try {
         await local.syncTableFromRemote(tableName, newRows);
@@ -992,3 +993,54 @@ export async function syncFromRemote() {
 }
 
 export { syncTableFromRemote } from './dbServicesLocal';
+
+/**
+ * Utility: Run all sync functions (Discussions, ActivityLog, and full remote sync)
+ */
+export async function runAllSyncFunctions(appVersion = '1.1.0') {
+  console.log('[UTIL] Running all sync functions...');
+  await synchronizeDiscussions(appVersion);
+  await synchronizeActivityLog(appVersion);
+  await syncFromRemote();
+  console.log('[UTIL] All sync functions complete.');
+}
+
+/**
+ * Utility: Delete all rows in local Discussion, ActivityLog, ChangeLog, and all rows in Firebase changelog
+ */
+export async function deleteAllLocalAndRemoteRows() {
+  console.log('[UTIL] Deleting all local and remote rows...');
+  await local.deleteAllLocalRows();
+  await remote.deleteAllRemoteChangeLogs();
+  console.log('[UTIL] All local and remote rows deleted.');
+}
+
+/**
+ * Utility: Insert 10 rows each into Discussion and ActivityLog, then exit
+ */
+export async function insertTestRowsAndExit() {
+  console.log(
+    '[UTIL] Inserting 10 test rows into Discussion and ActivityLog...'
+  );
+  for (let i = 0; i < 10; i++) {
+    await addOrUpdateDiscussion(
+      `Test Discussion ${i + 1}`,
+      'test',
+      undefined,
+      false
+    );
+    await local.createActivityLog({
+      discussionId: `test-discussion-${i + 1}`,
+      category: 'test',
+      description: `Test ActivityLog ${i + 1}`,
+      timestamp: new Date(),
+      cleared: false,
+      responseType: 'test',
+      synced: false,
+    });
+  }
+  console.log('[UTIL] Test rows inserted. Exiting process.');
+  if (typeof process !== 'undefined' && process.exit) {
+    process.exit(0);
+  }
+}

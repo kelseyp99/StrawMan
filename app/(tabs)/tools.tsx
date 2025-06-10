@@ -1,7 +1,7 @@
 import { Stack } from 'expo-router';
-import { useAuth } from '../../context/AuthContext';
+import { useAuth } from '../context/AuthContext';
 
-export default function ProfileLayout() {
+export default function ToolsLayout() {
   const { isLogged, isPaid } = useAuth();
 
   if (!isLogged && isPaid) {
@@ -12,7 +12,7 @@ export default function ProfileLayout() {
   // If not paid, or logged in (paid or not), show the main stack
   return (
     <Stack>
-      <Stack.Screen name="index" options={{ title: 'Profile' }} />
+      <Stack.Screen name="index" options={{ title: 'Tools' }} />
       <Stack.Screen name="settings" options={{ title: 'Settings' }} />
       <Stack.Screen name="explore" options={{ title: 'Explore' }} />
     </Stack>

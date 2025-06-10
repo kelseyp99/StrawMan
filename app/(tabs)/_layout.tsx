@@ -58,6 +58,15 @@ export default function TabLayout() {
             ),
           }}
         />
+        <Tabs.Screen
+          name="tools"
+          options={{
+            title: 'Tools',
+            tabBarIcon: ({ color }) => (
+              <MaterialCommunityIcons name="tools" size={30} color={color} />
+            ),
+          }}
+        />
       </Tabs>
       {isExpoGo ? <FakeAdMobBanner /> : <InlineAd />}
     </View>

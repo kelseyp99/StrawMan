@@ -32,9 +32,13 @@ import {
   createActivityLog,
   updateActivityLogCategory,
   createRuleCandidate,
+  runAllSyncFunctions,
+  deleteAllLocalAndRemoteRows,
+  insertTestRowsAndExit,
 } from '@/services/dbServices';
 import { processPhrase } from '@/services/phraseProcessor';
 import { extractAndImportLegacyFirestoreData } from '../services/dbServicesRemote';
+import RNFS from 'react-native-fs';
 
 // Screen width for responsive design
 const SCREEN_WIDTH = Dimensions.get('window').width;
@@ -117,7 +121,7 @@ const RelatedLogEntry = memo(
     onCategoryChange: (id: string) => void;
     onDelete: (id: string) => void;
   }) => {
-    console.log(`Rendering RelatedLogEntry for ID: ${log.id}`);
+    //console.log(`Rendering RelatedLogEntry for ID: ${log.id}`);
     return (
       <View style={styles.relatedLogEntry}>
         <Text style={styles.modalLabel}>ID: {log.id}</Text>
@@ -174,7 +178,7 @@ const RowItem = memo(
       currentTypeSay: string
     ) => JSX.Element;
   }) => {
-    console.log(`Rendering RowItem for ID: ${item.id}`);
+    // console.log(`Rendering RowItem for ID: ${item.id}`);
     return (
       <Swipeable
         renderRightActions={() => renderRightActions(item.tableName, item.id)}
@@ -258,6 +262,8 @@ const MainComponent: React.FC = () => {
   const [uid, setUid] = useState<string | null>(null);
   // Add state for legacy import loading
   const [importingLegacy, setImportingLegacy] = useState(false);
+  // Debug: state for debug button loading
+  const [debugLoading, setDebugLoading] = useState(false);
 
   // Fetch UID once on mount
   useEffect(() => {
@@ -1034,6 +1040,60 @@ const MainComponent: React.FC = () => {
     }
   };
 
+  // Handler for debug: delete all local/remote rows
+  const handleDebugDeleteAll = async () => {
+    setDebugLoading(true);
+    try {
+      await deleteAllLocalAndRemoteRows();
+      Alert.alert('Debug: All local and remote ChangeLog data deleted.');
+      await fetchData();
+    } catch (e: any) {
+      Alert.alert('Debug Delete Failed', e.message || String(e));
+    } finally {
+      setDebugLoading(false);
+    }
+  };
+
+  // Handler for debug: run all syncs and repopulate Realm (10 rows per table)
+  const handleDebugSyncAndPopulate = async () => {
+    setDebugLoading(true);
+    try {
+      // Optionally insert 10 test rows per table for debug
+      await insertTestRowsAndExit();
+      // Then run all sync functions
+      await runAllSyncFunctions();
+      Alert.alert(
+        'Debug: Ran all syncs and repopulated Realm (10 rows per table).'
+      );
+      await fetchData();
+    } catch (e: any) {
+      Alert.alert('Debug Sync/Populate Failed', e.message || String(e));
+    } finally {
+      setDebugLoading(false);
+    }
+  };
+
+  // TEMP: Copy Realm DB to Downloads folder
+  const handleCopyRealmToDownloads = async () => {
+    setDebugLoading(true);
+    try {
+      const realmPath = '/data/data/com.anonymous.lifelog/files/lifelog.realm';
+      const downloadsPath = `${RNFS.DownloadDirectoryPath}/lifelog.realm`;
+      await RNFS.copyFile(realmPath, downloadsPath);
+      Alert.alert('Success', 'Realm DB copied to Downloads folder!');
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      Alert.alert('Copy Failed', message);
+    } finally {
+      setDebugLoading(false);
+    }
+  };
+
+  // Cast 'e' to Error type
+  const alertCopyFailed = (e: unknown) => {
+    Alert.alert('Copy Failed', (e as Error).message || String(e));
+  };
+
   const renderRightActions = useCallback(
     (tableName: string, itemId: string) => (
       <TouchableOpacity
@@ -1086,7 +1146,7 @@ const MainComponent: React.FC = () => {
     async function debugFetchDiscussions() {
       try {
         const discussions = await getDiscussions();
-        console.log('[EXTRA DEBUG] getDiscussions() raw output:', discussions);
+        //console.log('[EXTRA DEBUG] getDiscussions() raw output:', discussions);
       } catch (e) {
         console.error('[EXTRA DEBUG] Error calling getDiscussions:', e);
       }
@@ -1113,23 +1173,66 @@ const MainComponent: React.FC = () => {
     );
   }
 
-  console.log('Rendering MainComponent - debug');
+  //console.log('Rendering MainComponent - debug');
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       style={styles.container}
     >
-      {/* Top action/debug buttons: do not include Confirm button */}
+      {/* TEMP DEBUG BUTTONS - REMOVE IN PRODUCTION */}
       <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
+        horizontal={false}
+        showsVerticalScrollIndicator={false}
         contentContainerStyle={{
-          flexDirection: 'row',
-          justifyContent: 'center',
+          flexDirection: 'column',
+          alignItems: 'center',
           marginVertical: 8,
         }}
       >
-        {/* Add any other original top buttons here as needed, but do not add Confirm */}
+        <TouchableOpacity
+          style={{
+            backgroundColor: '#ff4444',
+            padding: 10,
+            borderRadius: 5,
+            marginBottom: 10,
+            opacity: debugLoading ? 0.5 : 1,
+          }}
+          onPress={handleDebugDeleteAll}
+          disabled={debugLoading}
+        >
+          <Text style={{ color: '#fff', fontWeight: 'bold' }}>
+            DEBUG: Delete All Local/Remote (ChangeLog)
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={{
+            backgroundColor: '#007bff',
+            padding: 10,
+            borderRadius: 5,
+            marginBottom: 10,
+            opacity: debugLoading ? 0.5 : 1,
+          }}
+          onPress={handleDebugSyncAndPopulate}
+          disabled={debugLoading}
+        >
+          <Text style={{ color: '#fff', fontWeight: 'bold' }}>
+            DEBUG: Sync & Repopulate (10 rows/table)
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={{
+            backgroundColor: '#00b894',
+            padding: 10,
+            borderRadius: 5,
+            opacity: debugLoading ? 0.5 : 1,
+          }}
+          onPress={handleCopyRealmToDownloads}
+          disabled={debugLoading}
+        >
+          <Text style={{ color: '#fff', fontWeight: 'bold' }}>
+            DEBUG: Copy Realm DB to Downloads
+          </Text>
+        </TouchableOpacity>
       </ScrollView>
       {initialized && tables.length > 0 ? (
         <View style={styles.tableContainer}>

@@ -242,7 +242,7 @@ export async function createDocument(data: any): Promise<string> {
       realm?.create('Document', {
         id,
         ...data,
-        timestamp: new Date(),
+        timestamp: data.timestamp ? new Date(data.timestamp) : new Date(), // Use provided timestamp if available
         synced: false,
       });
     });
@@ -466,7 +466,8 @@ async function getSyncAndPaidStatus() {
 export async function addOrUpdateDiscussion(
   description: string,
   typeSay: string = 'tell',
-  id?: string
+  id?: string,
+  timestamp?: Date
 ): Promise<string> {
   console.log(
     `Adding/updating discussion with ID: ${id}, description: ${description}, typeSay: ${typeSay}`
@@ -477,7 +478,7 @@ export async function addOrUpdateDiscussion(
   }
   const realmInstance = realm;
   try {
-    const currentTime = new Date();
+    const currentTime = timestamp ? new Date(timestamp) : new Date();
     const discussionId = id ? id : Date.now().toString();
     realmInstance.write(() => {
       const discussion = realmInstance.objectForPrimaryKey<Discussion>(
@@ -778,7 +779,8 @@ export async function processPendingTells(): Promise<void> {
 }
 export async function addQuestionDiscussion(
   question: string,
-  discussionId: string
+  discussionId: string,
+  timestamp?: Date
 ): Promise<string> {
   if (!realm) {
     console.error('Failed to open Realm instance');
@@ -786,7 +788,7 @@ export async function addQuestionDiscussion(
   }
   const realmInstance = realm;
   try {
-    await addOrUpdateDiscussion(question, 'ask', discussionId);
+    await addOrUpdateDiscussion(question, 'ask', discussionId, timestamp);
     const gpts_names = ['openAI', 'Gemini', 'ChatGPT', 'Claude', 'DeepSeek'];
     const categories = await getDistinctCategories();
     const response = await sendQuestionForParsing({
@@ -800,7 +802,7 @@ export async function addQuestionDiscussion(
       realmInstance.create('GPTResponses', {
         id,
         discussionId: discussionId.toString(),
-        timestamp: new Date(),
+        timestamp: timestamp ? new Date(timestamp) : new Date(),
         prompt: question,
         response: JSON.stringify(response),
         responseType: 'parsed question',
@@ -1105,7 +1107,8 @@ export async function addOrUpdateGPTResponse(
   discussionId: string,
   response: string,
   responseType: string,
-  cleared: boolean = false
+  cleared: boolean = false,
+  timestamp?: Date
 ): Promise<void> {
   if (!realm) {
     console.error('Failed to open Realm instance');
@@ -1120,7 +1123,7 @@ export async function addOrUpdateGPTResponse(
         discussionId: discussionId.toString(),
         response,
         responseType,
-        timestamp: new Date(),
+        timestamp: timestamp ? new Date(timestamp) : new Date(),
         cleared,
         synced: false,
       });
@@ -1229,13 +1232,17 @@ export async function addOrUpdateAlert(alertData: any): Promise<void> {
       const alert = {
         id: alertData._id || new Date().getTime(),
         message: alertData.message,
-        timestamp: new Date(),
+        timestamp: alertData.timestamp
+          ? new Date(alertData.timestamp)
+          : new Date(),
         severity: alertData.severity,
         isActive: alertData.isActive !== undefined ? alertData.isActive : true,
         nextTrigger: alertData.nextTrigger
           ? new Date(alertData.nextTrigger)
           : new Date(),
-        createdAt: new Date(),
+        createdAt: alertData.createdAt
+          ? new Date(alertData.createdAt)
+          : new Date(),
         synced: false,
       };
       if (existingAlert) {
@@ -1575,8 +1582,8 @@ export class DatabaseService {
           discussionId: log.discussionId,
           category: log.category,
           description: log.description,
-          timestamp: log.timestamp,
-          cleared: log.cleared,
+          timestamp: log.timestamp ? new Date(log.timestamp) : new Date(),
+          cleared: log.cleared !== undefined ? log.cleared : false,
           responseType: log.responseType,
           synced: false,
         });
@@ -1597,6 +1604,9 @@ export class DatabaseService {
       const created = realm?.create('ActivityLog', {
         ...activityLog,
         id: Date.now().toString(),
+        timestamp: activityLog.timestamp
+          ? new Date(activityLog.timestamp)
+          : new Date(),
       });
       if (created) {
         createdId = String(created.id);
@@ -2230,3 +2240,27 @@ export function ensureStringIds(row: any): any {
 
 // Export addChangeLogEntry for use in scripts
 export { addChangeLogEntry };
+
+/**
+ * Delete all rows in the specified Realm tables: Discussion, ActivityLog, ChangeLog
+ */
+export async function deleteAllLocalRows() {
+  if (!realm) {
+    console.error('Failed to open Realm instance');
+    throw new Error('Failed to open Realm instance');
+  }
+  const realmInstance = realm;
+  try {
+    realmInstance.write(() => {
+      ['Discussion', 'ActivityLog', 'ChangeLog'].forEach((table) => {
+        const allRows = realmInstance.objects(table);
+        realmInstance.delete(allRows);
+        console.log(`[deleteAllLocalRows] Deleted all rows in table: ${table}`);
+      });
+    });
+    console.log('[deleteAllLocalRows] All local rows deleted.');
+  } catch (error) {
+    console.error('[deleteAllLocalRows] Error:', error);
+    throw error;
+  }
+}

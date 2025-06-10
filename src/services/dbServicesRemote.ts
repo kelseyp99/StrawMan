@@ -2201,3 +2201,21 @@ export async function extractAndImportLegacyFirestoreData({
   );
   return { discussionCount, activityLogCount };
 }
+
+/**
+ * Delete all rows in the remote (Firebase) ChangeLog collection for the current user
+ */
+export async function deleteAllRemoteChangeLogs() {
+  const uid = await getUID();
+  if (!uid) throw new Error('No UID available');
+  const changeLogCollection = collection(db, `Users/${uid}/ChangeLog`);
+  const snapshot = await getDocs(changeLogCollection);
+  let count = 0;
+  for (const docSnap of snapshot.docs) {
+    await deleteDoc(docSnap.ref);
+    count++;
+  }
+  console.log(
+    `[deleteAllRemoteChangeLogs] Deleted ${count} remote ChangeLog entries.`
+  );
+}
