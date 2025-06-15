@@ -400,29 +400,29 @@ const MainComponent: React.FC = () => {
 
   useEffect(() => {
     if (uid) {
-      console.log('Mounting MainComponent, fetching data...');
+      // console.log('Mounting MainComponent, fetching data...');
       fetchData();
     }
   }, [uid, fetchData]);
 
   useEffect(() => {
     if (initialized && currentTableIndex === 0 && discussionSnapshot) {
-      console.log(
-        'Triggering prompt2UpdateActivityLog with snapshot size:',
-        discussionSnapshot?.size
-      );
+      // console.log(
+      //   'Triggering prompt2UpdateActivityLog with snapshot size:',
+      //   discussionSnapshot?.size
+      // );
       prompt2UpdateActivityLog(discussionSnapshot);
     }
   }, [currentTableIndex, initialized, discussionSnapshot]);
 
   const prompt2UpdateActivityLog = useCallback(
     (discussionSnapshot: any): void => {
-      console.log(
-        'Inside prompt2UpdateActivityLog, snapshot size:',
-        discussionSnapshot.size
-      );
+      // console.log(
+      //   'Inside prompt2UpdateActivityLog, snapshot size:',
+      //   discussionSnapshot.size
+      // );
       if (!discussionSnapshot || discussionSnapshot.empty) {
-        console.log('No documents in snapshot to process.');
+        // console.log('No documents in snapshot to process.');
         return;
       }
 
@@ -430,9 +430,9 @@ const MainComponent: React.FC = () => {
         (doc: any) => doc.data().cleared === false
       );
 
-      console.log('Uncleared documents:', unclearedDocs.length);
+      // console.log('Uncleared documents:', unclearedDocs.length);
       if (unclearedDocs.length === 0) {
-        console.log('No uncleared documents to process.');
+        // console.log('No uncleared documents to process.');
         return;
       }
 
@@ -1778,6 +1778,11 @@ const styles = StyleSheet.create({
   },
   categoryText: {
     fontSize: 12,
+  },
+  categorySelectButton: {
+    padding: 6,
+    backgroundColor: '#007bff',
+    borderRadius: 5,
   },
   loadingText: {
     fontSize: 16,
