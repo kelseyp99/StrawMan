@@ -36,23 +36,6 @@ import {
 import { extractAndImportLegacyFirestoreData } from '../services/dbServicesRemote';
 import { findDuplicateActivityLog } from '../services/phraseProcessor';
 import RNFS from 'react-native-fs';
-import { db } from '../firebaseConfig';
-import {
-  collection,
-  doc,
-  getDocs,
-  deleteDoc,
-  updateDoc,
-  addDoc,
-  DocumentData,
-  QuerySnapshot,
-  query,
-  getDoc,
-  writeBatch,
-  where,
-  Timestamp,
-  onSnapshot,
-} from 'firebase/firestore';
 import { getUID } from '../utils/uidManager';
 import Swipeable from 'react-native-gesture-handler/Swipeable';
 import { processPhrase } from '../services/phraseProcessor';

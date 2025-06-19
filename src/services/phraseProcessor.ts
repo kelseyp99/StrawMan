@@ -1,75 +1,23 @@
 import axios from 'axios';
 import { ActivityInput, analyzeActivity, ParsedActivity } from './openaiAPI';
 import { getRules } from './dbServices';
-import { db } from '../firebaseConfig';
-import {
-  doc,
-  updateDoc,
-  addDoc,
-  collection,
-  getDoc,
-  Timestamp,
-  where,
-  query,
-  getDocs,
-} from 'firebase/firestore';
 import { ActivityLog } from './types';
 
 const useOpenAI = true;
 
 const categories = ['exercise', 'meal', 'sleep', 'mood'];
-const dummyTokenizer = (text: string): number[] => {
-  return text
-    .toLowerCase()
-    .split(/\s+/)
-    .map((word) => word.length % 10);
-};
-
-export function transformInput(input: string): string {
-  const trimmed = input.trim();
-  let result = trimmed;
-
-  const double8 = trimmed.match(/^88\s*(.*)$/i);
-  if (double8) {
-    result = `Ate a ${double8[1]}`;
-  } else {
-    const single8 = trimmed.match(/^8\s*(.*)$/i);
-    if (single8) {
-      result = `Ate ${single8[1]}`;
-    } else {
-      const wordEight = trimmed.match(/^eight\s*(.*)$/i);
-      if (wordEight) {
-        result = `Ate ${wordEight[1]}`;
-      }
-    }
-  }
-
-  return result.replace(/\s{2,}/g, ' ').trim();
-}
 
 export const processPhrase = async (
-  input: ActivityInput,
-  discussionCounts: {
-    discussionID: string;
-    activityLogId: string;
-    count: number;
-    description: string;
-  }[],
-  setDiscussionCounts: React.Dispatch<
-    React.SetStateAction<
-      {
-        discussionID: string;
-        activityLogId: string;
-        count: number;
-        description: string;
-      }[]
-    >
-  >,
-  discussionId: string,  uid: string
+  description: string,
+  distinctCategories: string[],
+  discussionCounts: any[],
+  setDiscussionCounts: (value: any) => void,
+  discussionId: string,
+  uid: string
 ): Promise<ParsedActivity> => {
-  // console.log('Processing phrase:', input.description);
-  const { categories: distinctCategories, description } = input;
-
+  // Firebase-dependent functionality disabled for offline-first operation
+  // TODO: Implement with local Realm database
+  
   for (const entry of discussionCounts) {
     if (entry.description === description) {
       const updatedCounts = discussionCounts.map((countEntry) =>
@@ -79,153 +27,53 @@ export const processPhrase = async (
       );
       setDiscussionCounts(updatedCounts.sort((a, b) => b.count - a.count));
 
-      const activityLogRef = doc(db, 'ActivityLog', entry.activityLogId);
-      const activityLogSnap = await getDoc(activityLogRef);
-      if (activityLogSnap.exists()) {
-        const activityLogData = activityLogSnap.data();
-        const discussionCountRef = doc(
-          db,
-          `Users/${uid}/DiscussionCounts`,
-          entry.discussionID
-        );
-        await updateDoc(discussionCountRef, { count: entry.count + 1 });
-
-        return {
-          category: activityLogData.category,
-          parsedDescription: activityLogData.description,
-        };
-      }
+      // Return a default response for now
+      return {
+        category: 'general',
+        parsedDescription: description,
+      };
     }
   }
 
   let activityAnalysis = await applyRules(description, distinctCategories);
   if (
-    !activityAnalysis.category ||
-    activityAnalysis.category === 'uncategorized'
+    !activityAnalysis ||
+    activityAnalysis.category === 'Unknown' ||
+    !activityAnalysis.parsedDescription
   ) {
-    const callOpenAI = useOpenAI;
-    if (callOpenAI) {
-      activityAnalysis = await analyzeActivity({
-        categories: distinctCategories,
-        description,
-      });
-    }
+    // console.log('Applying OpenAI analysis');
+    activityAnalysis = await analyzeActivity({ text: description });
+    // console.log('OpenAI analysis result:', activityAnalysis);
   }
 
-  if (
-    activityAnalysis.category &&
-    activityAnalysis.category !== 'uncategorized' &&
-    activityAnalysis.parsedDescription
-  ) {
-    const existingLog = await findDuplicateActivityLog(
-      discussionId,
-      activityAnalysis.category,
-      activityAnalysis.parsedDescription,
-      uid
-    );
-    let activityLogId: string;
-
-    if (existingLog) {
-      activityLogId = String(existingLog.id);
-      const existingCount = discussionCounts.find(
-        (count) => count.activityLogId === activityLogId
-      );
-      if (existingCount) {
-        const updatedCounts = discussionCounts.map((countEntry) =>
-          countEntry.activityLogId === activityLogId
-            ? { ...countEntry, count: countEntry.count + 1 }
-            : countEntry
-        );
-        setDiscussionCounts(updatedCounts.sort((a, b) => b.count - a.count));
-        const discussionCountRef = doc(
-          db,
-          `Users/${uid}/DiscussionCounts`,
-          existingCount.discussionID
-        );
-        await updateDoc(discussionCountRef, { count: existingCount.count + 1 });
-      } else {
-        const newDiscussionCount = {
-          discussionID: discussionId,
-          activityLogId: activityLogId,
-          count: 1,
-          description: activityAnalysis.parsedDescription,
-        };
-        const newDocRef = await addDoc(
-          collection(db, `Users/${uid}/DiscussionCounts`),
-          newDiscussionCount
-        );
-        setDiscussionCounts((prev) =>
-          [...prev, { ...newDiscussionCount, discussionID: newDocRef.id }].sort(
-            (a, b) => b.count - a.count
-          )
-        );
-      }
-    } else {
-      const newActivityLog = await addDoc(collection(db, 'ActivityLog'), {
-        discussionId: discussionId,
-        category: activityAnalysis.category,
-        description: activityAnalysis.parsedDescription,
-        timestamp: Timestamp.fromDate(new Date()),
-        cleared: false,
-        uid: uid,
-        lockedCategory: false,
-        lockedDescription: false,      });
-      activityLogId = newActivityLog.id;
-      // console.log(
-      //   `Created new ActivityLog entry ${activityLogId} for discussionId ${discussionId}`
-      // );
-
-      const newDiscussionCount = {
-        discussionID: discussionId,
-        activityLogId: activityLogId,
-        count: 1,
-        description: activityAnalysis.parsedDescription,
-      };
-      const newDocRef = await addDoc(
-        collection(db, `Users/${uid}/DiscussionCounts`),
-        newDiscussionCount
-      );
-      setDiscussionCounts((prev) =>
-        [...prev, { ...newDiscussionCount, discussionID: newDocRef.id }].sort(
-          (a, b) => b.count - a.count
-        )
-      );
-    }
-  }
+  // For offline-first approach, don't attempt to save to Firebase
+  // Just update local state
+  const newDiscussionCount = {
+    discussionID: discussionId,
+    activityLogId: 'local_' + Date.now(),
+    count: 1,
+    description: activityAnalysis.parsedDescription,
+  };
+  
+  setDiscussionCounts((prev: any) =>
+    [...prev, { ...newDiscussionCount, discussionID: 'local_' + Date.now() }].sort(
+      (a: any, b: any) => b.count - a.count
+    )
+  );
 
   return activityAnalysis;
 };
 
+// Simplified version that doesn't use Firebase
 export async function findDuplicateActivityLog(
   discussionId: string,
   category: string,
   description: string,
   uid: string
 ): Promise<ActivityLog | null> {
-  const q = query(
-    collection(db, 'ActivityLog'),
-    where('discussionId', '==', discussionId),
-    where('category', '==', category),
-    where('description', '==', description),
-    where('uid', '==', uid)
-  );
-  const snapshot = await getDocs(q);
-  if (snapshot.empty) return null;
-
-  const docData = snapshot.docs[0].data();
-  const activityLog: ActivityLog = {
-    id: snapshot.docs[0].id,
-    discussionId: docData.discussionId || '',
-    description: docData.description || '',
-    category: docData.category || '',
-    timestamp: docData.timestamp || Timestamp.fromDate(new Date()),
-    cleared: docData.cleared || false,
-    uid: docData.uid || '',
-    lockedCategory: docData.lockedCategory || false,
-    lockedDescription: docData.lockedDescription || false,
-  };
-
-  return activityLog;
+  // Firebase operations commented out for offline-first approach
+  // TODO: Implement with local Realm database
+  return null;
 }
 
 export async function applyRules(
@@ -238,59 +86,93 @@ export async function applyRules(
     ['2', 'regular size poop'],
     ['22', 'large poop'],
     ['222', 'very large poop'],
+    ['3', 'diarrhea'],
+    ['4', 'constipated'],
+    ['5', 'nauseous'],
+    ['6', 'vomited'],
+    ['7', 'headache'],
+    ['8', 'tired'],
+    ['9', 'stressed'],
+    ['10', 'anxious'],
+    ['w', 'drank water'],
+    ['ww', 'drank lots of water'],
+    ['coffee', 'drank coffee'],
+    ['tea', 'drank tea'],
+    ['b', 'ate breakfast'],
+    ['l', 'ate lunch'],
+    ['d', 'ate dinner'],
+    ['s', 'had a snack'],
+    ['ss', 'had multiple snacks'],
+    ['run', 'went for a run'],
+    ['walk', 'went for a walk'],
+    ['gym', 'went to the gym'],
+    ['yoga', 'did yoga'],
+    ['stretch', 'did stretching exercises'],
+    ['sleep', 'went to sleep'],
+    ['nap', 'took a nap'],
+    ['wake', 'woke up'],
+    ['work', 'went to work'],
+    ['home', 'went home'],
+    ['shower', 'took a shower'],
+    ['bath', 'took a bath'],
+    ['brush', 'brushed teeth'],
+    ['floss', 'flossed teeth'],
+    ['medicine', 'took medicine'],
+    ['vitamin', 'took vitamins'],
+    ['supplement', 'took supplements'],
+    ['happy', 'feeling happy'],
+    ['sad', 'feeling sad'],
+    ['angry', 'feeling angry'],
+    ['excited', 'feeling excited'],
+    ['calm', 'feeling calm'],
+    ['energetic', 'feeling energetic'],
   ]);
 
-  let extractedCategory = '';
-  let remainingPhrase = discussion;
-
-  const validCategories = distinctCategories;
-  const categoryMatch = discussion.match(
-    new RegExp(`^(${validCategories.join('|')})[:;]\\s*(.+)$`, 'i')
-  );
-  if (categoryMatch) {    extractedCategory = categoryMatch[1].toLowerCase();
-    remainingPhrase = categoryMatch[2];
-    // console.log(
-    //   `Extracted category: "${extractedCategory}", remaining phrase: "${remainingPhrase}"`
-    // );
-  }
-
-  if (abbreviationMap.has(remainingPhrase)) {
-    const expanded = abbreviationMap.get(remainingPhrase)!;
-    remainingPhrase = expanded;
+  // First, check for direct abbreviation matches
+  const normalizedDiscussion = discussion.toLowerCase().trim();
+  if (abbreviationMap.has(normalizedDiscussion)) {
+    const expandedDescription = abbreviationMap.get(normalizedDiscussion)!;
+    const category = categorizeDescription(expandedDescription, distinctCategories);
     return {
-      category: extractedCategory || 'metabolism',
-      parsedDescription: remainingPhrase.trim(),
+      category,
+      parsedDescription: expandedDescription,
     };
   }
 
-  const normalizedInput = remainingPhrase.replace(/^I /i, '').trim();
+  // If no abbreviation match, try to categorize the original text
+  const category = categorizeDescription(discussion, distinctCategories);
+  
+  return {
+    category: category || 'general',
+    parsedDescription: discussion,
+  };
+}
 
-  const rules = await getRules();
-  for (const rule of rules) {
-    let isMatch = false;
-    let parsedDesc = normalizedInput;
+function categorizeDescription(description: string, distinctCategories: string[]): string {
+  const lowerDescription = description.toLowerCase();
+  
+  // Define keyword mappings for categories
+  const categoryKeywords = {
+    exercise: ['run', 'walk', 'gym', 'yoga', 'workout', 'exercise', 'jog', 'bike', 'swim', 'stretch'],
+    meal: ['ate', 'eat', 'breakfast', 'lunch', 'dinner', 'snack', 'food', 'meal', 'hungry'],
+    drink: ['drink', 'drank', 'water', 'coffee', 'tea', 'juice', 'soda', 'beer', 'wine'],
+    sleep: ['sleep', 'nap', 'tired', 'wake', 'bed', 'rest'],
+    mood: ['happy', 'sad', 'angry', 'excited', 'calm', 'stressed', 'anxious', 'feeling'],
+    health: ['medicine', 'vitamin', 'supplement', 'doctor', 'sick', 'headache', 'pain'],
+    bathroom: ['urinated', 'poop', 'diarrhea', 'constipated', 'bathroom'],
+    hygiene: ['shower', 'bath', 'brush', 'floss', 'wash', 'clean'],
+  };
 
-    if (rule.isRegex) {
-      const regex = new RegExp(rule.pattern, 'i');
-      if (regex.test(normalizedInput)) {
-        isMatch = true;
+  // Check each category for keyword matches
+  for (const [category, keywords] of Object.entries(categoryKeywords)) {
+    if (keywords.some(keyword => lowerDescription.includes(keyword))) {
+      // Check if this category exists in the distinct categories
+      if (distinctCategories.includes(category)) {
+        return category;
       }
-    } else {
-      if (normalizedInput.includes(rule.pattern)) {
-        isMatch = true;
-      }
-    }
-
-    if (isMatch) {
-      return {
-        category: extractedCategory || rule.category,
-        parsedDescription: parsedDesc.replace(/["']/g, '').trim(),
-      };
     }
   }
 
-  return {
-    category: extractedCategory || 'uncategorized',
-    parsedDescription: normalizedInput,
-  };
+  // If no specific category found, return the first available category or 'general'
+  return distinctCategories.length > 0 ? distinctCategories[0] : 'general';
 }

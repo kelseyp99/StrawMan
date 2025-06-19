@@ -1,5 +1,4 @@
-import { collection, getDocs, query, where } from "firebase/firestore";
-import { auth, db } from "../firebaseConfig";
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export interface ModelAPIkey {
   aiModel: string;
@@ -7,12 +6,17 @@ export interface ModelAPIkey {
   endPointURL: string;
 }
 
-import { doc, getDoc } from "firebase/firestore";
-
 export const getModelAPIkey = async () => {
-  const user = auth.currentUser;
-  if (!user) return null;
-  const docRef = doc(db, "AI_Models", user.uid);
-  const docSnap = await getDoc(docRef);
-  return docSnap.exists() ? docSnap.data().apiKey : null;
+  try {
+    // Get API key from local storage (offline-first approach)
+    const localApiKey = await AsyncStorage.getItem('userApiKey');
+    if (localApiKey) {
+      return { apiKey: localApiKey };
+    }
+    
+    return null;
+  } catch (error) {
+    console.log('Error getting API key from local storage:', error);
+    return null;
+  }
 };
