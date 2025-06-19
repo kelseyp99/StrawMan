@@ -7,6 +7,12 @@ const useOpenAI = true;
 
 const categories = ['exercise', 'meal', 'sleep', 'mood'];
 
+export function transformInput(input: string): string {
+  // Simple input transformation - just trim whitespace for now
+  // This can be expanded later if needed
+  return input.trim();
+}
+
 export const processPhrase = async (
   description: string,
   distinctCategories: string[],
@@ -42,7 +48,10 @@ export const processPhrase = async (
     !activityAnalysis.parsedDescription
   ) {
     // console.log('Applying OpenAI analysis');
-    activityAnalysis = await analyzeActivity({ text: description });
+    activityAnalysis = await analyzeActivity({ 
+      categories: distinctCategories, 
+      description: description 
+    });
     // console.log('OpenAI analysis result:', activityAnalysis);
   }
 
