@@ -2,7 +2,12 @@ import axios, { AxiosError } from 'axios';
 //import dotenv from 'dotenv';
 // @ts-ignore
 import Config from 'react-native-config';
-import { addOrUpdateGPTResponse, clearDiscussion, getURLofGPT, queryAllFieldsByCategories } from './databaseService';
+import {
+  addOrUpdateGPTResponse,
+  clearDiscussion,
+  getURLofGPT,
+  queryAllFieldsByCategories,
+} from './dbServices';
 const API_URL = Config.API_URL;
 // Load environment variables from .env
 
@@ -35,7 +40,7 @@ export interface ParsedActivity {
   parsedDescription: string;
 }
 
-import { getModelAPIkey } from "./apiUtils";
+import { getModelAPIkey } from './apiUtils';
 
 let cachedAiModel: string | null = null;
 let cachedApiKey: string | null = null;
@@ -48,12 +53,16 @@ const getAPIKey = async (): Promise<ModelAPIkey> => {
     // console.log("Fetched API Model:", cachedAiModel);
     // console.log("Fetched API Key:", cachedApiKey);
     // console.log("Fetched EndPoint URL:", cachedEndPointURL);
-    return { aiModel: cachedAiModel!, apiKey: cachedApiKey!, endPointURL: cachedEndPointURL! };
+    return {
+      aiModel: cachedAiModel!,
+      apiKey: cachedApiKey!,
+      endPointURL: cachedEndPointURL!,
+    };
   }
 
   try {
     const key = await getModelAPIkey();
-    if (!key) throw new Error("API Key not found");
+    if (!key) throw new Error('API Key not found');
     // console.log("Fetched API Model:", key.aiModel);
     // console.log("Fetched API Key:", key.apiKey);
     // console.log("Fetched EndPoint URL:", key.endPointURL);
@@ -62,7 +71,7 @@ const getAPIKey = async (): Promise<ModelAPIkey> => {
     cachedEndPointURL = key.endPointURL;
     return key;
   } catch (error) {
-    console.error("Error fetching API Key:", error);
+    console.error('Error fetching API Key:', error);
     throw error;
   }
 };
@@ -72,43 +81,47 @@ export const fetchAIResponse = async (input: string): Promise<any> => {
   try {
     const aiConnection = await getAPIKey();
     const { aiModel, apiKey, endPointURL } = aiConnection;
-    console.log("Using API model:", aiModel);
-    console.log("Using API Key:", apiKey);
-    console.log("Using EndPoint URL:", endPointURL);
+    console.log('Using API model:', aiModel);
+    console.log('Using API Key:', apiKey);
+    console.log('Using EndPoint URL:', endPointURL);
     const response = await fetch(endPointURL, {
-      method: "POST",
+      method: 'POST',
       headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${apiKey}`
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify({ input }),
     });
 
     return await response.json();
   } catch (error) {
-    console.error("Error fetching AI response:", error);
+    console.error('Error fetching AI response:', error);
     throw error;
   }
 };
 
-export const analyzeActivity = async (input: ActivityInput): Promise<ParsedActivity> => {
+export const analyzeActivity = async (
+  input: ActivityInput
+): Promise<ParsedActivity> => {
   try {
     const { categories, description } = input;
     console.log('Debug: Received input:', input);
     const aiConnection = await getAPIKey();
     const { aiModel, apiKey, endPointURL } = aiConnection;
-    console.log("Using API model:", aiModel);
-    console.log("Using API Key:", apiKey);
-    console.log("Using EndPoint URL:", endPointURL);
+    console.log('Using API model:', aiModel);
+    console.log('Using API Key:', apiKey);
+    console.log('Using EndPoint URL:', endPointURL);
     if (!cachedEndPointURL) {
-      throw new Error("API endpoint URL is not set.");
+      throw new Error('API endpoint URL is not set.');
     }
     //const url = cachedEndPointURL;
     //const url = 'https://api.openai.com/v1/chat/completions';
     // Prompt setup with categories and user activity
     const systemPrompt = `
       You are a data parsing assistant. Your task is to analyze activities and assign them to the most relevant category. 
-      The list of predefined categories, if any, is: ${categories.join(', ')}. However, if an activity does not fit into an existing category, create a new appropriate category.
+      The list of predefined categories, if any, is: ${categories.join(
+        ', '
+      )}. However, if an activity does not fit into an existing category, create a new appropriate category.
       Add additional appropriate catagories if needed for the activity. 
 
       For each activity description provided, return a JSON object with:
@@ -126,7 +139,7 @@ export const analyzeActivity = async (input: ActivityInput): Promise<ParsedActiv
     //if (true) return { category: 'Uncategorized', parsedDescription: 'No description provided.' };
     // const apiKey = await getAPIKey(); // Ensure key is available
     //console.log("Using API Key:", apiKey);
-    
+
     const response = await axios.post(
       endPointURL,
       {
@@ -147,7 +160,11 @@ export const analyzeActivity = async (input: ActivityInput): Promise<ParsedActiv
       }
     );
 
-    if (response.data && response.data.choices && response.data.choices.length > 0) {
+    if (
+      response.data &&
+      response.data.choices &&
+      response.data.choices.length > 0
+    ) {
       const responseText = response.data.choices[0].message.content;
       // Parse the response JSON returned from OpenAI
       const result: ParsedActivity = JSON.parse(responseText);
@@ -155,26 +172,31 @@ export const analyzeActivity = async (input: ActivityInput): Promise<ParsedActiv
       return result;
     } else {
       console.warn('Debug: No valid response from OpenAI.');
-      return { category: 'Uncategorized', parsedDescription: 'Unable to parse activity.' };
+      return {
+        category: 'Uncategorized',
+        parsedDescription: 'Unable to parse activity.',
+      };
     }
   } catch (error) {
     const errorAsError = error as AxiosError;
     console.error('Error during OpenAI API call:', errorAsError);
-  
+
     if (errorAsError.response) {
       const status = errorAsError.response.status;
       console.error('Error status:', status);
       console.error('Error details:', errorAsError.response.data);
-  
+
       if (status === 429) {
-        console.error('Quota exceeded: Ensure your account has sufficient quota or reduce request volume.');
+        console.error(
+          'Quota exceeded: Ensure your account has sufficient quota or reduce request volume.'
+        );
         // Optional: Add logic to retry after some delay
       }
     } else {
       console.error('Error details:', errorAsError.message);
     }
     throw errorAsError;
-  }  
+  }
 };
 
 interface QuestionInputForParsing {
@@ -184,7 +206,9 @@ interface QuestionInputForParsing {
   discussionId: string;
 }
 
-export const sendQuestionForParsing = async (input: QuestionInputForParsing): Promise<ParsedActivity> => {
+export const sendQuestionForParsing = async (
+  input: QuestionInputForParsing
+): Promise<ParsedActivity> => {
   try {
     // Here we take the user's raw question and send it to the OpenAI API for parsing.
     // The parsing process entails analyzing the question, splitting it into parts,
@@ -200,7 +224,7 @@ export const sendQuestionForParsing = async (input: QuestionInputForParsing): Pr
 
     // Set the URL for the OpenAI API endpoint that we will be interacting with.
     if (!cachedEndPointURL) {
-      throw new Error("API endpoint URL is not set.");
+      throw new Error('API endpoint URL is not set.');
     }
     // const url = cachedEndPointURL;
     // Create a new object
@@ -213,7 +237,7 @@ export const sendQuestionForParsing = async (input: QuestionInputForParsing): Pr
     // realm.write(() => {
     //   realm.create('MyObject', myObject);
     // });
-    
+
     // Define the system prompt. This instructs the AI on what task it needs to perform,
     // which involves analyzing the question, splitting it into parts, and assigning each part
     // to a relevant category and GPT. It also specifies the categories and GPTs available.
@@ -241,7 +265,7 @@ export const sendQuestionForParsing = async (input: QuestionInputForParsing): Pr
     console.log('Debug: User Prompt:', userPrompt);
     //const apiKey = await getAPIKey(); // Ensure key is available
     //console.log("Using API Key:", apiKey);
-    
+
     // Send a POST request to the OpenAI API with the specified model and messages.
     const response = await axios.post(
       endPointURL,
@@ -265,7 +289,11 @@ export const sendQuestionForParsing = async (input: QuestionInputForParsing): Pr
     // console.log('Debug: API response:', response.data);
 
     // Check if the API response contains valid choices.
-    if (response.data && response.data.choices && response.data.choices.length > 0) {
+    if (
+      response.data &&
+      response.data.choices &&
+      response.data.choices.length > 0
+    ) {
       // Extract the content from the first response choice.
       const responseText = response.data.choices[0].message.content;
       // console.log('Debug: Parsed response:', responseText);
@@ -275,9 +303,13 @@ export const sendQuestionForParsing = async (input: QuestionInputForParsing): Pr
       console.log('Debug: Final Parsed Result:', result);
 
       // Prepare to update the database with the parsed result.
-      const responseType = "parsed question";
+      const responseType = 'parsed question';
       const stringifiedResponse = JSON.stringify(result);
-      await addOrUpdateGPTResponse(discussionId, stringifiedResponse, responseType);
+      await addOrUpdateGPTResponse(
+        discussionId,
+        stringifiedResponse,
+        responseType
+      );
 
       // Return the parsed result to the caller.
       return result;
@@ -286,7 +318,10 @@ export const sendQuestionForParsing = async (input: QuestionInputForParsing): Pr
       console.warn('Debug: No valid response from OpenAI.');
 
       // Return a default result if the parsing was unsuccessful.
-      return { category: 'Uncategorized', parsedDescription: 'Unable to parse activity.' };
+      return {
+        category: 'Uncategorized',
+        parsedDescription: 'Unable to parse activity.',
+      };
     }
   } catch (error) {
     // Catch and handle errors that occur during the API call.
@@ -314,7 +349,9 @@ export interface QuestionInput {
   discussionId: string;
 }
 
-export const sendQuestion = async (input: QuestionInput): Promise<ParsedActivity> => {
+export const sendQuestion = async (
+  input: QuestionInput
+): Promise<ParsedActivity> => {
   try {
     const { category, gpt, question, discussionId } = input;
     const aiConnection = await getAPIKey();
@@ -322,13 +359,13 @@ export const sendQuestion = async (input: QuestionInput): Promise<ParsedActivity
     // console.log("Using API Key:", apiKey);
     // console.log("Using EndPoint URL:", endPointURL);
     if (!cachedEndPointURL) {
-      throw new Error("API endpoint URL is not set.");
+      throw new Error('API endpoint URL is not set.');
     }
     // const url = cachedEndPointURL;
     // const getDescriptionsWithTimestamps = async (categories: string[]): Promise<any[]> => {
     //   return categories.map(category => ({ category, timestamp: new Date().toISOString() }));
     // };
-    
+
     // const queryAllFieldsByCategories = async (categories: string[]): Promise<any[]> => {
     //   return categories.map(category => ({ category, timestamp: new Date().toISOString() }));
     // };
@@ -357,20 +394,32 @@ export const sendQuestion = async (input: QuestionInput): Promise<ParsedActivity
       }
     );
     // console.log('Debug: API response:', response.data);
-    
-    if (response.data && response.data.choices && response.data.choices.length > 0) {
+
+    if (
+      response.data &&
+      response.data.choices &&
+      response.data.choices.length > 0
+    ) {
       const responseText = response.data.choices[0].message.content;
       console.log('Debug: Parsed response:', responseText);
-    
+
       // Parse the response JSON returned from OpenAI
-      const responseType = "parsed answer";
+      const responseType = 'parsed answer';
       // const stringifiedResponse = JSON.stringify(result); // Convert ParsedActivity to string
       //const responseText2 = { category: 'testing', parsedDescription: 'testing'};
-      await addOrUpdateGPTResponse(discussionId, responseText, responseType, true);
+      await addOrUpdateGPTResponse(
+        discussionId,
+        responseText,
+        responseType,
+        true
+      );
       return { category: category, parsedDescription: responseText };
     } else {
       console.warn('Debug: No valid response from OpenAI.');
-      return { category: 'Uncategorized', parsedDescription: 'Unable to parse activity.' };
+      return {
+        category: 'Uncategorized',
+        parsedDescription: 'Unable to parse activity.',
+      };
     }
   } catch (error) {
     const errorAsError = error as AxiosError;

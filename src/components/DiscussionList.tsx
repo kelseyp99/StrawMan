@@ -1,39 +1,37 @@
-import React, { useState, useEffect } from 'react';
-import { getDiscussions } from '../services/databaseService';
-import { Text, View } from 'react-native';
+// src/components/DiscussionList.tsx
+import { useState, useEffect } from 'react';
+import { getDiscussions } from '../services/dbServices';
 
+interface Discussion {
+  id: number;
+  discussionId?: number;
+  description: string;
+  timestamp: Date | string;
+  typeSay?: string; // Changed from type to typeSay
+  cleared: boolean;
+  uid?: string;
+}
 
-const DiscussionTable = () => {
-  // ...
-};
-export interface Discussion {
-    type: any;
-    id: number;
-    timestamp: Date;
-    description: string;
-    cleared: boolean;
-  }
 const DiscussionList = () => {
   const [discussions, setDiscussions] = useState<Discussion[]>([]);
 
   useEffect(() => {
-    // @ts-ignore
-    getDiscussions().then((discussions: Discussion[]) => {
-      setDiscussions(discussions);
-    }).catch((error) => {
-      console.error('Error getting discussions:', error);
-    });
+    getDiscussions()
+      .then((discussions: Discussion[]) => {
+        setDiscussions(discussions);
+      })
+      .catch((error) => console.error('Error fetching discussions:', error));
   }, []);
 
   return (
-    <View>
-      {discussions.map((discussion: Discussion) => (
-        <View key={discussion.id}>
-          <Text>{discussion.description}</Text>
-        </View>
+    <div>
+      {discussions.map((d) => (
+        <div key={d.id}>
+          {d.description} ({d.typeSay || 'unknown'})
+        </div>
       ))}
-    </View>
+    </div>
   );
 };
 
-export default DiscussionTable;
+export default DiscussionList;

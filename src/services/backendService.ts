@@ -1,14 +1,4 @@
-export interface ActivityLog {
-  id: number;
-  discussionId: string;
-  description: string;
-  category: string;
-  timestamp: string;
-  cleared: boolean;
-  uid: string;
-  lockedCategory: boolean;
-  lockedDescription: boolean;
-}
+import { ActivityLog } from './types';
 
 const BASE_URL = 'http://localhost:5000';
 

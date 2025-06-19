@@ -26,7 +26,14 @@ import {
   synchronizeActivityLog,
   markDiscussionAsCleared,
   processPendingTells,
-} from '../../src/services/databaseService';
+} from '../../src/services/dbServices';
+import {
+  printAllRealmDataToTerminal,
+  importLegacyActivityLogs,
+  importLegacyDiscussions,
+  debugPrintAllActivityLogs,
+  debugPrintAllDiscussions,
+} from '../../src/services/dbServicesLocal';
 import { transformInput } from '../../src/services/phraseProcessor';
 import {
   collection,
@@ -49,6 +56,10 @@ import { check, request, PERMISSIONS, RESULTS } from 'react-native-permissions';
 import { setUID } from '../../src/utils/uidManager';
 import * as FileSystem from 'expo-file-system';
 import * as DocumentPicker from 'expo-document-picker';
+import * as dbServices from '../../src/services/dbServices';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useSync } from '../context/SyncContext';
+import { extractAndImportLegacyFirestoreData } from '../../src/services/dbServicesRemote';
 
 // App version from app.json
 const APP_VERSION = '1.1.0';
@@ -83,6 +94,7 @@ const IndexScreen: React.FC<{
   onApiKeyLoaded: (cachedApiKey: string | null) => void;
 }> = ({ onApiKeyLoaded }) => {
   const [loading, setLoading] = useState(true);
+  const { triggerSync } = useSync();
 
   useEffect(() => {
     async function loadApiKey() {
@@ -98,7 +110,9 @@ const IndexScreen: React.FC<{
       }
     }
     loadApiKey();
-  }, [onApiKeyLoaded]);
+    // Trigger sync on mount
+    // triggerSync();
+  }, [onApiKeyLoaded, triggerSync]);
 
   if (loading) return <ActivityIndicator size="large" color="#0000ff" />;
   return null;
@@ -148,6 +162,7 @@ export default function AskJanet() {
   const dialogRef = useRef<View>(null);
   const [fetchAttempts, setFetchAttempts] = useState(0);
   const MAX_FETCH_ATTEMPTS = 5;
+  const { lastSync } = useSync();
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
@@ -157,11 +172,11 @@ export default function AskJanet() {
         setUID(user.uid);
         setTimeout(async () => {
           try {
-            await synchronizeDiscussions('1.1.0');
-            await synchronizeActivityLog('1.1.0');
+            // await synchronizeDiscussions('1.1.0');
+            // await synchronizeActivityLog('1.1.0');
             await initializeUser();
             await loadInitialData();
-            await processPendingTells();
+            // await processPendingTells();
           } catch (error) {
             console.error('Init err:', error);
           }
@@ -179,11 +194,11 @@ export default function AskJanet() {
       setUID(auth.currentUser.uid);
       setTimeout(async () => {
         try {
-          await synchronizeDiscussions('1.1.0');
-          await synchronizeActivityLog('1.1.0');
+          // await synchronizeDiscussions('1.1.0');
+          // await synchronizeActivityLog('1.1.0');
           await initializeUser();
           await loadInitialData();
-          await processPendingTells();
+          // await processPendingTells();
         } catch (error) {
           console.error('Fallback init err:', error);
         }
@@ -226,6 +241,13 @@ export default function AskJanet() {
       setActivityLogEntries([]);
     }
   }, [dialogVisible, selectedCategories]);
+
+  useEffect(() => {
+    if (!loadingAuth) {
+      loadInitialData();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lastSync, loadingAuth]);
 
   async function loadInitialData() {
     if (!auth.currentUser?.uid) {
@@ -1050,6 +1072,27 @@ export default function AskJanet() {
 
   const toggleMenu = () => setMenuVisible(!menuVisible);
 
+  useEffect(() => {
+    // Run syncToCloud in the background on app start if sync is enabled
+    (async () => {
+      try {
+        const syncWithCloud =
+          (await AsyncStorage.getItem('syncWithCloud')) === 'true';
+        if (syncWithCloud) {
+          // Sync both tables as a backup
+          dbServices
+            .syncToCloud('Discussion')
+            .catch((e) => console.warn('Discussion syncToCloud failed:', e));
+          dbServices
+            .syncToCloud('ActivityLog')
+            .catch((e) => console.warn('ActivityLog syncToCloud failed:', e));
+        }
+      } catch (e) {
+        console.warn('Could not check syncWithCloud:', e);
+      }
+    })();
+  }, []);
+
   if (loadingAuth) return <ActivityIndicator size="large" color="#0000ff" />;
 
   return (
@@ -1058,6 +1101,99 @@ export default function AskJanet() {
       <Header />
       <InputField input={input} onChange={handleInputChange} />
       <ActionButtons isQuestion={isQuestion} onSubmit={handleSubmit} />
+      {/* --- TEMP BUTTONS: Print ActivityLog and Discussion separately, and copy Realm file --- */}
+      {/* <View
+        style={{
+          flexDirection: 'row',
+          justifyContent: 'center',
+          marginBottom: 10,
+        }}
+      >
+          <TouchableOpacity
+          style={{
+            backgroundColor: '#007AFF',
+            padding: 10,
+            borderRadius: 5,
+            marginRight: 10,
+          }}
+          onPress={async () => {
+            await debugPrintAllActivityLogs();
+            Alert.alert(
+              'Realm Dump',
+              'Printed all ActivityLog data to terminal.'
+            );
+          }}
+        >
+          {/*  <Text style={{ color: '#fff', fontWeight: 'bold' }}>
+            Print ActivityLog
+          </Text> }
+       </TouchableOpacity> */}
+      {/*  <TouchableOpacity
+          style={{
+            backgroundColor: '#28A745',
+            padding: 10,
+            borderRadius: 5,
+            marginRight: 10,
+          }}
+          onPress={async () => {
+            await debugPrintAllDiscussions();
+            Alert.alert(
+              'Realm Dump',
+              'Printed all Discussion data to terminal.'
+            );
+          }}
+        >
+          <Text style={{ color: '#fff', fontWeight: 'bold' }}>
+            Print Discussion
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={{
+            backgroundColor: '#FF9500',
+            padding: 10,
+            borderRadius: 5,
+          }}
+          onPress={async () => {
+            try {
+              const src = RNFS.DocumentDirectoryPath + '/lifelog.realm';
+              const dest = 'C:/Users/philk/Downloads/lifelog.realm';
+              await RNFS.copyFile(src, dest);
+              Alert.alert('Realm File', 'Copied lifelog.realm to Downloads!');
+            } catch (e) {
+              Alert.alert('Copy Failed', String(e));
+            }
+          }}
+        >
+          {
+            <Text style={{ color: '#fff', fontWeight: 'bold' }}>
+              Copy Realm to Downloads
+            </Text>
+          }
+        </TouchableOpacity> 
+      </View>
+      {/* NEW: Legacy Import All Tables Button */}
+      {/*  <TouchableOpacity
+        style={{
+          backgroundColor: '#6C63FF',
+          padding: 10,
+          borderRadius: 5,
+        }}
+        onPress={async () => {
+          try {
+            const result = await extractAndImportLegacyFirestoreData();
+            Alert.alert(
+              'Legacy Import Complete',
+              `Imported ${result.discussionCount} Discussion and ${result.activityLogCount} ActivityLog records.`
+            );
+          } catch (e) {
+            Alert.alert('Legacy Import Failed', String(e));
+          }
+        }}
+      >
+        <Text style={{ color: '#fff', fontWeight: 'bold' }}>
+          Import All Legacy Firestore Tables
+        </Text>
+      </TouchableOpacity> */}
       <FlatList
         data={history}
         keyExtractor={(item, index) => `${item.text}-${index}`}
@@ -1102,7 +1238,7 @@ export default function AskJanet() {
         <Pressable onPress={toggleMenu} style={styles.hamburger}>
           <Icon name="menu" size={24} color="#333" />
         </Pressable>
-        <SettingsButton style={styles.settingsButton} />
+        <SettingsButton />
       </View>
       <Modal
         visible={menuVisible}
@@ -1216,12 +1352,7 @@ export default function AskJanet() {
               >
                 <Text style={styles.modalButtonText}>Add</Text>
               </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.modalButton, styles.confirmButton]}
-                onPress={handleDialogConfirm}
-              >
-                <Text style={styles.modalButtonText}>Confirm</Text>
-              </TouchableOpacity>
+              {/* Confirm button removed */}
             </View>
           </View>
         </View>

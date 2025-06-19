@@ -1,86 +1,281 @@
+// CHANGELOG (2025-06-02):
+// - Added syncRealmRowsToFirestore(tableName: string, realmRows: any[]): Promise<string[]> to upload only new/unsynced Realm rows to Firestore (Users/{uid}/{tableName}).
+//   This function does not perform any download or update from Firestore to Realm, and is not related to previous .NET API or bidirectional sync logic.
+//   Use this for one-way upload of new Realm data to Firestore only.
+
+import { auth, db } from '../firebaseConfig';
+import { realm } from '../realmConfig';
 import {
-  getFirestore,
   collection,
-  doc,
+  addDoc,
   getDocs,
   setDoc,
+  doc,
   deleteDoc,
   query,
   where,
-  addDoc,
-  updateDoc,
   getDoc,
-  Timestamp,
-  limit,
-  writeBatch,
-  deleteField,
-  and,
-  orderBy,
   startAfter,
-  onSnapshot,
+  deleteField,
   DocumentData,
   DocumentReference,
   DocumentSnapshot,
+  limit,
+  onSnapshot,
+  orderBy,
+  Timestamp,
+  updateDoc,
+  writeBatch,
 } from 'firebase/firestore';
-import { auth, db } from '../firebaseConfig';
-import { format } from 'date-fns';
 import { getUID } from '../utils/uidManager';
-import { sendQuestion, sendQuestionForParsing } from './openaiAPI';
+import { format } from 'date-fns';
+import { sendQuestionForParsing, sendQuestion } from './openaiAPI';
+import { ActivityLog } from './types';
+import { addChangeLogEntry } from './dbServicesLocal';
 
-const APP_VERSION = '1.1.0';
-const APP_ID = 'com.anonymous.lifelog';
-
-// Toggle for synchronization (set to false to disable later)
-const ENABLE_DISCUSSION_SYNC = false;
+// Constants to match dbServicesLocal.ts
 const ENABLE_ACTIVITYLOG_SYNC = false;
+const ENABLE_DISCUSSION_SYNC = false;
 
+// Interfaces (same as dbServicesLocal.ts)
 interface Discussion {
   id: string;
-  discussionId: string;
+  discussionId?: string;
   description: string;
-  timestamp: any;
-  typeSay: string;
-  cleared?: boolean;
+  timestamp: Date | string;
+  typeSay?: string;
+  cleared: boolean;
   uid?: string;
 }
 
-interface ActivityLog {
+export interface Parameters {
+  parameterName: string;
+  parameterValue?: string;
+}
+
+interface Alert {
   id: string;
-  discussionId: string;
-  description: string;
-  category: string;
-  timestamp: any;
-  cleared: boolean;
+  message: string;
+  timestamp: Date;
+  severity: string;
+  isActive: boolean;
+  nextTrigger: Date;
+  createdAt: Date;
   uid: string;
-  responseType?: string;
 }
 
-interface Rule {
-  pattern: string;
-  isRegex: boolean;
-  category: string;
-  priority: number;
+interface GPTSpecialty {
+  id: string;
+  name: string;
+  url: string;
+  apiKey: string;
 }
 
-export async function initializeUser() {
-  const user = auth.currentUser;
-  if (!user) {
-    throw new Error('No user signed in');
-  }
+// Define DiscussionCount interface for Firebase
+export interface DiscussionCount {
+  id?: string;
+  discussionId: string;
+  count: number;
+  description: string;
+  timestamp: Date | string;
+  uid?: string;
+}
+
+// Fet
+
+export const findDuplicateActivityLog = async (
+  discussionId: string,
+  category: string,
+  description: string,
+  uid: string
+): Promise<ActivityLog | null> => {
+  const q = query(
+    collection(db, 'ActivityLog'),
+    where('discussionId', '==', discussionId),
+    where('category', '==', category),
+    where('description', '==', description),
+    where('uid', '==', uid)
+  );
+  const snapshot = await getDocs(q);
+  return snapshot.empty
+    ? null
+    : ({
+        id: snapshot.docs[0].id,
+        ...snapshot.docs[0].data(),
+      } as unknown as ActivityLog);
+};
+
+const getDiscussionCountsQuery = async () => {
+  const uid = await getUID();
+  return query(collection(db, `Users/${uid}/DiscussionCounts`));
+};
+
+// Existing functions (from previous response, abbreviated)
+export async function initializeUser(): Promise<void> {
+  const uid = await getUID();
+  if (!uid) throw new Error('No user signed in');
   try {
-    console.log(`Initializing user document for UID: ${user.uid}`);
-    const userRef = doc(db, `Users/${user.uid}`);
-    const userData = {
-      appVersion: '1.1.0',
-      appId: 'com.anonymous.lifelog',
-      timestamp: new Date().toISOString(),
-    };
-    console.log(`Writing to Firestore path: Users/${user.uid}`, userData);
-    await setDoc(userRef, userData, { merge: true });
-    console.log('User document initialized successfully');
+    console.log(`Initializing user for UID: ${uid}`);
+    await setDoc(
+      doc(db, `Users/${uid}`),
+      {
+        id: uid,
+        appVersion: '1.1.0',
+        appId: 'com.anonymous.lifelog',
+        timestamp: new Date(),
+        uid,
+        isPaid: false,
+      },
+      { merge: true }
+    );
+    console.log('User initialized in Firestore');
   } catch (error) {
-    console.error('Error initializing user document:', error);
+    console.error('Error initializing user:', error);
     throw error;
+  }
+}
+
+export async function addOrUpdateDiscussion(
+  description: string,
+  typeSay: string = 'tell',
+  id?: string
+): Promise<string> {
+  const uid = await getUID();
+  if (!uid) throw new Error('No UID available');
+  try {
+    const discussionId = id || Date.now().toString();
+    await setDoc(
+      doc(db, `Users/${uid}/Discussion`, discussionId),
+      {
+        id: discussionId,
+        discussionId: discussionId,
+        description,
+        typeSay,
+        cleared: false,
+        timestamp: new Date(),
+        uid,
+      },
+      { merge: true }
+    );
+    console.log(
+      `Discussion ${id ? 'updated' : 'added'} in Firestore: ${discussionId}`
+    );
+    return discussionId;
+  } catch (error) {
+    console.error('Error in addOrUpdateDiscussion:', error);
+    throw error;
+  }
+}
+
+// ... other existing functions (getDiscussions, addOrUpdateGPTResponse, etc.) ...
+
+// New functions
+export async function deactivateAlertByKey(key: string): Promise<void> {
+  const uid = await getUID();
+  if (!uid) throw new Error('No UID available');
+  try {
+    await setDoc(
+      doc(db, `Users/${uid}/Alert`, String(key)),
+      { isActive: false },
+      { merge: true }
+    );
+    console.log(`Alert ${key} deactivated in Firestore`);
+  } catch (error) {
+    console.error('Error in deactivateAlertByKey:', error);
+    throw error;
+  }
+}
+
+export async function updateGPTSpecialties(gptSpecialty: {
+  id?: number;
+  name: string;
+  url: string;
+  apiKey: string;
+}): Promise<void> {
+  const uid = await getUID();
+  if (!uid) throw new Error('No UID available');
+  try {
+    const id = gptSpecialty.id || new Date().getTime();
+    await setDoc(
+      doc(db, `Users/${uid}/GPTSpecialties`, String(id)),
+      {
+        id,
+        name: gptSpecialty.name,
+        url: gptSpecialty.url,
+        apiKey: gptSpecialty.apiKey,
+      },
+      { merge: true }
+    );
+    console.log('GPT Specialty updated in Firestore');
+  } catch (error) {
+    console.error('Error in updateGPTSpecialties:', error);
+    throw error;
+  }
+}
+
+export async function getActivityLogs(): Promise<ActivityLog[]> {
+  const uid = await getUID();
+  if (!uid) throw new Error('No UID available');
+  try {
+    const snapshot = await getDocs(collection(db, `Users/${uid}/ActivityLog`));
+    return snapshot.docs.map((doc) => ({
+      id: doc.id,
+      discussionId: doc.data().discussionId,
+      category: doc.data().category,
+      description: doc.data().description,
+      timestamp: doc.data().timestamp.toDate(),
+      cleared: doc.data().cleared,
+      responseType: doc.data().responseType,
+      uid: doc.data().uid,
+      synced: doc.data().synced || false,
+      syncTimestamp: doc.data().syncTimestamp?.toDate(),
+      lockedCategory: doc.data().lockedCategory ?? false,
+      lockedDescription: doc.data().lockedDescription ?? false,
+    }));
+  } catch (error) {
+    console.error('Error in getActivityLogs:', error);
+    return [];
+  }
+}
+
+export async function getParameters(): Promise<Parameters[]> {
+  const uid = await getUID();
+  if (!uid) throw new Error('No UID available');
+  try {
+    const snapshot = await getDocs(collection(db, `Users/${uid}/Parameters`));
+    return snapshot.docs.map((doc) => ({
+      parameterName: doc.data().parameterName,
+      parameterValue: doc.data().parameterValue,
+    }));
+  } catch (error) {
+    console.error('Error in getParameters:', error);
+    return [];
+  }
+}
+
+export async function getDescriptionsWithTimestamps(
+  categories: string[]
+): Promise<string> {
+  const uid = await getUID();
+  if (!uid) throw new Error('No UID available');
+  try {
+    const q = query(
+      collection(db, `Users/${uid}/ActivityLog`),
+      where(
+        'category',
+        'in',
+        categories.length > 0 ? categories : ['uncategorized']
+      )
+    );
+    const snapshot = await getDocs(q);
+    const logs = snapshot.docs.map((doc) => ({
+      description: doc.data().description,
+      timestamp: doc.data().timestamp.toDate().toISOString(),
+    }));
+    return JSON.stringify(logs);
+  } catch (error) {
+    console.error('Error in getDescriptionsWithTimestamps:', error);
+    return '[]';
   }
 }
 
@@ -241,7 +436,7 @@ export async function queryAllFieldsByCategories(
     const snapshot = await getDocs(q);
     return snapshot.docs.map((doc) => {
       const data = doc.data() as ActivityLog;
-      const timestamp = new Date(data.timestamp.toDate());
+      const timestamp = new Date(data.timestamp);
       const formattedTimestamp = `${
         timestamp.getMonth() + 1
       }/${timestamp.getDate()}/${timestamp.getFullYear()} ${timestamp.getHours()}:${timestamp
@@ -487,48 +682,6 @@ function compareVersions(
 //////////////////////////////////////////
 // Database functions for Discussion //
 //////////////////////////////////////////
-
-export async function addOrUpdateDiscussion(
-  description: string,
-  typeSay: string = 'tell',
-  id?: string
-): Promise<string> {
-  console.log('Entering addOrUpdateDiscussion');
-  const uid = await getUID();
-  if (!uid) {
-    throw new Error('No UID available for discussion operation');
-  }
-  console.log(
-    `Adding or updating discussion with description: ${description}, uid: ${uid}, typeSay: ${typeSay}`
-  );
-  try {
-    console.log('Creating the document reference');
-    const docRef = id
-      ? doc(db, `Users/${uid}/Discussion`, String(id))
-      : doc(collection(db, `Users/${uid}/Discussion`));
-    const discussionData = {
-      description,
-      typeSay,
-      cleared: false,
-      timestamp: new Date(),
-      uid,
-      appVersion: APP_VERSION,
-      appId: APP_ID,
-    };
-    console.log(
-      `Writing to Firestore path: Users/${uid}/Discussion/${docRef.id}`,
-      discussionData
-    );
-    await setDoc(docRef, discussionData, { merge: true });
-    console.log(
-      `Discussion ${id ? 'updated' : 'added'} successfully: ${docRef.id}`
-    );
-    return docRef.id;
-  } catch (error) {
-    console.error('Error adding/updating discussion:', error);
-    throw error;
-  }
-}
 
 export async function getDiscussions(
   lastX?: number,
@@ -855,7 +1008,9 @@ export async function processUnclearedGPTResponses() {
   console.log('All GPTResponses have been cleared.');
 }
 
-export const markDiscussionAsCleared = async (discussionId: string) => {
+export const markDiscussionAsCleared = async (
+  discussionId: string
+): Promise<void> => {
   console.log(`Attempting to mark discussion ${discussionId} as cleared...`);
   const uid = await getUID();
   if (!uid) {
@@ -1304,53 +1459,250 @@ export async function getParsedGPTResponses(
   }
 }
 
-export const getAIResponse = async (question: string) => {
-  return new Promise((resolve) => {
+export async function getAIResponse(question: string): Promise<string> {
+  return new Promise<string>((resolve) => {
     setTimeout(() => {
       resolve(`This is an AI-generated response to: "${question}"`);
     }, 2000);
   });
-};
+}
 
-//////////////////////////////////////////
-// Helper Functions for Cloud Sync //
-//////////////////////////////////////////
+// --- Changelog and legacy sync helpers ---
 
-export async function syncToCloud(
+/**
+ * Create a changelog entry in Firestore and return the new entry.
+ * All Realm writes must be handled by the local/router layer.
+ * @param tableName The table affected (e.g., 'ActivityLog')
+ * @param rowId The row/document ID affected
+ * @param operation 'create' | 'update' | 'delete'
+ * @returns Promise<ChangeLogEntry>
+ */
+export async function createAndSyncChangelogEntry(
   tableName: string,
-  payload: any,
-  method: 'POST' | 'PUT' | 'DELETE'
-): Promise<void> {
+  rowId: string,
+  operation: 'create' | 'update' | 'delete',
+  timestamp?: Date
+): Promise<any> {
   const uid = await getUID();
-  if (!uid) {
-    throw new Error('No UID available for sync to cloud operation');
+  if (!uid) throw new Error('No UID available for changelog operation');
+  const ts = timestamp || new Date();
+  const changelogEntry = {
+    id: `${tableName}_${rowId}_${ts.getTime()}`,
+    tableName,
+    rowId,
+    operation,
+    timestamp: ts,
+    uid,
+  };
+  await setDoc(
+    doc(db, `Users/${uid}/ChangeLog`, changelogEntry.id),
+    changelogEntry
+  );
+  console.log('Created changelog entry in Firestore:', changelogEntry);
+  return changelogEntry;
+}
+
+/**
+ * Download all new Firestore rows for a table that are not represented in the local changelog (rowIds),
+ * and return both the new rows and the changelog entries that should be created for them.
+ * All Realm writes must be handled by the local/router layer.
+ *
+ * @param tableName The Firestore collection/table name (e.g., 'ActivityLog')
+ * @param localChangeLogRowIds Set of rowIds already present in the local changelog
+ * @returns Promise<{ newRows: any[], changelogEntries: any[] }>
+ */
+export async function downloadNewRowsAndSyncChangelog(
+  tableName: string,
+  localChangeLogRowIds: Set<string>
+): Promise<{ newRows: any[]; changelogEntries: any[] }> {
+  const uid = await getUID();
+  if (!uid) throw new Error('No UID available for download/sync operation');
+  // 1. Get all remote rows from Firestore
+  const remoteSnap = await getDocs(collection(db, `Users/${uid}/${tableName}`));
+  const remoteRows = remoteSnap.docs.map((doc) => ({
+    id: doc.id,
+    ...doc.data(),
+  }));
+  // 2. Filter remote rows not in local changelog
+  const newRows = remoteRows.filter(
+    (row) => !localChangeLogRowIds.has(row.id.toString())
+  );
+  if (newRows.length === 0) {
+    console.log('No new remote rows to process.');
+    return { newRows: [], changelogEntries: [] };
   }
-  const url = `http://localhost:5155/api/${tableName.toLowerCase()}`;
-  try {
-    const config = { headers: { 'Content-Type': 'application/json' } };
-    let response;
-    if (method === 'POST') {
-      response = await fetch(url, {
-        method,
-        headers: config.headers,
-        body: JSON.stringify(payload),
-      });
-    } else if (method === 'PUT') {
-      response = await fetch(url, {
-        method,
-        headers: config.headers,
-        body: JSON.stringify(payload),
-      });
-    } else if (method === 'DELETE') {
-      response = await fetch(`${url}/${payload.id}`, {
-        method,
-        headers: config.headers,
-      });
+  // 3. For each new row, create changelog entry in Firestore and collect for local/router
+  const changelogEntries: any[] = [];
+  for (const row of newRows) {
+    let timestamp: Date = new Date();
+    if (
+      'syncTimestamp' in row &&
+      row.syncTimestamp &&
+      typeof row.syncTimestamp !== 'object' &&
+      row.syncTimestamp !== undefined
+    ) {
+      timestamp = new Date(String(row.syncTimestamp));
+    } else if (
+      'timestamp' in row &&
+      row.timestamp &&
+      typeof row.timestamp !== 'object' &&
+      row.timestamp !== undefined
+    ) {
+      timestamp = new Date(String(row.timestamp));
     }
-    console.log(`${tableName} synced successfully.`);
-  } catch (error) {
-    console.error(`Error syncing ${tableName} to cloud:`, error);
+    const changelogId = `${tableName}_${row.id}_${timestamp.getTime()}`;
+    const changelogEntry = {
+      id: changelogId,
+      tableName,
+      rowId: row.id,
+      operation: 'create',
+      timestamp,
+      uid,
+    };
+    await setDoc(
+      doc(db, `Users/${uid}/ChangeLog`, changelogId),
+      changelogEntry
+    );
+    changelogEntries.push(changelogEntry);
   }
+  console.log(`Processed ${newRows.length} new remote rows for changelog.`);
+  return { newRows, changelogEntries };
+}
+
+/**
+ * Download all Firestore rows for a table that are not represented in EITHER the local changelog OR the Firestore changelog,
+ * and return both the new rows and the changelog entries that should be created for them.
+ * All Realm writes must be handled by the local/router layer.
+ *
+ * @param tableName The Firestore collection/table name (e.g., 'ActivityLog')
+ * @param localChangeLogRowIds Set of rowIds already present in the local changelog
+ * @returns Promise<{ newRows: any[], changelogEntries: any[] }>
+ */
+export async function downloadLegacyRowsAndSyncChangelog(
+  tableName: string,
+  localChangeLogRowIds: Set<string>,
+  localChangeLogTimestamps?: Map<string, Date>
+): Promise<{ newRows: any[]; changelogEntries: any[] }> {
+  console.log(`Downloading legacy rows for table: ${tableName}`);
+  const uid = await getUID();
+  if (!uid) throw new Error('No UID available for download/sync operation');
+  // 1. Get all remote rows from Firestore
+  const remoteSnap = await getDocs(collection(db, `Users/${uid}/${tableName}`));
+  const remoteRows = remoteSnap.docs.map((doc) => ({
+    id: doc.id,
+    ...doc.data(),
+  }));
+  // 2. Get all Firestore changelog rowIds and timestamps for this table
+  const remoteChangeLogSnap = await getDocs(
+    collection(db, `Users/${uid}/ChangeLog`)
+  );
+  const remoteChangeLogMap = new Map<string, Date>();
+  remoteChangeLogSnap.docs.forEach((doc) => {
+    const cl = doc.data();
+    if (cl.tableName === tableName && cl.rowId) {
+      remoteChangeLogMap.set(cl.rowId.toString(), new Date(cl.timestamp));
+    }
+  });
+  // Optionally accept localChangeLogTimestamps for more robust comparison
+  const localChangeLogMap = localChangeLogTimestamps || new Map<string, Date>();
+  // 3. Build set of all rowIds in local changelog
+  const localRowIds = localChangeLogRowIds;
+  // 4. For each remote row, apply union logic
+  const legacyRows: any[] = [];
+  for (const row of remoteRows) {
+    const rowId = row.id?.toString?.();
+    const remoteTS = remoteChangeLogMap.get(rowId);
+    const localTS = localChangeLogMap.get(rowId);
+    if (!remoteTS && !localTS) {
+      // (B) No changelog entry in either place
+      legacyRows.push(row);
+    } else if (remoteTS && !localTS) {
+      // Remote changelog exists, local missing
+      legacyRows.push(row);
+    } else if (remoteTS && localTS && remoteTS > localTS) {
+      // Both exist, remote newer
+      legacyRows.push(row);
+    }
+    // else: skip (local is newer or equal)
+  }
+  // Convert Firestore Timestamp fields to JS Date for all legacyRows
+  const legacyRowsWithDates = legacyRows.map((row) => {
+    ensureDateField(row, 'timestamp');
+    ensureDateField(row, 'syncTimestamp');
+    return row;
+  });
+  // 5. For each legacy row, create a remote changelog entry if missing
+  const changelogEntries: any[] = [];
+  for (const row of legacyRowsWithDates) {
+    const rowId = row.id?.toString?.();
+    let timestamp: Date = new Date();
+    if (
+      'syncTimestamp' in row &&
+      row.syncTimestamp &&
+      typeof row.syncTimestamp !== 'object' &&
+      row.syncTimestamp !== undefined
+    ) {
+      timestamp = new Date(String(row.syncTimestamp));
+    } else if (
+      'timestamp' in row &&
+      row.timestamp &&
+      typeof row.timestamp !== 'object' &&
+      row.timestamp !== undefined
+    ) {
+      timestamp = new Date(String(row.timestamp));
+    }
+    if (!remoteChangeLogMap.has(rowId)) {
+      const changelogId = `${tableName}_${rowId}_${timestamp.getTime()}`;
+      const changelogEntry = {
+        id: changelogId,
+        tableName,
+        rowId,
+        operation: 'create',
+        timestamp,
+        uid,
+      };
+      await setDoc(
+        doc(db, `Users/${uid}/ChangeLog`, changelogId),
+        changelogEntry
+      );
+      changelogEntries.push(changelogEntry);
+    }
+  }
+  if (legacyRowsWithDates.length === 0) {
+    console.log(
+      'No legacy/unsynced remote rows to process for table: ' + tableName + '.'
+    );
+    return { newRows: [], changelogEntries: [] };
+  }
+  console.log(
+    `Processed ${legacyRowsWithDates.length} legacy/unsynced remote rows for changelog for table ${tableName} .`
+  );
+  return { newRows: legacyRowsWithDates, changelogEntries };
+}
+
+// Sync unsynced Realm rows to Firestore
+export async function syncRealmRowsToFirestore(
+  tableName: string,
+  realmRows: any[]
+): Promise<string[]> {
+  const uid = await getUID();
+  if (!uid) throw new Error('No UID available for sync operation');
+  const syncedIds: string[] = [];
+  for (const row of realmRows) {
+    try {
+      const docId = row.id?.toString() || new Date().getTime().toString();
+      await setDoc(
+        doc(db, `Users/${uid}/${tableName}`, docId),
+        { ...row, uid, synced: true, syncTimestamp: new Date() },
+        { merge: true }
+      );
+      syncedIds.push(docId);
+      console.log(`Synced Realm row to Firestore: ${docId}`);
+    } catch (error) {
+      console.error('Error syncing row to Firestore:', error, row);
+    }
+  }
+  return syncedIds;
 }
 
 //////////////////////////////////////////
@@ -1439,96 +1791,88 @@ export async function expandFromAbbreviation(
   const expandedForm = abbreviationMap.get(discussion);
   console.log(`Expanded '${discussion}' to '${expandedForm}'`);
   if (expandedForm) {
-    console.log(`Expanded '${discussion}' to '${expandedForm}'`);
-    return expandedForm;
-  } else {
-    console.log(`Unable to expand abbreviation '${discussion}'`);
-    return discussion;
+    return Promise.resolve(expandedForm);
   }
+  return Promise.resolve(discussion);
 }
 
-//////////////////////////////////////////
-// Exporting Helper Functions //
-//////////////////////////////////////////
-
-/* async function updateDiscussions() {
-    const discussionsSnapshot = await getDocs(collection(db, 'Discussion'));
-    const batch = writeBatch(db);
-    
-    discussionsSnapshot.forEach((discussionDoc) => {
-      const docRef = doc(db, 'Discussion', discussionDoc.id);
-      batch.update(docRef, { Cleared: false });
-    });
-    
-    await batch.commit(); 
-
-    const snapshot = await getDocs(collection(db, "Discussion"));
-    snapshot.forEach(doc => {
-        console.log(doc.id, " => ", doc.data());
-    });   
-}
-*/
-
-const lostData = [
-  {
-    id: '1738367528606',
-    typeSay: 'tell',
-    timestamp: 1738367528606,
-    description: '1',
-  },
-  {
-    id: '1738374105437',
-    typeSay: 'tell',
-    timestamp: 1738374105437,
-    description: 'I ate salmon couscous and 2 slices of avocado',
-  },
-  {
-    id: '1738382525048',
-    typeSay: 'tell',
-    timestamp: 1738382525048,
-    description: 'Took 5 mg Staten',
-  },
-  {
-    id: '7vukcCfVaBApZaAv6PoU',
-    typeSay: 'tell',
-    timestamp: 1738374105437,
-    description: "I'm feeling anxious and frustrated",
-  },
-  {
-    id: '92JlMF1EHheU8uPMLBMi',
-    typeSay: 'tell',
-    timestamp: 1738382525048,
-    description: '1',
-  },
-  {
-    id: 'ArZ5Z0pQN1RKVb3kWuVh',
-    typeSay: 'tell',
-    timestamp: 1738374105437,
-    description:
-      'Ate Cheese omelet 3 out of 4 yolks removed with mustard leaf onions',
-  },
-  {
-    id: 'BA5UcSPVyWjPUHCMNiwM',
-    typeSay: 'tell',
-    timestamp: 1738382525048,
-    description: 'I ate banana',
-  },
-];
-
-async function restoreLostData(): Promise<void> {
+export async function getRules(): Promise<
+  Array<{ pattern: string; category: string; isRegex: boolean }>
+> {
   const uid = await getUID();
-  if (!uid) {
-    throw new Error('No UID available for restore lost data operation');
+  if (!uid) throw new Error('No UID available for getRules');
+  try {
+    const rulesSnapshot = await getDocs(collection(db, `Users/${uid}/Rules`));
+    return rulesSnapshot.docs.map((doc) => ({
+      pattern: doc.data().pattern,
+      category: doc.data().category,
+      isRegex: doc.data().isRegex || false,
+    }));
+  } catch (error) {
+    console.error('Error fetching rules:', error);
+    return [];
   }
-  const collectionRef = collection(db, `Users/${uid}/ActivityLog`);
+}
+
+// Restore lost data to ActivityLog collection
+export async function restoreLostData(): Promise<void> {
+  const uid = await getUID();
+  if (!uid) throw new Error('No UID available for restore lost data operation');
+  const lostData = [
+    {
+      id: '1738367528606',
+      typeSay: 'tell',
+      timestamp: 1738367528606,
+      description: '1',
+    },
+    {
+      id: '1738374105437',
+      typeSay: 'tell',
+      timestamp: 1738374105437,
+      description: 'I ate salmon couscous and 2 slices of avocado',
+    },
+    {
+      id: '1738382525048',
+      typeSay: 'tell',
+      timestamp: 1738382525048,
+      description: 'Took 5 mg Staten',
+    },
+    {
+      id: '7vukcCfVaBApZaAv6PoU',
+      typeSay: 'tell',
+      timestamp: 1738374105437,
+      description: "I'm feeling anxious and frustrated",
+    },
+    {
+      id: '92JlMF1EHheU8uPMLBMi',
+      typeSay: 'tell',
+      timestamp: 1738382525048,
+      description: '1',
+    },
+    {
+      id: 'ArZ5Z0pQN1RKVb3kWuVh',
+      typeSay: 'tell',
+      timestamp: 1738374105437,
+      description:
+        'Ate Cheese omelet 3 out of 4 yolks removed with mustard leaf onions',
+    },
+    {
+      id: 'BA5UcSPVyWjPUHCMNiwM',
+      typeSay: 'tell',
+      timestamp: 1738382525048,
+      description: 'I ate banana',
+    },
+  ];
   for (const entry of lostData) {
     try {
-      const docRef = doc(collectionRef, entry.id);
+      const docRef = doc(collection(db, `Users/${uid}/ActivityLog`), entry.id);
       await setDoc(docRef, {
         typeSay: entry.typeSay,
         description: entry.description,
         timestamp: Timestamp.fromMillis(entry.timestamp),
         uid: uid,
+        cleared: false,
+        category: 'uncategorized',
       });
       console.log(`Restored document: ${entry.id}`);
     } catch (error) {
@@ -1538,26 +1882,340 @@ async function restoreLostData(): Promise<void> {
   console.log('Data restoration completed!');
 }
 
-export async function getRules() {
+// Delete ActivityLog by id
+export async function deleteActivityLog(activityLogId: string): Promise<void> {
   const uid = await getUID();
-  if (!uid) {
-    throw new Error('No UID available for get rules operation');
+  if (!uid) throw new Error('No UID available for delete operation');
+  const docRef = doc(db, `Users/${uid}/ActivityLog`, activityLogId);
+  await deleteDoc(docRef);
+  console.log(`ActivityLog with ID ${activityLogId} deleted.`);
+}
+
+// Create ActivityLog
+export async function createActivityLog(
+  activityLog: Omit<ActivityLog, 'id'>
+): Promise<string> {
+  const uid = await getUID();
+  if (!uid) throw new Error('No UID available for createActivityLog');
+  const docRef = await addDoc(collection(db, `Users/${uid}/ActivityLog`), {
+    ...activityLog,
+    uid,
+    timestamp: activityLog.timestamp
+      ? Timestamp.fromDate(new Date(activityLog.timestamp))
+      : new Date(),
+    cleared: activityLog.cleared ?? false,
+    lockedCategory: activityLog.lockedCategory ?? false,
+    lockedDescription: activityLog.lockedDescription ?? false,
+  });
+  console.log('ActivityLog created with ID:', docRef.id);
+  return docRef.id;
+}
+
+// Update ActivityLog category
+export async function updateActivityLogCategory(
+  activityLogId: string,
+  category: string
+): Promise<void> {
+  const uid = await getUID();
+  if (!uid) throw new Error('No UID available for updateActivityLogCategory');
+  const docRef = doc(db, `Users/${uid}/ActivityLog`, activityLogId);
+  await updateDoc(docRef, { category, lockedCategory: true });
+  console.log(`ActivityLog ${activityLogId} category updated to ${category}`);
+}
+
+// Create RuleCandidate
+export async function createRuleCandidate(data: {
+  discussionId: string;
+  category: string;
+  description: string;
+  uid: string;
+}): Promise<void> {
+  const uid = await getUID();
+  if (!uid) throw new Error('No UID available for createRuleCandidate');
+  await addDoc(collection(db, `Users/${uid}/RuleCandidates`), {
+    ...data,
+    timestamp: new Date(),
+  });
+  console.log('RuleCandidate created:', data);
+}
+
+// --- SYNC HELPERS: Timestamp-based update/delete for robust sync ---
+
+/**
+ * Update a Firestore row only if the incoming syncTimestamp is newer than the existing one.
+ * @param tableName Firestore collection name (e.g., 'ActivityLog')
+ * @param rowId Document ID
+ * @param data Data to update (must include syncTimestamp)
+ * @returns true if updated, false if skipped (older)
+ */
+export async function updateRowIfNewer(
+  tableName: string,
+  rowId: string,
+  data: any
+): Promise<boolean> {
+  const uid = await getUID();
+  if (!uid) throw new Error('No UID available');
+  const docRef = doc(db, `Users/${uid}/${tableName}`, rowId);
+  const docSnap = await getDoc(docRef);
+  const incomingTS = new Date(data.syncTimestamp).getTime();
+  if (docSnap.exists()) {
+    const existingTS = docSnap.data().syncTimestamp
+      ? new Date(docSnap.data().syncTimestamp).getTime()
+      : 0;
+    if (incomingTS <= existingTS) {
+      console.log(`Skipped update for ${rowId}: incoming older or same.`);
+      return false;
+    }
   }
-  try {
-    const rulesRef = collection(db, 'Rules');
-    const q = query(
-      rulesRef,
-      orderBy('isRegex', 'desc'),
-      orderBy('priority', 'asc')
-    );
-    const snapshot = await getDocs(q);
-    const rules = snapshot.docs.map((doc) => doc.data() as Rule);
-    return rules;
-  } catch (error) {
-    console.error('Error fetching rules:', error);
-    throw error;
+  await setDoc(docRef, data, { merge: true });
+  console.log(`Updated row ${rowId} in ${tableName}`);
+  return true;
+}
+
+/**
+ * Mark a Firestore row as deleted only if the incoming syncTimestamp is newer than the existing one.
+ * @param tableName Firestore collection name
+ * @param rowId Document ID
+ * @param deletedAt Timestamp of deletion
+ * @returns true if deleted, false if skipped (older)
+ */
+export async function deleteRowIfNewer(
+  tableName: string,
+  rowId: string,
+  deletedAt: Date
+): Promise<boolean> {
+  const uid = await getUID();
+  if (!uid) throw new Error('No UID available');
+  const docRef = doc(db, `Users/${uid}/${tableName}`, rowId);
+  const docSnap = await getDoc(docRef);
+  const incomingTS = deletedAt.getTime();
+  if (docSnap.exists()) {
+    const existingTS = docSnap.data().syncTimestamp
+      ? new Date(docSnap.data().syncTimestamp).getTime()
+      : 0;
+    if (incomingTS <= existingTS) {
+      console.log(`Skipped delete for ${rowId}: incoming older or same.`);
+      return false;
+    }
+  }
+  await setDoc(
+    docRef,
+    { deleted: true, deletedAt, syncTimestamp: deletedAt },
+    { merge: true }
+  );
+  console.log(`Marked row ${rowId} as deleted in ${tableName}`);
+  return true;
+}
+
+/**
+ * Fetches all remote Firestore rows for a table updated after a given timestamp.
+ * @param tableName The Firestore collection/table name (e.g., 'ActivityLog')
+ * @param lastSyncTimestamp Only fetch rows with syncTimestamp or timestamp > this value
+ * @returns Promise<{ rows: any[] }>
+ */
+export async function fetchTableUpdates(
+  tableName: string,
+  lastSyncTimestamp: Date
+): Promise<{ rows: any[] }> {
+  const uid = await getUID();
+  if (!uid) throw new Error('No UID available');
+  const collectionRef = collection(db, `Users/${uid}/${tableName}`);
+  // Try to use syncTimestamp if present, else fallback to timestamp
+  const q = query(
+    collectionRef,
+    where('syncTimestamp', '>', lastSyncTimestamp)
+  );
+  const snapshot = await getDocs(q);
+  const rows = snapshot.docs.map((doc) => ({
+    id: doc.id,
+    ...doc.data(),
+  }));
+  // Fallback: If no rows and syncTimestamp is missing, try timestamp
+  if (rows.length === 0) {
+    const q2 = query(collectionRef, where('timestamp', '>', lastSyncTimestamp));
+    const snapshot2 = await getDocs(q2);
+    return {
+      rows: snapshot2.docs.map((doc) => ({ id: doc.id, ...doc.data() })),
+    };
+  }
+  return { rows };
+}
+
+// Helper: convert Firestore Timestamp to JS Date if needed
+function ensureDateField(obj: any, field: string) {
+  if (obj[field]) {
+    // Firestore Timestamp object: { seconds, nanoseconds }
+    if (
+      typeof obj[field] === 'object' &&
+      obj[field] !== null &&
+      typeof obj[field].seconds === 'number' &&
+      typeof obj[field].nanoseconds === 'number'
+    ) {
+      obj[field] = new Date(
+        obj[field].seconds * 1000 + Math.floor(obj[field].nanoseconds / 1e6)
+      );
+    } else if (typeof obj[field].toDate === 'function') {
+      obj[field] = obj[field].toDate();
+    } else if (
+      typeof obj[field] === 'number' ||
+      typeof obj[field] === 'string'
+    ) {
+      obj[field] = new Date(obj[field]);
+    }
   }
 }
 
-// Run the function
-// restoreLostData();
+/**
+ * Extract unique records from root-level Firestore 'Discussion' and 'ActivityLog', deduplicate by timestamp,
+ * insert into both Realm and user-level Firestore, and create changelog entries with correct historical timestamps.
+ * No deletion of Firebase records. For 'Discussion', can be run continuously; for 'ActivityLog', one-time.
+ */
+export async function extractAndImportLegacyFirestoreData({
+  continuous = false,
+}: { continuous?: boolean } = {}) {
+  const uid = await getUID();
+  if (!uid) throw new Error('No UID available');
+  if (!realm) throw new Error('Realm not initialized');
+
+  // Helper: deduplicate by timestamp
+  function deduplicateByTimestamp<T extends { timestamp?: any }>(
+    rows: T[]
+  ): T[] {
+    const seen = new Set<number>();
+    return rows.filter((row) => {
+      let ts: number = 0;
+      if (row.timestamp?.toMillis) ts = row.timestamp.toMillis();
+      else if (row.timestamp instanceof Date) ts = row.timestamp.getTime();
+      else if (typeof row.timestamp === 'number') ts = row.timestamp;
+      else if (typeof row.timestamp === 'string')
+        ts = new Date(row.timestamp).getTime();
+      if (seen.has(ts)) return false;
+      seen.add(ts);
+      return true;
+    });
+  }
+
+  // Helper: upsert to user-level Firestore
+  async function upsertToUserFirestore(tableName: string, row: any) {
+    const userDocRef = doc(db, `Users/${uid}/${tableName}`, row.id);
+    await setDoc(userDocRef, { ...row, uid }, { merge: true });
+  }
+
+  // Helper: upsert to Realm
+  function upsertToRealm(tableName: string, row: any) {
+    realm!.write(() => {
+      realm!.create(tableName, { ...row }, Realm.UpdateMode.Modified);
+    });
+  }
+
+  // Helper: create changelog entry (local and remote)
+  async function createChangelog(tableName: string, row: any) {
+    const ts = row.syncTimestamp
+      ? new Date(row.syncTimestamp)
+      : row.timestamp
+      ? new Date(row.timestamp)
+      : undefined;
+    if (!ts) {
+      console.warn(
+        `[createChangelog] Row with id ${row.id} missing valid timestamp, skipping changelog entry.`
+      );
+      return;
+    }
+    addChangeLogEntry(tableName, row.id, 'create', ts);
+    await createAndSyncChangelogEntry(tableName, row.id, 'create', ts);
+  }
+
+  // Main extraction logic for a table
+  async function extractTable<
+    T extends {
+      id: string;
+      timestamp?: any;
+      discussionId?: string;
+      discussionID?: string;
+      synced?: boolean;
+      cleared?: boolean;
+      typeSay?: string;
+    }
+  >(tableName: string, rootCollection: string) {
+    const snap = await getDocs(collection(db, rootCollection));
+    let rows: T[] = snap.docs.map(
+      (docSnap) => ({ id: docSnap.id, ...docSnap.data() } as T)
+    );
+    rows = deduplicateByTimestamp(rows);
+    for (const row of rows) {
+      // Ensure discussionId is always set for Realm schema
+      if (tableName === 'Discussion') {
+        row.discussionId = row.discussionId || row.id;
+        row.synced = typeof row.synced === 'boolean' ? row.synced : false;
+        row.cleared = typeof row.cleared === 'boolean' ? row.cleared : false;
+        (row as any).typeSay = (row as any).typeSay || 'tell';
+      } else if (tableName === 'ActivityLog') {
+        row.discussionId = row.discussionId || row.discussionID || row.id;
+        row.synced = typeof row.synced === 'boolean' ? row.synced : false;
+        row.cleared = typeof row.cleared === 'boolean' ? row.cleared : false;
+        (row as any).responseType = (row as any).responseType || 'tell';
+      }
+      // Convert Firestore Timestamp to JS Date ONLY if needed, but NEVER use current date as fallback
+      if (row.timestamp && typeof row.timestamp.toDate === 'function') {
+        row.timestamp = row.timestamp.toDate();
+      } else if (
+        row.timestamp &&
+        typeof row.timestamp === 'object' &&
+        row.timestamp.seconds
+      ) {
+        row.timestamp = new Date(row.timestamp.seconds * 1000);
+      } else if (
+        typeof row.timestamp === 'string' ||
+        typeof row.timestamp === 'number'
+      ) {
+        row.timestamp = new Date(row.timestamp);
+      } else {
+        // If timestamp is missing or invalid, do NOT use current date; instead, skip or log error
+        console.warn(
+          `[extractTable] Row with id ${row.id} is missing a valid timestamp. Skipping.`
+        );
+        continue;
+      }
+      // Upsert to Realm
+      upsertToRealm(tableName, row);
+      // Upsert to user-level Firestore
+      await upsertToUserFirestore(tableName, row);
+      // Create changelog entry
+      await createChangelog(tableName, row);
+    }
+    return rows.length;
+  }
+
+  // Extract from root-level 'Discussion' and 'ActivityLog'
+  const discussionCount = await extractTable('Discussion', 'Discussion');
+  const activityLogCount = await extractTable('ActivityLog', 'ActivityLog');
+
+  // If continuous, set up a timer for 'Discussion' (not implemented here, just call this periodically)
+  if (continuous) {
+    // setTimeout(() => extractAndImportLegacyFirestoreData({ continuous: true }), 5 * 60 * 1000);
+    // Or use a scheduler in your app
+  }
+
+  console.log(
+    `Imported ${discussionCount} unique Discussion and ${activityLogCount} unique ActivityLog records from root-level Firestore.`
+  );
+  return { discussionCount, activityLogCount };
+}
+
+/**
+ * Delete all rows in the remote (Firebase) ChangeLog collection for the current user
+ */
+export async function deleteAllRemoteChangeLogs() {
+  const uid = await getUID();
+  if (!uid) throw new Error('No UID available');
+  const changeLogCollection = collection(db, `Users/${uid}/ChangeLog`);
+  const snapshot = await getDocs(changeLogCollection);
+  let count = 0;
+  for (const docSnap of snapshot.docs) {
+    await deleteDoc(docSnap.ref);
+    count++;
+  }
+  console.log(
+    `[deleteAllRemoteChangeLogs] Deleted ${count} remote ChangeLog entries.`
+  );
+}

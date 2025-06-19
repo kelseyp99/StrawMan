@@ -15,7 +15,27 @@ import {
   Dimensions,
 } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { format } from 'date-fns';
+import { parse, isToday, format } from 'date-fns';
+import {
+  getActivityLogs,
+  getDiscussions,
+  markDiscussionAsCleared,
+  createActivityLog,
+  updateActivityLogCategory,
+  createRuleCandidate,
+  deleteActivityLog,
+  deleteDiscussion,
+  addOrUpdateDiscussion,
+  deleteAllLocalAndRemoteRows,
+  insertTestRowsAndExit,
+  runAllSyncFunctions,
+  getDistinctCategories,
+  addOrUpdateGPTResponse,
+  addOrUpdateActivityLog,
+} from '../services/dbServices';
+import { extractAndImportLegacyFirestoreData } from '../services/dbServicesRemote';
+import { findDuplicateActivityLog } from '../services/phraseProcessor';
+import RNFS from 'react-native-fs';
 import { db } from '../firebaseConfig';
 import {
   collection,
@@ -35,11 +55,6 @@ import {
 } from 'firebase/firestore';
 import { getUID } from '../utils/uidManager';
 import Swipeable from 'react-native-gesture-handler/Swipeable';
-import {
-  addOrUpdateActivityLog,
-  addOrUpdateGPTResponse,
-  getDistinctCategories,
-} from '@/services/databaseService';
 import { processPhrase } from '../services/phraseProcessor';
 
 // Screen width for responsive design
@@ -77,6 +92,46 @@ interface SwipeableTablePropsType {
   }[];
 }
 
+// Helper to show 'Today' for today's date in Discussion Data
+function mapDiscussionRow(row: any) {
+  let dateObj: Date;
+  try {
+    if (!row.timestamp) {
+      throw new Error('Missing timestamp');
+    }
+    if (typeof row.timestamp === 'string') {
+      // Try parsing with date-fns for the expected format: M/d/yy  h:mm a
+      dateObj = parse(row.timestamp, 'M/d/yy  h:mm a', new Date());
+      if (isNaN(dateObj.getTime())) {
+        // Try fallback with single space (in case of inconsistent spacing)
+        dateObj = parse(
+          row.timestamp.replace(/\s+/g, ' '),
+          'M/d/yy h:mm a',
+          new Date()
+        );
+      }
+    } else if (typeof row.timestamp === 'number') {
+      dateObj = new Date(row.timestamp);
+    } else if (row.timestamp instanceof Date) {
+      dateObj = row.timestamp;
+    } else {
+      throw new Error('Unknown timestamp type');
+    }
+    if (isNaN(dateObj.getTime())) {
+      throw new Error('Invalid date');
+    }
+  } catch (e) {
+    console.warn('[mapDiscussionRow] Invalid timestamp for row', row, e);
+    dateObj = new Date();
+  }
+  return {
+    ...row,
+    timestamp: isToday(dateObj) ? 'Today' : format(dateObj, 'M/d/yy \n h:mm a'),
+    rawTimestamp: dateObj,
+    cleared: row.cleared ? '✔️ Yes' : '❌ No', // Ensure cleared is formatted for display
+  };
+}
+
 // Memoized RelatedLogEntry
 const RelatedLogEntry = memo(
   ({
@@ -92,7 +147,7 @@ const RelatedLogEntry = memo(
     onCategoryChange: (id: string) => void;
     onDelete: (id: string) => void;
   }) => {
-    console.log(`Rendering RelatedLogEntry for ID: ${log.id}`);
+    //console.log(`Rendering RelatedLogEntry for ID: ${log.id}`);
     return (
       <View style={styles.relatedLogEntry}>
         <Text style={styles.modalLabel}>ID: {log.id}</Text>
@@ -149,7 +204,7 @@ const RowItem = memo(
       currentTypeSay: string
     ) => JSX.Element;
   }) => {
-    console.log(`Rendering RowItem for ID: ${item.id}`);
+    // console.log(`Rendering RowItem for ID: ${item.id}`);
     return (
       <Swipeable
         renderRightActions={() => renderRightActions(item.tableName, item.id)}
@@ -209,10 +264,7 @@ const MainComponent: React.FC = () => {
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [editTableName, setEditTableName] = useState('');
   const [editItemId, setEditItemId] = useState('');
-  const [discussionSnapshot, setDiscussionSnapshot] = useState<QuerySnapshot<
-    DocumentData,
-    DocumentData
-  > | null>(null);
+  const [discussionSnapshot, setDiscussionSnapshot] = useState<any>(null);
   const [relatedActivityLogs, setRelatedActivityLogs] = useState<ActivityLog[]>(
     []
   );
@@ -234,6 +286,10 @@ const MainComponent: React.FC = () => {
     (DiscussionCount & { description: string })[]
   >([]);
   const [uid, setUid] = useState<string | null>(null);
+  // Add state for legacy import loading
+  const [importingLegacy, setImportingLegacy] = useState(false);
+  // Debug: state for debug button loading
+  const [debugLoading, setDebugLoading] = useState(false);
 
   // Fetch UID once on mount
   useEffect(() => {
@@ -248,126 +304,37 @@ const MainComponent: React.FC = () => {
     fetchUid();
   }, []);
 
-  // Function to check for duplicate ActivityLog entries
-  const findDuplicateActivityLog = async (
-    discussionId: string,
-    category: string,
-    description: string,
-    uid: string
-  ): Promise<ActivityLog | null> => {
-    const q = query(
-      collection(db, 'ActivityLog'),
-      where('discussionId', '==', discussionId),
-      where('category', '==', category),
-      where('description', '==', description),
-      where('uid', '==', uid)
-    );
-    const snapshot = await getDocs(q);
-    return snapshot.empty
-      ? null
-      : ({
-          id: snapshot.docs[0].id,
-          ...snapshot.docs[0].data(),
-        } as ActivityLog);
-  };
-
+  // Fetch data using dbServices router
   const fetchData = useCallback(async () => {
     if (!uid) return;
     try {
       setLoading(true);
-      console.log('Fetching data from Firestore...');
-      const activityLogSnapshot = await getDocs(collection(db, 'ActivityLog'));
-      const discussionSnap = await getDocs(collection(db, 'Discussion'));
-      setDiscussionSnapshot(discussionSnap);
-
+      // console.log('Fetching data...'); // Removed to prevent printing tables
+      const activityLogRaw = await getActivityLogs();
+      //    console.log('[DEBUG] All ActivityLog from Realm:', activityLogRaw); // Removed
+      // TEMP: Remove uid filter for debug
+      // const activityLogData = activityLogRaw.filter((doc: any) => doc.uid === uid)
+      // Convert Date objects to string for rendering
+      const activityLogData = activityLogRaw
+        .map((log: any) => ({
+          ...log,
+          timestamp:
+            log.timestamp instanceof Date
+              ? format(log.timestamp, 'M/d/yy \n h:mm a')
+              : typeof log.timestamp === 'string'
+              ? log.timestamp
+              : String(log.timestamp),
+        }))
+        .sort(
+          (a: any, b: any) =>
+            new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+        );
+      //     console.log('[DEBUG] Filtered ActivityLog for uid', uid, activityLogData); // Removed
+      const discussionData = (await getDiscussions())
+        .map(mapDiscussionRow)
+        .sort((a: any, b: any) => b.rawTimestamp - a.rawTimestamp);
       const categories = await getDistinctCategories();
       setAllCategories((prev) => [...new Set([...prev, ...categories])]);
-
-      const q = query(collection(db, `Users/${uid}/DiscussionCounts`));
-      const querySnapshot = await getDocs(q);
-      const countsPromises = querySnapshot.docs.map(async (document) => {
-        const data = document.data() as DiscussionCount;
-        const activityLogRef = doc(db, 'ActivityLog', data.activityLogId);
-        const activityLogSnap = await getDoc(activityLogRef);
-        if (activityLogSnap.exists()) {
-          const activityLogData = activityLogSnap.data() as ActivityLog;
-          return {
-            discussionID: document.id,
-            activityLogId: data.activityLogId,
-            count: data.count,
-            description: activityLogData.description || '',
-          };
-        }
-        return null;
-      });
-
-      const counts = (await Promise.all(countsPromises))
-        .filter(
-          (count): count is DiscussionCount & { description: string } =>
-            count !== null
-        )
-        .sort((a, b) => b.count - a.count);
-      setDiscussionCounts(counts);
-      console.log('✅ Fetched DiscussionCounts:', counts);
-
-      console.log('Fetching table data...');
-      const activityLogData = activityLogSnapshot.docs
-        .map((doc) => {
-          const data = doc.data() as ActivityLog;
-          if (!doc.id || !data.uid) {
-            console.warn(
-              `Invalid ActivityLog document: ${JSON.stringify(data)}`
-            );
-            return null;
-          }
-          return {
-            ...data,
-            id: doc.id,
-            timestamp: data.timestamp
-              ? format(new Date(data.timestamp.toDate()), 'M/d/yy \n h:mm a')
-              : 'N/A',
-            cleared: data.cleared ? '✔️ Yes' : '❌ No',
-            uid: data.uid,
-            rawTimestamp: data.timestamp ? data.timestamp.toDate() : new Date(),
-            tableName: 'Activity Log Data',
-          };
-        })
-        .filter(
-          (item): item is NonNullable<typeof item> =>
-            item !== null && item.id !== undefined
-        )
-        .filter((doc) => doc.uid === uid)
-        .sort((a, b) => b.rawTimestamp - a.rawTimestamp);
-
-      const discussionData = discussionSnap.docs
-        .map((doc) => {
-          const data = doc.data();
-          if (!doc.id || !data.uid) {
-            console.warn(
-              `Invalid Discussion document: ${JSON.stringify(data)}`
-            );
-            return null;
-          }
-          return {
-            ...data,
-            id: doc.id,
-            timestamp: data.timestamp
-              ? format(new Date(data.timestamp.toDate()), 'M/d/yy \n h:mm a')
-              : 'N/A',
-            cleared: data.cleared ? '✔️ Yes' : '❌ No',
-            typeSay: data.typeSay || 'tell',
-            uid: data.uid,
-            rawTimestamp: data.timestamp ? data.timestamp.toDate() : new Date(),
-            tableName: 'Discussion Data',
-          };
-        })
-        .filter(
-          (item): item is NonNullable<typeof item> =>
-            item !== null && item.id !== undefined
-        )
-        .filter((doc) => doc.uid === uid)
-        .sort((a, b) => b.rawTimestamp - a.rawTimestamp);
-
       setTables([
         {
           name: 'Activity Log Data',
@@ -424,7 +391,7 @@ const MainComponent: React.FC = () => {
       ]);
       setInitialized(true);
     } catch (error) {
-      console.error('Error fetching data from Firestore:', error);
+      console.error('Error fetching data:', error);
       setError('Failed to fetch data. Please try again.');
     } finally {
       setLoading(false);
@@ -433,44 +400,44 @@ const MainComponent: React.FC = () => {
 
   useEffect(() => {
     if (uid) {
-      console.log('Mounting MainComponent, fetching data...');
+      // console.log('Mounting MainComponent, fetching data...');
       fetchData();
     }
   }, [uid, fetchData]);
 
   useEffect(() => {
     if (initialized && currentTableIndex === 0 && discussionSnapshot) {
-      console.log(
-        'Triggering prompt2UpdateActivityLog with snapshot size:',
-        discussionSnapshot?.size
-      );
+      // console.log(
+      //   'Triggering prompt2UpdateActivityLog with snapshot size:',
+      //   discussionSnapshot?.size
+      // );
       prompt2UpdateActivityLog(discussionSnapshot);
     }
   }, [currentTableIndex, initialized, discussionSnapshot]);
 
   const prompt2UpdateActivityLog = useCallback(
-    (discussionSnapshot: QuerySnapshot<DocumentData, DocumentData>): void => {
-      console.log(
-        'Inside prompt2UpdateActivityLog, snapshot size:',
-        discussionSnapshot.size
-      );
+    (discussionSnapshot: any): void => {
+      // console.log(
+      //   'Inside prompt2UpdateActivityLog, snapshot size:',
+      //   discussionSnapshot.size
+      // );
       if (!discussionSnapshot || discussionSnapshot.empty) {
-        console.log('No documents in snapshot to process.');
+        // console.log('No documents in snapshot to process.');
         return;
       }
 
       const unclearedDocs = discussionSnapshot.docs.filter(
-        (doc) => doc.data().cleared === false
+        (doc: any) => doc.data().cleared === false
       );
 
-      console.log('Uncleared documents:', unclearedDocs.length);
+      // console.log('Uncleared documents:', unclearedDocs.length);
       if (unclearedDocs.length === 0) {
-        console.log('No uncleared documents to process.');
+        // console.log('No uncleared documents to process.');
         return;
       }
 
       const discussionList = unclearedDocs
-        .map((doc) => `"${doc.data().description || 'No description'}"`)
+        .map((doc: any) => `"${doc.data().description || 'No description'}"`)
         .join(', ');
 
       Alert.alert(
@@ -480,9 +447,8 @@ const MainComponent: React.FC = () => {
           { text: 'Cancel', style: 'cancel' },
           {
             text: 'Yes',
-            onPress: async () => {
-              try {
-                console.log('Starting Activity Log update...');
+            onPress: async () => {              try {
+                // console.log('Starting Activity Log update...');
                 const distinctCategories = await getDistinctCategories();
                 if (!uid) {
                   console.error(
@@ -504,9 +470,8 @@ const MainComponent: React.FC = () => {
                       docSnapshot.data().timestamp?.toDate() || new Date(),
                     typeSay: docSnapshot.data().typeSay || 'tell',
                     cleared: docSnapshot.data().cleared || false,
-                  };
-                  if (!discussionTyped.cleared) {
-                    console.log('Processing Discussion:', discussionTyped.id);
+                  };                  if (!discussionTyped.cleared) {
+                    // console.log('Processing Discussion:', discussionTyped.id);
                     const activityAnalysis = await processPhrase(
                       {
                         categories: distinctCategories,
@@ -530,73 +495,38 @@ const MainComponent: React.FC = () => {
                       activityAnalysis.parsedDescription,
                       uid
                     );
-
                     let newActivityLogId: string;
-                    if (existingLog) {
-                      // Update existing ActivityLog entry
-                      const logRef = doc(db, 'ActivityLog', existingLog.id);
-                      await updateDoc(logRef, {
-                        timestamp: Timestamp.fromDate(
-                          discussionTyped.timestamp
-                        ),
+                    if (existingLog) {                      // Use router to update existing ActivityLog entry (calls all pending updates)
+                      await addOrUpdateActivityLog(); // No parameters allowed
+                      newActivityLogId = String(existingLog.id);
+                      // console.log(
+                      //   `Updated existing ActivityLog entry ${existingLog.id} for discussionId ${discussionTyped.id}`
+                      // );
+                    } else {
+                      // Use router to create new ActivityLog entry
+                      const newLog = {
+                        discussionId: String(discussionTyped.id), // ensure string type
+                        category:
+                          activityAnalysis.category !== 'uncategorized'
+                            ? activityAnalysis.category
+                            : 'uncategorized',
+                        description: activityAnalysis.parsedDescription,
+                        timestamp: discussionTyped.timestamp,
                         cleared: false,
+                        uid: uid,
                         lockedCategory: false,
                         lockedDescription: false,
-                      });
-                      newActivityLogId = existingLog.id;
-                      console.log(
-                        `Updated existing ActivityLog entry ${existingLog.id} for discussionId ${discussionTyped.id}`
-                      );
-                    } else {
-                      // Create new ActivityLog entry
-                      const newActivityLog = await addDoc(
-                        collection(db, 'ActivityLog'),
-                        {
-                          discussionId: discussionTyped.id,
-                          category:
-                            activityAnalysis.category !== 'uncategorized'
-                              ? activityAnalysis.category
-                              : 'uncategorized',
-                          description: activityAnalysis.parsedDescription,
-                          timestamp: Timestamp.fromDate(
-                            discussionTyped.timestamp
-                          ),
-                          cleared: false,
-                          uid: uid,
-                          lockedCategory: false,
-                          lockedDescription: false,
-                        }
-                      );
-                      newActivityLogId = newActivityLog.id;
-                      console.log(
-                        `Created new ActivityLog entry ${newActivityLogId} for discussionId ${discussionTyped.id}`
-                      );
+                        synced: false,                      };
+                      newActivityLogId = await createActivityLog(newLog);
+                      // console.log(
+                      //   `Created new ActivityLog entry ${newActivityLogId} for discussionId ${discussionTyped.id}`
+                      // );
                     }
 
-                    const docRef = doc(db, 'Discussion', discussionTyped.id);
-                    await updateDoc(docRef, { cleared: true });
-                    console.log(
-                      `Marked Discussion ${discussionTyped.id} as cleared`
-                    );
-
-                    const newDiscussionCount = {
-                      discussionID: discussionTyped.id,
-                      activityLogId: newActivityLogId,
-                      count: 1,
-                      description: activityAnalysis.parsedDescription || '',
-                    };
-                    await addDoc(
-                      collection(db, `Users/${uid}/DiscussionCounts`),
-                      newDiscussionCount
-                    );
-                    setDiscussionCounts((prev) =>
-                      [...prev, newDiscussionCount].sort(
-                        (a, b) => b.count - a.count
-                      )
-                    );
-                  }
+                    // Replace direct Firestore/Realm calls with router function
+                    await markDiscussionAsCleared(discussionTyped.id);                  }
                 }
-                console.log('Activity Log update completed successfully.');
+                // console.log('Activity Log update completed successfully.');
                 Alert.alert(
                   'Success',
                   `${unclearedDocs.length} Activity Log entries updated successfully!`
@@ -627,9 +557,19 @@ const MainComponent: React.FC = () => {
   }, []);
 
   const sortedData = useCallback(() => {
-    if (!sortBy || tables.length === 0)
+    /*     console.log(
+      'Current table index:',
+      currentTableIndex,
+      'sortBy:',
+      sortBy,
+      'tables.length:',
+      tables.length
+    ); */    if (!sortBy || tables.length === 0)
       return tables[currentTableIndex]?.data || [];
     const { column, order } = sortBy;
+    // console.log(
+    //   `Sorting by column: ${column}, order: ${order}, currentTableIndex: ${currentTableIndex}`
+    // );
     return [...tables[currentTableIndex].data].sort((a, b) => {
       const valueA = a[column] || '';
       const valueB = b[column] || '';
@@ -649,79 +589,37 @@ const MainComponent: React.FC = () => {
   }, [sortBy, tables, currentTableIndex]);
 
   const filteredData = useCallback(() => {
+    /*  console.log(
+      'Current table index:',
+      currentTableIndex,
+      'tables.length:',
+      tables.length
+    ); */
     if (tables.length === 0) return sortedData();
+    //console.log('Filtered data before applying filters:', sortedData());
     const data = sortedData().filter((row) =>
       Object.entries(filters).every(([column, value]) =>
-        row[column]?.toString().toLowerCase().includes(value.toLowerCase())
+        row[column]
+          ?.toString()
+          .toLowerCase()
+          .includes((value || '').toString().toLowerCase())
       )
     );
-    console.log(
+    /*  console.log(
       'Filtered data:',
       data.map((item) => item.id)
-    );
+    ); */
     return data;
   }, [tables, filters, sortBy, currentTableIndex, sortedData]);
 
   const handleDelete = useCallback(
     async (tableName: string, itemId: string) => {
       try {
-        const collectionName =
-          tableName === 'Activity Log Data' ? 'ActivityLog' : 'Discussion';
-        const batch = writeBatch(db);
-
-        // Delete the primary document
-        const primaryRef = doc(db, collectionName, itemId);
-        batch.delete(primaryRef);
-        console.log(`Deleting ${collectionName} ${itemId}`);
-
-        // If deleting a Discussion, delete related ActivityLog entries
-        if (tableName === 'Discussion Data') {
-          const activityLogQuery = query(
-            collection(db, 'ActivityLog'),
-            where('discussionId', '==', itemId),
-            where('uid', '==', uid)
-          );
-          const activityLogSnapshot = await getDocs(activityLogQuery);
-          activityLogSnapshot.forEach((doc) => {
-            batch.delete(doc.ref);
-            console.log(
-              `Deleting ActivityLog ${doc.id} for discussionId ${itemId}`
-            );
-          });
-
-          // Delete related DiscussionCounts
-          const discussionCountsQuery = query(
-            collection(db, `Users/${uid}/DiscussionCounts`),
-            where('discussionID', '==', itemId)
-          );
-          const discussionCountsSnapshot = await getDocs(discussionCountsQuery);
-          discussionCountsSnapshot.forEach((doc) => {
-            batch.delete(doc.ref);
-            console.log(
-              `Deleting DiscussionCount ${doc.id} for discussionId ${itemId}`
-            );
-          });
-        }
-
-        // If deleting an ActivityLog, delete related DiscussionCounts
         if (tableName === 'Activity Log Data') {
-          const discussionCountsQuery = query(
-            collection(db, `Users/${uid}/DiscussionCounts`),
-            where('activityLogId', '==', itemId)
-          );
-          const discussionCountsSnapshot = await getDocs(discussionCountsQuery);
-          discussionCountsSnapshot.forEach((doc) => {
-            batch.delete(doc.ref);
-            console.log(
-              `Deleting DiscussionCount ${doc.id} for activityLogId ${itemId}`
-            );
-          });
+          await deleteActivityLog(itemId);
+        } else {
+          await deleteDiscussion(itemId);
         }
-
-        await batch.commit();
-        console.log(`Deleted ${collectionName} ${itemId} and related data`);
-
-        // Update UI
         setTables((prevTables) =>
           prevTables.map((table) =>
             table.name === tableName
@@ -747,7 +645,7 @@ const MainComponent: React.FC = () => {
           )
         );
         Alert.alert('Success', 'Item and related data deleted successfully.');
-        fetchData(); // Refresh tables after delete
+        fetchData();
       } catch (error) {
         console.error('Error deleting item:', error);
         Alert.alert('Error', 'Failed to delete item.');
@@ -778,58 +676,49 @@ const MainComponent: React.FC = () => {
       let discussionId = itemId;
 
       try {
-        const activityLogSnapshot = await getDocs(
-          collection(db, 'ActivityLog')
-        );
+        // Use router to get activity logs
+        const activityLogs = await getActivityLogs();
         if (tableName === 'Discussion Data') {
-          const relatedLogs = activityLogSnapshot.docs
-            .map((doc) => ({ id: doc.id, ...doc.data() } as ActivityLog))
-            .filter((log) => log.discussionId === itemId);
-          console.log(
-            `Found ${relatedLogs.length} related ActivityLog entries for discussionId ${itemId}`
+          const relatedLogs = activityLogs.filter(
+            (log: any) => log.discussionId === itemId
           );
           setRelatedActivityLogs(relatedLogs);
-          const descriptions = relatedLogs.reduce((acc, log) => {
+          const descriptions = relatedLogs.reduce((acc: any, log: any) => {
             acc[log.id] = log.description || '';
             return acc;
-          }, {} as { [key: string]: string });
-          const categories = relatedLogs.reduce((acc, log) => {
+          }, {});
+          const categories = relatedLogs.reduce((acc: any, log: any) => {
             acc[log.id] = log.category || 'uncategorized';
             return acc;
-          }, {} as { [key: string]: string });
+          }, {});
           setActivityLogDescriptions(descriptions);
           setActivityLogCategories(categories);
         } else if (tableName === 'Activity Log Data') {
-          const activityLog = activityLogSnapshot.docs.find(
-            (doc) => doc.id === itemId
+          const activityLog = activityLogs.find(
+            (log: any) => log.id === itemId
           );
           if (activityLog) {
-            const activityData = activityLog.data() as ActivityLog;
-            discussionId = activityData.discussionId;
-            const discussionSnapshot = await getDocs(
-              collection(db, 'Discussion')
-            );
-            const relatedDiscussion = discussionSnapshot.docs.find(
-              (doc) => doc.id === discussionId
+            discussionId = activityLog.discussionId;
+            // Use router to get discussions
+            const discussions = await getDiscussions();
+            const relatedDiscussion = discussions.find(
+              (d: any) => d.id === discussionId
             );
             if (relatedDiscussion) {
-              const discussionData = relatedDiscussion.data();
-              descriptionToProcess = discussionData.description || '';
-              const relatedLogs = activityLogSnapshot.docs
-                .map((doc) => ({ id: doc.id, ...doc.data() } as ActivityLog))
-                .filter(
-                  (log) =>
-                    log.discussionId === discussionId && log.id !== itemId
-                );
+              descriptionToProcess = relatedDiscussion.description || '';
+              const relatedLogs = activityLogs.filter(
+                (log: any) =>
+                  log.discussionId === discussionId && log.id !== itemId
+              );
               setRelatedActivityLogs(relatedLogs);
-              const descriptions = relatedLogs.reduce((acc, log) => {
+              const descriptions = relatedLogs.reduce((acc: any, log: any) => {
                 acc[log.id] = log.description || '';
                 return acc;
-              }, {} as { [key: string]: string });
-              const categories = relatedLogs.reduce((acc, log) => {
+              }, {});
+              const categories = relatedLogs.reduce((acc: any, log: any) => {
                 acc[log.id] = log.category || 'uncategorized';
                 return acc;
-              }, {} as { [key: string]: string });
+              }, {});
               setActivityLogDescriptions(descriptions);
               setActivityLogCategories(categories);
             }
@@ -846,9 +735,11 @@ const MainComponent: React.FC = () => {
           );
 
           if (activityAnalysis.category !== 'uncategorized') {
-            const existingLogs = activityLogSnapshot.docs
-              .map((doc) => ({ id: doc.id, ...doc.data() } as ActivityLog))
-              .filter((log) => log.discussionId === discussionId);
+            // Use router to get all logs for this discussion
+            const allLogs = await getActivityLogs();
+            const existingLogs = allLogs.filter(
+              (log: any) => log.discussionId === discussionId
+            );
 
             if (existingLogs.length === 0) {
               // Check for duplicate before creating
@@ -861,34 +752,28 @@ const MainComponent: React.FC = () => {
 
               let newActivityLogId: string;
               if (existingLog) {
-                // Update existing ActivityLog entry
-                const logRef = doc(db, 'ActivityLog', existingLog.id);
-                await updateDoc(logRef, {
-                  timestamp: Timestamp.fromDate(editTimestamp),
-                  cleared: false,
-                  lockedCategory: false,
-                  lockedDescription: false,
-                });
-                newActivityLogId = existingLog.id;
+                // Use router to update existing ActivityLog entry (calls all pending updates)
+                await addOrUpdateActivityLog(); // No parameters allowed
+                newActivityLogId = String(existingLog.id);
                 console.log(
                   `Updated existing ActivityLog entry ${existingLog.id} for discussionId ${discussionId}`
                 );
               } else {
-                // Create new ActivityLog entry
-                const newActivityLog = await addDoc(
-                  collection(db, 'ActivityLog'),
-                  {
-                    discussionId: discussionId,
-                    category: activityAnalysis.category,
-                    description: activityAnalysis.parsedDescription,
-                    timestamp: Timestamp.fromDate(editTimestamp),
-                    cleared: false,
-                    uid: uid,
-                    lockedCategory: false,
-                    lockedDescription: false,
-                  }
-                );
-                newActivityLogId = newActivityLog.id;
+                // Use router to create new ActivityLog entry
+                const newLog = {
+                  discussionId: String(editItemId), // ensure string type for discussionId
+                  category:
+                    activityLogCategories[editItemId] || 'uncategorized',
+                  description: editDesc,
+                  timestamp: editTimestamp,
+                  cleared: editCleared,
+                  uid: uid,
+                  lockedCategory: false,
+                  lockedDescription: false,
+                  synced: false,
+                  typeSay: editTypeSay, // add typeSay to match ActivityLog shape if needed
+                };
+                newActivityLogId = await createActivityLog(newLog);
                 console.log(
                   `Created new ActivityLog entry ${newActivityLogId} for discussionId ${discussionId}`
                 );
@@ -918,8 +803,8 @@ const MainComponent: React.FC = () => {
               }));
             }
 
-            const discussionRef = doc(db, 'Discussion', discussionId);
-            await updateDoc(discussionRef, { cleared: true });
+            // Mark discussion as cleared using router
+            await markDiscussionAsCleared(discussionId);
             setEditCleared(true);
           }
         }
@@ -953,11 +838,8 @@ const MainComponent: React.FC = () => {
           [selectedActivityLogId]: category,
         }));
 
-        const logRef = doc(db, 'ActivityLog', selectedActivityLogId);
-        await updateDoc(logRef, {
-          category,
-          lockedCategory: true,
-        });
+        // Use router to update ActivityLog category
+        await updateActivityLogCategory(selectedActivityLogId, category);
         console.log(
           `Updated ActivityLog ${selectedActivityLogId} category to ${category}`
         );
@@ -966,15 +848,16 @@ const MainComponent: React.FC = () => {
           setAllCategories((prev) => [...prev, category]);
         }
 
-        await addDoc(collection(db, 'RuleCandidates'), {
+        // Use router to create RuleCandidate
+        await createRuleCandidate({
           discussionId: editItemId,
           category,
           description: activityLogDescriptions[selectedActivityLogId] || '',
-          uid: uid,
+          uid: uid!,
         });
 
-        const discussionRef = doc(db, 'Discussion', editItemId);
-        await updateDoc(discussionRef, { cleared: true });
+        // Use router to mark discussion as cleared
+        await markDiscussionAsCleared(editItemId);
         setEditCleared(true);
 
         setCategoryModalVisible(false);
@@ -1005,29 +888,7 @@ const MainComponent: React.FC = () => {
   const handleDeleteActivityLog = useCallback(
     async (activityLogId: string) => {
       try {
-        const batch = writeBatch(db);
-        const logRef = doc(db, 'ActivityLog', activityLogId);
-        batch.delete(logRef);
-        console.log(`Deleting ActivityLog ${activityLogId}`);
-
-        // Delete related DiscussionCounts
-        const discussionCountsQuery = query(
-          collection(db, `Users/${uid}/DiscussionCounts`),
-          where('activityLogId', '==', activityLogId)
-        );
-        const discussionCountsSnapshot = await getDocs(discussionCountsQuery);
-        discussionCountsSnapshot.forEach((doc) => {
-          batch.delete(doc.ref);
-          console.log(
-            `Deleting DiscussionCount ${doc.id} for activityLogId ${activityLogId}`
-          );
-        });
-
-        await batch.commit();
-        console.log(
-          `Deleted ActivityLog ${activityLogId} and related DiscussionCounts`
-        );
-
+        await deleteActivityLog(activityLogId);
         // Update UI
         setRelatedActivityLogs((prev) =>
           prev.filter((log) => log.id !== activityLogId)
@@ -1062,7 +923,7 @@ const MainComponent: React.FC = () => {
         Alert.alert('Error', `Failed to delete Activity Log entry: ${error}`);
       }
     },
-    [uid, fetchData]
+    [fetchData]
   );
 
   const saveEdit = useCallback(async () => {
@@ -1070,7 +931,6 @@ const MainComponent: React.FC = () => {
       Alert.alert('Error', 'Description cannot be empty.');
       return;
     }
-
     if (!uid || !editItemId || !editTableName) {
       console.error('Invalid saveEdit inputs:', {
         uid,
@@ -1080,170 +940,37 @@ const MainComponent: React.FC = () => {
       Alert.alert('Error', 'Missing user ID or item data. Please try again.');
       return;
     }
-
     try {
-      console.log('Starting saveEdit for:', {
-        editTableName,
-        editItemId,
-        editDesc,
-        editCleared,
-        editTypeSay,
-        editTimestamp,
-      });
-      console.log(
-        'saveEdit UID:',
-        uid,
-        'Document UIDs:',
-        relatedActivityLogs.map((log) => ({ id: log.id, uid: log.uid }))
-      );
-
-      const batch = writeBatch(db);
-      const collectionName =
-        editTableName === 'Activity Log Data' ? 'ActivityLog' : 'Discussion';
-
-      // Discussion Update
-      try {
-        const primaryRef = doc(db, collectionName, editItemId);
-        const primaryUpdates = {
-          description: editDesc,
-          cleared: editCleared,
-          typeSay: editTypeSay,
-          timestamp: Timestamp.fromDate(editTimestamp),
-        };
-        console.log(
-          `Updating ${collectionName} ${editItemId}:`,
-          primaryUpdates
-        );
-        batch.update(primaryRef, primaryUpdates);
-      } catch (error) {
-        console.error('Error in Discussion update:', error);
-        throw error;
-      }
-
-      // ActivityLog Updates
-      if (relatedActivityLogs.length > 0) {
-        for (const log of relatedActivityLogs) {
-          const newDescription = activityLogDescriptions[log.id]?.trim();
-          const newCategory = activityLogCategories[log.id];
-          const updates: {
-            description?: string;
-            category?: string;
-            cleared?: boolean;
-            timestamp: any;
-            lockedCategory?: boolean;
-            lockedDescription?: boolean;
-          } = { timestamp: Timestamp.fromDate(editTimestamp) };
-
-          if (newDescription && newDescription !== log.description) {
-            console.log(
-              `Checking for duplicate ActivityLog: discussionId=${
-                log.discussionId
-              }, category=${
-                newCategory || log.category
-              }, description=${newDescription}`
-            );
-            try {
-              const existingLog = await findDuplicateActivityLog(
-                log.discussionId,
-                newCategory || log.category,
-                newDescription,
-                uid
-              );
-
-              if (existingLog && existingLog.id !== log.id) {
-                console.log(
-                  `Found duplicate ActivityLog ${existingLog.id}, updating and deleting ${log.id}`
-                );
-                const existingRef = doc(db, 'ActivityLog', existingLog.id);
-                batch.update(existingRef, {
-                  timestamp: Timestamp.fromDate(editTimestamp),
-                  cleared: false,
-                  lockedCategory: false,
-                  lockedDescription: false,
-                });
-                const currentRef = doc(db, 'ActivityLog', log.id);
-                batch.delete(currentRef);
-                console.log(
-                  `Replacing ActivityLog ${log.id} with existing ${existingLog.id}`
-                );
-              } else {
-                updates.description = newDescription;
-                updates.lockedDescription = true;
-                console.log(`Skipping RuleCandidate for ActivityLog ${log.id}`);
-              }
-            } catch (error) {
-              console.error('Error in ActivityLog duplicate check:', error);
-              throw error;
-            }
-          }
-
-          if (
-            newCategory &&
-            newCategory !== log.category &&
-            !log.lockedCategory
-          ) {
-            updates.category = newCategory;
-          }
-          updates.lockedCategory = log.lockedCategory || false;
-          updates.lockedDescription = log.lockedDescription || false;
-
-          if (Object.keys(updates).length > 1) {
-            try {
-              const logRef = doc(db, 'ActivityLog', log.id);
-              console.log(`Updating ActivityLog ${log.id}:`, updates);
-              batch.update(logRef, updates);
-            } catch (error) {
-              console.error(`Error updating ActivityLog ${log.id}:`, error);
-              throw error;
-            }
-          }
-        }
-
-        if (editTableName === 'Discussion Data') {
-          try {
-            const discussionRef = doc(db, 'Discussion', editItemId);
-            console.log(`Marking Discussion ${editItemId} as cleared`);
-            batch.update(discussionRef, { cleared: true });
-          } catch (error) {
-            console.error('Error in Discussion cleared update:', error);
-            throw error;
-          }
-        }
-      }
-
-      // GPTResponses Update
       if (editTableName === 'Discussion Data') {
-        console.log('Checking for GPTResponses entry:', editItemId);
-        try {
-          const gptSnapshot = await getDocs(collection(db, 'GPTResponses'));
-          const relatedGPT = gptSnapshot.docs.find(
-            (doc) => doc.id === editItemId
-          );
-          if (relatedGPT) {
-            const gptRef = doc(db, 'GPTResponses', editItemId);
-            console.log(
-              `Updating GPTResponses ${editItemId} timestamp to ${editTimestamp}`
-            );
-            batch.update(gptRef, {
-              timestamp: Timestamp.fromDate(editTimestamp),
-              uid: uid, // Ensure uid is set
-            });
-          } else {
-            console.log(
-              `No GPTResponses entry found for ${editItemId}, skipping update`
-            );
-          }
-        } catch (error) {
-          console.error('Error in GPTResponses update:', error);
-          throw error;
+        await addOrUpdateDiscussion(editDesc, editTypeSay, editItemId);
+        await markDiscussionAsCleared(editItemId);
+      } else {
+        // Use router to update or create ActivityLog
+        // Find the log to update, or create a new one if not found
+        const activityLogs = await getActivityLogs();
+        const logToUpdate = activityLogs.find(
+          (log: any) => log.id === editItemId
+        );
+        if (logToUpdate) {
+          await addOrUpdateActivityLog(); // No parameters allowed, batch update only
+        } else {
+          // Create new ActivityLog using router
+          const newLog = {
+            discussionId: String(editItemId), // ensure string type for discussionId
+            category: activityLogCategories[editItemId] || 'uncategorized',
+            description: editDesc,
+            timestamp: editTimestamp,
+            cleared: editCleared,
+            uid: uid,
+            lockedCategory: false,
+            lockedDescription: false,
+            synced: false,
+            typeSay: editTypeSay, // add typeSay to match ActivityLog shape if needed
+          };
+          const newId = await createActivityLog(newLog);
+          setEditItemId(newId); // update state with new ID
         }
       }
-
-      // Commit Batch
-      console.log('Committing Firestore batch...');
-      await batch.commit();
-      console.log('Firestore batch committed successfully');
-
       setTables((prevTables) =>
         prevTables.map((table) =>
           table.name === editTableName
@@ -1287,10 +1014,6 @@ const MainComponent: React.FC = () => {
             : table
         )
       );
-
-      console.log(
-        `Updated item ${editItemId} in ${collectionName} and related data`
-      );
       setEditModalVisible(false);
       setShowDatePicker(false);
       setShowTimePicker(false);
@@ -1303,15 +1026,7 @@ const MainComponent: React.FC = () => {
       );
       fetchData(); // Refresh tables after save
     } catch (error) {
-      console.error('Error in saveEdit:', error, {
-        editTableName,
-        editItemId,
-        editDesc,
-        editCleared,
-        editTypeSay,
-        editTimestamp,
-        relatedActivityLogs,
-      });
+      console.error('Error in saveEdit:', error);
       Alert.alert('Error', `Failed to save changes: ${error}`);
     }
   }, [
@@ -1327,6 +1042,77 @@ const MainComponent: React.FC = () => {
     uid,
     fetchData,
   ]);
+
+  // Handler for legacy import button
+  const handleLegacyImport = async () => {
+    setImportingLegacy(true);
+    try {
+      const result = await extractAndImportLegacyFirestoreData();
+      Alert.alert(
+        'Legacy Import Complete',
+        `Imported ${result.discussionCount} Discussion and ${result.activityLogCount} ActivityLog records.`
+      );
+      await fetchData();
+    } catch (e: any) {
+      Alert.alert('Legacy Import Failed', e.message || String(e));
+    } finally {
+      setImportingLegacy(false);
+    }
+  };
+
+  // Handler for debug: delete all local/remote rows
+  const handleDebugDeleteAll = async () => {
+    setDebugLoading(true);
+    try {
+      await deleteAllLocalAndRemoteRows();
+      Alert.alert('Debug: All local and remote ChangeLog data deleted.');
+      await fetchData();
+    } catch (e: any) {
+      Alert.alert('Debug Delete Failed', e.message || String(e));
+    } finally {
+      setDebugLoading(false);
+    }
+  };
+
+  // Handler for debug: run all syncs and repopulate Realm (10 rows per table)
+  const handleDebugSyncAndPopulate = async () => {
+    setDebugLoading(true);
+    try {
+      // Optionally insert 10 test rows per table for debug
+      await insertTestRowsAndExit();
+      // Then run all sync functions
+      await runAllSyncFunctions();
+      Alert.alert(
+        'Debug: Ran all syncs and repopulated Realm (10 rows per table).'
+      );
+      await fetchData();
+    } catch (e: any) {
+      Alert.alert('Debug Sync/Populate Failed', e.message || String(e));
+    } finally {
+      setDebugLoading(false);
+    }
+  };
+
+  // TEMP: Copy Realm DB to Downloads folder
+  const handleCopyRealmToDownloads = async () => {
+    setDebugLoading(true);
+    try {
+      const realmPath = '/data/data/com.anonymous.lifelog/files/lifelog.realm';
+      const downloadsPath = `${RNFS.DownloadDirectoryPath}/lifelog.realm`;
+      await RNFS.copyFile(realmPath, downloadsPath);
+      Alert.alert('Success', 'Realm DB copied to Downloads folder!');
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      Alert.alert('Copy Failed', message);
+    } finally {
+      setDebugLoading(false);
+    }
+  };
+
+  // Cast 'e' to Error type
+  const alertCopyFailed = (e: unknown) => {
+    Alert.alert('Copy Failed', (e as Error).message || String(e));
+  };
 
   const renderRightActions = useCallback(
     (tableName: string, itemId: string) => (
@@ -1375,6 +1161,19 @@ const MainComponent: React.FC = () => {
     []
   );
 
+  // Extra debug: log getDiscussions() output on mount
+  useEffect(() => {
+    async function debugFetchDiscussions() {
+      try {
+        const discussions = await getDiscussions();
+        //console.log('[EXTRA DEBUG] getDiscussions() raw output:', discussions); // Removed
+      } catch (e) {
+        console.error('[EXTRA DEBUG] Error calling getDiscussions:', e);
+      }
+    }
+    debugFetchDiscussions();
+  }, []);
+
   if (loading) {
     return (
       <View style={styles.container}>
@@ -1394,11 +1193,67 @@ const MainComponent: React.FC = () => {
     );
   }
 
+  //console.log('Rendering MainComponent - debug');
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       style={styles.container}
     >
+      {/* TEMP DEBUG BUTTONS - REMOVE IN PRODUCTION */}
+      <ScrollView
+        horizontal={false}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{
+          flexDirection: 'column',
+          alignItems: 'center',
+          marginVertical: 8,
+        }}
+      >
+        <TouchableOpacity
+          style={{
+            backgroundColor: '#ff4444',
+            padding: 10,
+            borderRadius: 5,
+            marginBottom: 10,
+            opacity: debugLoading ? 0.5 : 1,
+          }}
+          onPress={handleDebugDeleteAll}
+          disabled={debugLoading}
+        >
+          <Text style={{ color: '#fff', fontWeight: 'bold' }}>
+            DEBUG: Delete All Local/Remote (ChangeLog)
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={{
+            backgroundColor: '#007bff',
+            padding: 10,
+            borderRadius: 5,
+            marginBottom: 10,
+            opacity: debugLoading ? 0.5 : 1,
+          }}
+          onPress={handleDebugSyncAndPopulate}
+          disabled={debugLoading}
+        >
+          <Text style={{ color: '#fff', fontWeight: 'bold' }}>
+            DEBUG: Sync & Repopulate (10 rows/table)
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={{
+            backgroundColor: '#00b894',
+            padding: 10,
+            borderRadius: 5,
+            opacity: debugLoading ? 0.5 : 1,
+          }}
+          onPress={handleCopyRealmToDownloads}
+          disabled={debugLoading}
+        >
+          <Text style={{ color: '#fff', fontWeight: 'bold' }}>
+            DEBUG: Copy Realm DB to Downloads
+          </Text>
+        </TouchableOpacity>
+      </ScrollView>
       {initialized && tables.length > 0 ? (
         <View style={styles.tableContainer}>
           <View style={styles.navigation}>
@@ -1433,7 +1288,11 @@ const MainComponent: React.FC = () => {
                   key={col.accessor}
                   style={[styles.filterInput, { flex: col.flex }]}
                   placeholder={`Filter ${col.Header}`}
-                  value={filters[col.accessor] || ''}
+                  value={
+                    typeof filters[col.accessor] === 'string'
+                      ? filters[col.accessor]
+                      : filters[col.accessor]?.toString() || ''
+                  }
                   onChangeText={(text) =>
                     setFilters((prev) => ({ ...prev, [col.accessor]: text }))
                   }
@@ -1567,33 +1426,46 @@ const MainComponent: React.FC = () => {
                     }}
                   />
                 )}
-                {(editTableName === 'Discussion Data' ||
-                  editTableName === 'Activity Log Data') &&
-                  relatedActivityLogs.length > 0 && (
-                    <View style={styles.relatedLogsContainer}>
-                      <Text style={styles.modalSubtitle}>
-                        Related Activity Log Entries
-                      </Text>
-                      {relatedActivityLogs.slice(0, 5).map((item) => (
-                        <RelatedLogEntry
-                          key={item.id}
-                          log={item}
-                          description={activityLogDescriptions[item.id] || ''}
-                          onDescriptionChange={(id, text) =>
-                            setActivityLogDescriptions((prev) => ({
-                              ...prev,
-                              [id]: text,
-                            }))
-                          }
-                          onCategoryChange={(id) => {
-                            setSelectedActivityLogId(id);
-                            setCategoryModalVisible(true);
-                          }}
-                          onDelete={handleDeleteActivityLog}
-                        />
-                      ))}
-                    </View>
-                  )}
+                <View style={styles.switchContainer}>
+                  <Text style={styles.modalLabel}>Category:</Text>
+                  <TouchableOpacity
+                    style={styles.categorySelectButton}
+                    onPress={() => {
+                      setSelectedActivityLogId(editItemId);
+                      setCategoryModalVisible(true);
+                    }}
+                  >
+                    <Text style={styles.categoryText}>
+                      {activityLogCategories[editItemId] || 'uncategorized'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+                {/* Always show related Activity Log entries if any */}
+                {relatedActivityLogs.length > 0 && (
+                  <View style={styles.relatedLogsContainer}>
+                    <Text style={styles.modalSubtitle}>
+                      Related Activity Log Entries
+                    </Text>
+                    {relatedActivityLogs.slice(0, 5).map((item) => (
+                      <RelatedLogEntry
+                        key={item.id}
+                        log={item}
+                        description={activityLogDescriptions[item.id] || ''}
+                        onDescriptionChange={(id, text) =>
+                          setActivityLogDescriptions((prev) => ({
+                            ...prev,
+                            [id]: text,
+                          }))
+                        }
+                        onCategoryChange={(id) => {
+                          setSelectedActivityLogId(id);
+                          setCategoryModalVisible(true);
+                        }}
+                        onDelete={handleDeleteActivityLog}
+                      />
+                    ))}
+                  </View>
+                )}
                 <View style={styles.modalButtons}>
                   <TouchableOpacity
                     style={styles.modalButton}
@@ -1618,7 +1490,6 @@ const MainComponent: React.FC = () => {
               </ScrollView>
             </View>
           </Modal>
-
           <Modal
             animationType="slide"
             transparent={true}
@@ -1695,13 +1566,15 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: 10,
     backgroundColor: '#f9f9f9',
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: 'flex-start', // align content to top
+    // Removed alignItems: 'flex-start' to allow full width
   },
   tableContainer: {
-    flex: 1,
+    // flex: 1, // Removed to prevent vertical stretching
     width: SCREEN_WIDTH - 20,
     alignSelf: 'center',
+    justifyContent: 'flex-start', // ensure table content starts at top
+    alignItems: 'flex-start',
   },
   navigation: {
     flexDirection: 'row',
@@ -1773,8 +1646,9 @@ const styles = StyleSheet.create({
     textAlign: 'left',
   },
   tableList: {
-    flex: 1,
+    // flex: 1, // Removed to prevent vertical stretching
     width: '100%',
+    alignSelf: 'stretch',
   },
   deleteButton: {
     backgroundColor: '#ff4444',
@@ -1898,6 +1772,11 @@ const styles = StyleSheet.create({
   },
   categoryText: {
     fontSize: 12,
+  },
+  categorySelectButton: {
+    padding: 6,
+    backgroundColor: '#007bff',
+    borderRadius: 5,
   },
   loadingText: {
     fontSize: 16,

@@ -1,6 +1,6 @@
 import axios from 'axios';
 import { ActivityInput, analyzeActivity, ParsedActivity } from './openaiAPI';
-import { getRules } from './databaseService';
+import { getRules } from './dbServices';
 import { db } from '../firebaseConfig';
 import {
   doc,
@@ -13,7 +13,7 @@ import {
   query,
   getDocs,
 } from 'firebase/firestore';
-import { ActivityLog } from './backendService';
+import { ActivityLog } from './types';
 
 const useOpenAI = true;
 
@@ -65,10 +65,9 @@ export const processPhrase = async (
       }[]
     >
   >,
-  discussionId: string,
-  uid: string
+  discussionId: string,  uid: string
 ): Promise<ParsedActivity> => {
-  console.log('Processing phrase:', input.description);
+  // console.log('Processing phrase:', input.description);
   const { categories: distinctCategories, description } = input;
 
   for (const entry of discussionCounts) {
@@ -170,12 +169,11 @@ export const processPhrase = async (
         cleared: false,
         uid: uid,
         lockedCategory: false,
-        lockedDescription: false,
-      });
+        lockedDescription: false,      });
       activityLogId = newActivityLog.id;
-      console.log(
-        `Created new ActivityLog entry ${activityLogId} for discussionId ${discussionId}`
-      );
+      // console.log(
+      //   `Created new ActivityLog entry ${activityLogId} for discussionId ${discussionId}`
+      // );
 
       const newDiscussionCount = {
         discussionID: discussionId,
@@ -216,7 +214,7 @@ export async function findDuplicateActivityLog(
 
   const docData = snapshot.docs[0].data();
   const activityLog: ActivityLog = {
-    id: parseInt(snapshot.docs[0].id),
+    id: snapshot.docs[0].id,
     discussionId: docData.discussionId || '',
     description: docData.description || '',
     category: docData.category || '',
@@ -249,12 +247,11 @@ export async function applyRules(
   const categoryMatch = discussion.match(
     new RegExp(`^(${validCategories.join('|')})[:;]\\s*(.+)$`, 'i')
   );
-  if (categoryMatch) {
-    extractedCategory = categoryMatch[1].toLowerCase();
+  if (categoryMatch) {    extractedCategory = categoryMatch[1].toLowerCase();
     remainingPhrase = categoryMatch[2];
-    console.log(
-      `Extracted category: "${extractedCategory}", remaining phrase: "${remainingPhrase}"`
-    );
+    // console.log(
+    //   `Extracted category: "${extractedCategory}", remaining phrase: "${remainingPhrase}"`
+    // );
   }
 
   if (abbreviationMap.has(remainingPhrase)) {
