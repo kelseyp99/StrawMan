@@ -47,9 +47,11 @@
       },
       "channel": "production",
       "android": {
+        "autoIncrement": true,
         "buildType": "app-bundle"
       },
       "ios": {
+        "autoIncrement": true,
         "simulator": false
       }
     },
@@ -57,12 +59,18 @@
       "distribution": "store",
       "channel": "beta",
       "android": {
+        "autoIncrement": true,
         "buildType": "app-bundle"
       }
     }
   },
   "submit": {
-    "production": {},
+    "production": {
+      "android": {
+        "track": "internal",
+        "serviceAccountKeyPath": "./lifelog-f2904-b5d58f4dfdec.json"
+      }
+    },
     "beta": {
       "android": {
         "track": "beta"
