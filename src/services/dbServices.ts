@@ -200,7 +200,9 @@ export async function getNextOpenDiscussion(lastVisibleId?: string): Promise<{
 export async function processPendingTells(): Promise<void> {
   console.log('processPendingTells called');
   try {
-    await remote.processPendingTells();
+    if (USE_REMOTE) {
+      await remote.processPendingTells();
+    }
     await local.processPendingTells();
     const uid = (await getUID()) || 'unknown';
     await logSyncEntry({
@@ -245,7 +247,9 @@ export async function addQuestionDiscussion(
 export async function processUnclearedGPTResponses(): Promise<void> {
   console.log('processUnclearedGPTResponses called');
   try {
-    await remote.processUnclearedGPTResponses();
+    if (USE_REMOTE) {
+      await remote.processUnclearedGPTResponses();
+    }
     await local.processUnclearedGPTResponses();
     const uid = (await getUID()) || 'unknown';
     await logSyncEntry({
@@ -266,7 +270,9 @@ export async function markDiscussionAsCleared(
 ): Promise<void> {
   console.log('markDiscussionAsCleared called with:', discussionId);
   try {
-    await remote.markDiscussionAsCleared(discussionId);
+    if (USE_REMOTE) {
+      await remote.markDiscussionAsCleared(discussionId);
+    }
     await local.markDiscussionAsCleared(discussionId);
     const uid = (await getUID()) || 'unknown';
     await logSyncEntry({
@@ -285,7 +291,10 @@ export async function markDiscussionAsCleared(
 export async function clearDiscussion(discussionId: string): Promise<boolean> {
   console.log('clearDiscussion called with:', discussionId);
   try {
-    const remoteResult = await remote.clearDiscussion(discussionId);
+    let remoteResult = false;
+    if (USE_REMOTE) {
+      remoteResult = await remote.clearDiscussion(discussionId);
+    }
     const localResult = await local.clearDiscussion(discussionId);
     const uid = (await getUID()) || 'unknown';
     await logSyncEntry({
@@ -305,7 +314,9 @@ export async function clearDiscussion(discussionId: string): Promise<boolean> {
 export async function addOrUpdateActivityLog(): Promise<void> {
   console.log('addOrUpdateActivityLog called');
   try {
-    await remote.addOrUpdateActivityLog();
+    if (USE_REMOTE) {
+      await remote.addOrUpdateActivityLog();
+    }
     await local.addOrUpdateActivityLog();
     const uid = (await getUID()) || 'unknown';
     await logSyncEntry({
@@ -324,7 +335,9 @@ export async function addOrUpdateActivityLog(): Promise<void> {
 export async function renameFieldToCleared(): Promise<void> {
   console.log('renameFieldToCleared called');
   try {
-    await remote.renameFieldToCleared();
+    if (USE_REMOTE) {
+      await remote.renameFieldToCleared();
+    }
     await local.renameFieldToCleared();
     const uid = (await getUID()) || 'unknown';
     await logSyncEntry({
