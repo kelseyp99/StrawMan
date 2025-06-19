@@ -447,9 +447,8 @@ const MainComponent: React.FC = () => {
           { text: 'Cancel', style: 'cancel' },
           {
             text: 'Yes',
-            onPress: async () => {
-              try {
-                console.log('Starting Activity Log update...');
+            onPress: async () => {              try {
+                // console.log('Starting Activity Log update...');
                 const distinctCategories = await getDistinctCategories();
                 if (!uid) {
                   console.error(
@@ -471,9 +470,8 @@ const MainComponent: React.FC = () => {
                       docSnapshot.data().timestamp?.toDate() || new Date(),
                     typeSay: docSnapshot.data().typeSay || 'tell',
                     cleared: docSnapshot.data().cleared || false,
-                  };
-                  if (!discussionTyped.cleared) {
-                    console.log('Processing Discussion:', discussionTyped.id);
+                  };                  if (!discussionTyped.cleared) {
+                    // console.log('Processing Discussion:', discussionTyped.id);
                     const activityAnalysis = await processPhrase(
                       {
                         categories: distinctCategories,
@@ -498,13 +496,12 @@ const MainComponent: React.FC = () => {
                       uid
                     );
                     let newActivityLogId: string;
-                    if (existingLog) {
-                      // Use router to update existing ActivityLog entry (calls all pending updates)
+                    if (existingLog) {                      // Use router to update existing ActivityLog entry (calls all pending updates)
                       await addOrUpdateActivityLog(); // No parameters allowed
                       newActivityLogId = String(existingLog.id);
-                      console.log(
-                        `Updated existing ActivityLog entry ${existingLog.id} for discussionId ${discussionTyped.id}`
-                      );
+                      // console.log(
+                      //   `Updated existing ActivityLog entry ${existingLog.id} for discussionId ${discussionTyped.id}`
+                      // );
                     } else {
                       // Use router to create new ActivityLog entry
                       const newLog = {
@@ -519,19 +516,17 @@ const MainComponent: React.FC = () => {
                         uid: uid,
                         lockedCategory: false,
                         lockedDescription: false,
-                        synced: false,
-                      };
+                        synced: false,                      };
                       newActivityLogId = await createActivityLog(newLog);
-                      console.log(
-                        `Created new ActivityLog entry ${newActivityLogId} for discussionId ${discussionTyped.id}`
-                      );
+                      // console.log(
+                      //   `Created new ActivityLog entry ${newActivityLogId} for discussionId ${discussionTyped.id}`
+                      // );
                     }
 
                     // Replace direct Firestore/Realm calls with router function
-                    await markDiscussionAsCleared(discussionTyped.id);
-                  }
+                    await markDiscussionAsCleared(discussionTyped.id);                  }
                 }
-                console.log('Activity Log update completed successfully.');
+                // console.log('Activity Log update completed successfully.');
                 Alert.alert(
                   'Success',
                   `${unclearedDocs.length} Activity Log entries updated successfully!`
@@ -569,13 +564,12 @@ const MainComponent: React.FC = () => {
       sortBy,
       'tables.length:',
       tables.length
-    ); */
-    if (!sortBy || tables.length === 0)
+    ); */    if (!sortBy || tables.length === 0)
       return tables[currentTableIndex]?.data || [];
     const { column, order } = sortBy;
-    console.log(
-      `Sorting by column: ${column}, order: ${order}, currentTableIndex: ${currentTableIndex}`
-    );
+    // console.log(
+    //   `Sorting by column: ${column}, order: ${order}, currentTableIndex: ${currentTableIndex}`
+    // );
     return [...tables[currentTableIndex].data].sort((a, b) => {
       const valueA = a[column] || '';
       const valueB = b[column] || '';

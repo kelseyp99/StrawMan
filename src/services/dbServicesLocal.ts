@@ -309,7 +309,7 @@ export async function deleteDocument(docId: string): Promise<void> {
 }
 
 export async function getDistinctCategories(): Promise<string[]> {
-  console.log('Getting distinct categories...');
+  // console.log('Getting distinct categories...');
   if (!realm) {
     console.error('Failed to open Realm instance');
     throw new Error('Failed to open Realm instance');
@@ -323,7 +323,7 @@ export async function getDistinctCategories(): Promise<string[]> {
     if (categories.length === 0) {
       categories.push('diet');
     }
-    console.log('Categories:', categories);
+    // console.log('Categories:', categories);
     return categories;
   } catch (error) {
     console.error('Error getting distinct categories:', error);
@@ -359,7 +359,7 @@ export async function insertJsonFile(jsonData: any): Promise<void> {
 export async function queryAllFieldsByCategories(
   categories: string[]
 ): Promise<string[]> {
-  console.log('Querying all fields by categories:', categories);
+  // console.log('Querying all fields by categories:', categories);
   if (!realm) {
     console.error('Failed to open Realm instance');
     throw new Error('Failed to open Realm instance');
@@ -469,9 +469,9 @@ export async function addOrUpdateDiscussion(
   id?: string,
   timestamp?: Date
 ): Promise<string> {
-  console.log(
-    `Adding/updating discussion with ID: ${id}, description: ${description}, typeSay: ${typeSay}`
-  );
+  // console.log(
+  //   `Adding/updating discussion with ID: ${id}, description: ${description}, typeSay: ${typeSay}`
+  // );
   if (!realm) {
     console.error('Failed to open Realm instance');
     throw new Error('Failed to open Realm instance');
@@ -519,9 +519,9 @@ export async function addOrUpdateDiscussion(
       }
     }
 
-    console.log(
-      `Discussion ${id ? 'updated' : 'added'} locally: ${discussionId}`
-    );
+    // console.log(
+    //   `Discussion ${id ? 'updated' : 'added'} locally: ${discussionId}`
+    // );
     return discussionId.toString();
   } catch (error) {
     console.error('Error adding/updating discussion:', error);
@@ -580,31 +580,31 @@ export async function getDiscussions(
   lastX?: number,
   discussionId?: string
 ): Promise<any[]> {
-  console.log(
-    'getDiscussions called with lastX:',
-    lastX,
-    'and discussionId:',
-    discussionId
-  );
+  // console.log(
+  //   'getDiscussions called with lastX:',
+  //   lastX,
+  //   'and discussionId:',
+  //   discussionId
+  // );
   if (!realm) {
     console.error('Failed to open Realm instance');
     throw new Error('Failed to open Realm instance');
   }
   const realmInstance = realm;
   try {
-    console.log('Fetching discussions from Realm...');
+    // console.log('Fetching discussions from Realm...');
     let discussions = realmInstance
       .objects<Discussion>('Discussion')
       .sorted('timestamp', true);
     // Extra debug: log all raw discussions
-    console.log(
-      '[getDiscussions] Raw Realm objects:',
-      discussions.map((d) => ({
-        id: d.id,
-        description: d.description,
-        timestamp: d.timestamp,
-      }))
-    );
+    // console.log(
+    //   '[getDiscussions] Raw Realm objects:',
+    //   discussions.map((d) => ({
+    //     id: d.id,
+    //     description: d.description,
+    //     timestamp: d.timestamp,
+    //   }))
+    // );
     if (discussionId) {
       const discussion = realmInstance.objectForPrimaryKey<Discussion>(
         'Discussion',
@@ -636,11 +636,11 @@ export async function getDiscussions(
       cleared: doc.cleared,
       timestamp: format(new Date(doc.timestamp), 'M/d/yy \n h:mm a'),
     }));
-    console.log(
-      '[DEBUG] getDiscussions returning:',
-      result.length,
-      result.slice(0, 3)
-    ); // Show first 3
+    // console.log(
+    //   '[DEBUG] getDiscussions returning:',
+    //   result.length,
+    //   result.slice(0, 3)
+    // ); // Show first 3
     return result;
   } catch (error) {
     console.error('Error getting Discussions:', error);
@@ -1623,9 +1623,9 @@ export async function getActivityLogs() {
   }
   try {
     const logs = realm.objects('ActivityLog');
-    console.log(
-      `[getActivityLogs] Found ${logs.length} ActivityLog records in Realm.`
-    );
+    // console.log(
+    //   `[getActivityLogs] Found ${logs.length} ActivityLog records in Realm.`
+    // );
     // Convert Realm Results to plain JS objects
     return Array.from(logs).map((log: any) => ({
       id: log.id,
@@ -1723,8 +1723,8 @@ export const readChangeLog = (
     console.error('[CHANGELOG] Realm not initialized in readChangeLog');
     throw new Error('Realm not initialized');
   }
-  console.log('[CHANGELOG] Reading ChangeLog entries with filter:', filter);
-  console.log(`[CHANGELOG] Sorting by ${sortBy}, ascending: ${sortAscending}`);
+  // console.log('[CHANGELOG] Reading ChangeLog entries with filter:', filter);
+  // console.log(`[CHANGELOG] Sorting by ${sortBy}, ascending: ${sortAscending}`);
 
   try {
     let query = '';
@@ -1762,7 +1762,7 @@ export const readChangeLog = (
       timestamp: change.timestamp,
       synced: change.synced,
     }));
-    console.log(`[CHANGELOG] Retrieved ${changeLogs.length} ChangeLog entries`);
+    // console.log(`[CHANGELOG] Retrieved ${changeLogs.length} ChangeLog entries`);
     return changeLogs;
   } catch (error) {
     console.error('[CHANGELOG] Error reading ChangeLog entries:', error);
@@ -1786,8 +1786,8 @@ export const updateChangeLog = (
     console.error('[CHANGELOG] Realm not initialized in updateChangeLog');
     throw new Error('Realm not initialized');
   }
-  console.log(`[CHANGELOG] Updating ChangeLog entry with ID: ${id}`);
-  console.log(`[CHANGELOG] Applying updates:`, updates);
+  // console.log(`[CHANGELOG] Updating ChangeLog entry with ID: ${id}`);
+  // console.log(`[CHANGELOG] Applying updates:`, updates);
 
   try {
     const realmInstance = realm;
@@ -1800,10 +1800,10 @@ export const updateChangeLog = (
         console.error(`[CHANGELOG] ChangeLog entry not found with ID: ${id}`);
         throw new Error(`ChangeLog entry not found: ${id}`);
       }
-      console.log(`[CHANGELOG] Found ChangeLog entry, applying updates`);
+      // console.log(`[CHANGELOG] Found ChangeLog entry, applying updates`);
       Object.assign(change, updates);
       logChange('ChangeLog', id, 'update');
-      console.log(`[CHANGELOG] ChangeLog entry updated successfully: ${id}`);
+      // console.log(`[CHANGELOG] ChangeLog entry updated successfully: ${id}`);
     });
   } catch (error) {
     console.error(

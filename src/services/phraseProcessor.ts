@@ -65,10 +65,9 @@ export const processPhrase = async (
       }[]
     >
   >,
-  discussionId: string,
-  uid: string
+  discussionId: string,  uid: string
 ): Promise<ParsedActivity> => {
-  console.log('Processing phrase:', input.description);
+  // console.log('Processing phrase:', input.description);
   const { categories: distinctCategories, description } = input;
 
   for (const entry of discussionCounts) {
@@ -170,12 +169,11 @@ export const processPhrase = async (
         cleared: false,
         uid: uid,
         lockedCategory: false,
-        lockedDescription: false,
-      });
+        lockedDescription: false,      });
       activityLogId = newActivityLog.id;
-      console.log(
-        `Created new ActivityLog entry ${activityLogId} for discussionId ${discussionId}`
-      );
+      // console.log(
+      //   `Created new ActivityLog entry ${activityLogId} for discussionId ${discussionId}`
+      // );
 
       const newDiscussionCount = {
         discussionID: discussionId,
@@ -249,12 +247,11 @@ export async function applyRules(
   const categoryMatch = discussion.match(
     new RegExp(`^(${validCategories.join('|')})[:;]\\s*(.+)$`, 'i')
   );
-  if (categoryMatch) {
-    extractedCategory = categoryMatch[1].toLowerCase();
+  if (categoryMatch) {    extractedCategory = categoryMatch[1].toLowerCase();
     remainingPhrase = categoryMatch[2];
-    console.log(
-      `Extracted category: "${extractedCategory}", remaining phrase: "${remainingPhrase}"`
-    );
+    // console.log(
+    //   `Extracted category: "${extractedCategory}", remaining phrase: "${remainingPhrase}"`
+    // );
   }
 
   if (abbreviationMap.has(remainingPhrase)) {

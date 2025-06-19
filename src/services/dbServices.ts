@@ -3,6 +3,7 @@ import * as remote from './dbServicesRemote';
 import * as local from './dbServicesLocal';
 import { getUID } from '../utils/uidManager';
 import { ActivityLog } from './types';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const USE_REMOTE = false;
 
@@ -39,7 +40,7 @@ async function logSyncEntry(entry: SyncEntry): Promise<void> {
 export async function isPaidUser(): Promise<boolean> {
   //console.log('isPaidUser called');
   // return local.isPaidUser();
-  return false; // TODO: Implement or update as needed
+  return true; // TODO: Implement or update as needed
 }
 
 export const findDuplicateActivityLog = async (
@@ -48,7 +49,7 @@ export const findDuplicateActivityLog = async (
   description: string,
   uid: string // keep for remote, but not for local
 ): Promise<ActivityLog | null> => {
-  console.log('findDuplicateActivityLog called');
+  // console.log('findDuplicateActivityLog called');
   try {
     const uidVal = (await getUID()) || 'unknown';
     if (USE_REMOTE) {
@@ -69,7 +70,7 @@ export const findDuplicateActivityLog = async (
 };
 
 export async function initializeUser(): Promise<void> {
-  console.log('initializeUser called');
+  // console.log('initializeUser called');
   try {
     if (USE_REMOTE) {
       await remote.initializeUser();
@@ -85,71 +86,61 @@ export async function initializeUser(): Promise<void> {
 export async function addOrUpdateDiscussion(
   description: string,
   typeSay: string = 'tell',
-  id?: string,
-  useRemote: boolean = USE_REMOTE
+  id?: string
 ): Promise<string> {
-  console.log(
-    '[DISCUSSION] addOrUpdateDiscussion called with:',
-    description,
-    typeSay,
-    id
-  );
+  // Determine if remote should be used
+  let useRemote = false;
+  const paid = await isPaidUser();
+  let syncWithCloud = false;
   try {
-    let result: string;
-
-    if (useRemote) {
-      console.log('[DISCUSSION] Calling remote.addOrUpdateDiscussion');
-      result = await remote.addOrUpdateDiscussion(
-        description,
-        typeSay,
-        id as string
-      );
-    } else {
-      console.log('[DISCUSSION] Calling local.addOrUpdateDiscussion');
-      await local.initializeUser(); // Ensure user is initialized for local operations
-      result = await local.addOrUpdateDiscussion(description, typeSay, id);
-    }
-
-    console.log('[DISCUSSION] Operation completed, logging SyncEntry');
-    if (useRemote || (await isPaidUser())) {
-      const uid = (await getUID()) || 'unknown';
-      await logSyncEntry({
-        id: result,
-        tableName: 'Discussion',
-        operation: id ? 'update' : 'create',
-        timestamp: new Date(),
-        uid,
-      });
-      console.log('[DISCUSSION] SyncEntry logged for ID:', result);
-    }
-
-    console.log('[DISCUSSION] Returning result:', result);
-    return result;
-  } catch (error) {
-    console.error('[DISCUSSION] Error in addOrUpdateDiscussion:', error);
-    console.error(
-      '[DISCUSSION] Error details:',
-      error instanceof Error ? error.message : String(error)
-    );
-    throw error;
+    syncWithCloud = (await AsyncStorage.getItem('syncWithCloud')) === 'true';
+  } catch (e) {
+    console.warn('Could not check syncWithCloud:', e);
   }
+  useRemote = paid && syncWithCloud;
+
+  // Always save locally first
+  await local.initializeUser();
+  const result = await local.addOrUpdateDiscussion(description, typeSay, id);
+
+  // Only save remote if useRemote is true
+  if (useRemote) {
+    console.log('[DISCUSSION] Calling remote.addOrUpdateDiscussion');
+    await remote.addOrUpdateDiscussion(description, typeSay, id as string);
+  }
+
+  // Log SyncEntry if remote or paid
+  if (useRemote || paid) {
+    const uid = (await getUID()) || 'unknown';
+    await logSyncEntry({
+      id: result,
+      tableName: 'Discussion',
+      operation: id ? 'update' : 'create',
+      timestamp: new Date(),
+      uid,
+    });
+    //  console.log('[DISCUSSION] SyncEntry logged for ID:', result);
+  }
+
+  //console.log('[DISCUSSION] Returning result:', result);
+  return result;
 }
 
 export async function getDiscussions(
   lastX?: number,
   discussionId?: string
 ): Promise<any[]> {
-  console.log(
-    'getDiscussions called with lastX:',
-    lastX,
-    'discussionId:',
-    discussionId
-  );
+  // console.log(
+  //   'getDiscussions called with lastX:',
+  //   lastX,
+  //   'discussionId:',
+  //   discussionId
+  // );
   try {
     const result = USE_REMOTE
       ? await remote.getDiscussions(lastX, discussionId)
       : await local.getDiscussions(lastX, discussionId);
-    console.log('getDiscussions result:', result);
+    //console.log('getDiscussions result:', result);
     return result;
   } catch (error) {
     console.error('getDiscussions error:', error);
@@ -511,7 +502,7 @@ export async function getNextActiveAlert(): Promise<any | null> {
 }
 
 export async function addOrUpdateAlert(alertData: any): Promise<void> {
-  console.log('addOrUpdateAlert called with:', alertData);
+  //console.log('addOrUpdateAlert called with:', alertData);
   try {
     await remote.addOrUpdateAlert(alertData);
     await local.addOrUpdateAlert(alertData);
@@ -571,7 +562,7 @@ export async function getURLofGPT(
 export async function expandFromAbbreviation(
   discussion: string
 ): Promise<string> {
-  console.log('expandFromAbbreviation called with:', discussion);
+  // console.log('expandFromAbbreviation called with:', discussion);
   try {
     const result = USE_REMOTE
       ? await remote.expandFromAbbreviation(discussion)
@@ -584,7 +575,7 @@ export async function expandFromAbbreviation(
 }
 
 export async function restoreLostData(): Promise<void> {
-  console.log('restoreLostData called');
+  // console.log('restoreLostData called');
   try {
     await remote.restoreLostData();
     await local.restoreLostData();
@@ -603,7 +594,7 @@ export async function restoreLostData(): Promise<void> {
 }
 
 export async function getRules(): Promise<any[]> {
-  console.log('getRules called');
+  //console.log('getRules called');
   try {
     const result = USE_REMOTE
       ? await remote.getRules()
@@ -621,7 +612,7 @@ export async function updateGPTSpecialties(gptSpecialty: {
   url: string;
   apiKey: string;
 }): Promise<void> {
-  console.log('updateGPTSpecialties called with:', gptSpecialty);
+  //console.log('updateGPTSpecialties called with:', gptSpecialty);
   try {
     await remote.updateGPTSpecialties(gptSpecialty);
     await local.updateGPTSpecialties(gptSpecialty);
@@ -640,7 +631,7 @@ export async function updateGPTSpecialties(gptSpecialty: {
 }
 
 export async function getActivityLogs(): Promise<any[]> {
-  console.log('getActivityLogs called');
+  //console.log('getActivityLogs called');
   try {
     const result = USE_REMOTE
       ? await remote.getActivityLogs()
@@ -653,7 +644,7 @@ export async function getActivityLogs(): Promise<any[]> {
 }
 
 export async function getParameters(): Promise<any[]> {
-  console.log('getParameters called');
+  //console.log('getParameters called');
   try {
     const result = USE_REMOTE
       ? await remote.getParameters()
@@ -681,7 +672,7 @@ export async function getDescriptionsWithTimestamps(
 }
 
 export async function createDocument(data: any): Promise<string> {
-  console.log('createDocument called with:', data);
+  //console.log('createDocument called with:', data);
   try {
     const remoteResult = await remote.createDocument(data);
     await local.createDocument(data);
@@ -701,7 +692,7 @@ export async function createDocument(data: any): Promise<string> {
 }
 
 export async function readDocuments(): Promise<any[]> {
-  console.log('readDocuments called');
+  //console.log('readDocuments called');
   try {
     const result = USE_REMOTE
       ? await remote.readDocuments()
@@ -714,7 +705,7 @@ export async function readDocuments(): Promise<any[]> {
 }
 
 export async function updateDocument(docId: string, data: any): Promise<void> {
-  console.log('updateDocument called with:', docId, data);
+  //console.log('updateDocument called with:', docId, data);
   try {
     await remote.updateDocument(docId, data);
     await local.updateDocument(docId, data);
@@ -752,7 +743,7 @@ export async function deleteDocument(docId: string): Promise<void> {
 }
 
 export async function getDistinctCategories(): Promise<string[]> {
-  console.log('getDistinctCategories called');
+  //  console.log('getDistinctCategories called');
   try {
     const result = USE_REMOTE
       ? await remote.getDistinctCategories()
@@ -765,7 +756,7 @@ export async function getDistinctCategories(): Promise<string[]> {
 }
 
 export async function insertJsonFile(jsonData: any): Promise<void> {
-  console.log('insertJsonFile called with:', jsonData);
+  // console.log('insertJsonFile called with:', jsonData);
   try {
     await remote.insertJsonFile(jsonData);
     await local.insertJsonFile(jsonData);
@@ -903,7 +894,7 @@ export async function createRuleCandidate(data: {
   description: string;
   uid: string;
 }): Promise<void> {
-  console.log('createRuleCandidate called with:', data);
+  // console.log('createRuleCandidate called with:', data);
   try {
     if (USE_REMOTE) {
       await remote.createRuleCandidate(data);
@@ -998,7 +989,7 @@ export { syncTableFromRemote } from './dbServicesLocal';
  * Utility: Run all sync functions (Discussions, ActivityLog, and full remote sync)
  */
 export async function runAllSyncFunctions(appVersion = '1.1.0') {
-  console.log('[UTIL] Running all sync functions...');
+  // console.log('[UTIL] Running all sync functions...');
   await synchronizeDiscussions(appVersion);
   await synchronizeActivityLog(appVersion);
   await syncFromRemote();
@@ -1023,12 +1014,7 @@ export async function insertTestRowsAndExit() {
     '[UTIL] Inserting 10 test rows into Discussion and ActivityLog...'
   );
   for (let i = 0; i < 10; i++) {
-    await addOrUpdateDiscussion(
-      `Test Discussion ${i + 1}`,
-      'test',
-      undefined,
-      false
-    );
+    await addOrUpdateDiscussion(`Test Discussion ${i + 1}`, 'test', undefined);
     await local.createActivityLog({
       discussionId: `test-discussion-${i + 1}`,
       category: 'test',
