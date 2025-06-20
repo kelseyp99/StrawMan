@@ -130,7 +130,7 @@ function mapDiscussionRow(row: any) {
     ...row,
     timestamp: isToday(dateObj) ? 'Today' : format(dateObj, 'M/d/yy \n h:mm a'),
     rawTimestamp: dateObj,
-    cleared: row.cleared ? 'G£ön+Å Yes' : 'G¥î No', // Ensure cleared is formatted for display
+    cleared: row.cleared ? 'Gï¿½ï¿½n+ï¿½ Yes' : 'Gï¿½ï¿½ No', // Ensure cleared is formatted for display
   };
 }
 
@@ -315,31 +315,38 @@ const MainComponent: React.FC = () => {
       
       // Fetch data with minimal processing
       const activityLogRaw = await getActivityLogs();
-      // console.log('[PERF] Fetched', activityLogRaw.length, 'activity logs');      // Process all activity logs (already sorted by date descending in dbServicesLocal)
-      const activityLogData = activityLogRaw.map((log: any) => ({
-        ...log,
-        id: String(log.id || ''),
-        category: String(log.category || ''),
-        description: String(log.description || ''),
-        timestamp: log.timestamp instanceof Date 
-          ? log.timestamp.toLocaleDateString() + ' ' + log.timestamp.toLocaleTimeString()
-          : String(log.timestamp || 'No date'),
-        cleared: Boolean(log.cleared),
-      }));
+      // console.log('[PERF] Fetched', activityLogRaw.length, 'activity logs');      // Process all activity logs and add proper date sorting
+      const activityLogData = activityLogRaw
+        .map((log: any) => ({
+          ...log,
+          id: String(log.id || ''),
+          category: String(log.category || ''),
+          description: String(log.description || ''),
+          timestamp: log.timestamp instanceof Date 
+            ? log.timestamp.toLocaleDateString() + ' ' + log.timestamp.toLocaleTimeString()
+            : String(log.timestamp || 'No date'),
+          rawTimestamp: log.timestamp instanceof Date ? log.timestamp : new Date(log.timestamp || 0),
+          cleared: Boolean(log.cleared),
+        }))
+        .sort((a: any, b: any) => b.rawTimestamp.getTime() - a.rawTimestamp.getTime());
         
         const discussionRaw = await getDiscussions();
         console.log('[PERF] Fetched', discussionRaw.length, 'discussions from local Realm');
-        
-        // Simplified processing for discussions - ensure all fields are strings
-      const discussionData = discussionRaw.map((discussion: any) => ({
-        ...discussion,
-        id: String(discussion.id || ''),
-        discussionId: String(discussion.discussionId || ''),
-        description: String(discussion.description || ''),
-        typeSay: String(discussion.typeSay || 'tell'),
-        timestamp: discussion.timestamp || 'No date',
-        cleared: Boolean(discussion.cleared),
-      }));
+          // Process discussions and add proper date sorting
+        const discussionData = discussionRaw
+          .map((discussion: any) => ({
+            ...discussion,
+            id: String(discussion.id || ''),
+            discussionId: String(discussion.discussionId || ''),
+            description: String(discussion.description || ''),
+            typeSay: String(discussion.typeSay || 'tell'),
+            timestamp: discussion.timestamp || 'No date',
+            rawTimestamp: discussion.timestamp instanceof Date 
+              ? discussion.timestamp 
+              : new Date(discussion.timestamp || 0),
+            cleared: Boolean(discussion.cleared),
+          }))
+          .sort((a: any, b: any) => b.rawTimestamp.getTime() - a.rawTimestamp.getTime());
       // console.log('[PERF] Data processing complete');
       
       // Skip categories for now to improve performance
@@ -348,9 +355,9 @@ const MainComponent: React.FC = () => {
       
       setTables([
         {
-          name: 'Activity Log Data',
-          columns: [
+          name: 'Activity Log Data',          columns: [
             { Header: 'ID', accessor: 'id', hidden: true },
+            { Header: 'rawTimestamp', accessor: 'rawTimestamp', hidden: true },
             { Header: 'Date', accessor: 'timestamp', flex: 1 },
             {
               Header: 'Category',
@@ -374,9 +381,9 @@ const MainComponent: React.FC = () => {
           data: activityLogData,
         },
         {
-          name: 'Discussion Data',
-          columns: [
+          name: 'Discussion Data',          columns: [
             { Header: 'ID', accessor: 'id', hidden: true },
+            { Header: 'rawTimestamp', accessor: 'rawTimestamp', hidden: true },
             { Header: 'Date', accessor: 'timestamp', flex: 1 },
             {
               Header: 'Type',
@@ -566,22 +573,20 @@ const MainComponent: React.FC = () => {
       return { column, order: newOrder };
     });
   }, []);
-
   const sortedData = useCallback(() => {
-    /*     console.log(
-      'Current table index:',
-      currentTableIndex,
-      'sortBy:',
-      sortBy,
-      'tables.length:',
-      tables.length
-    ); */    if (!sortBy || tables.length === 0)
+    if (!sortBy || tables.length === 0)
       return tables[currentTableIndex]?.data || [];
     const { column, order } = sortBy;
-    // console.log(
-    //   `Sorting by column: ${column}, order: ${order}, currentTableIndex: ${currentTableIndex}`
-    // );
+    
     return [...tables[currentTableIndex].data].sort((a, b) => {
+      // Use rawTimestamp for date sorting
+      if (column === 'timestamp' && a.rawTimestamp && b.rawTimestamp) {
+        const timeA = a.rawTimestamp.getTime();
+        const timeB = b.rawTimestamp.getTime();
+        return order === 'asc' ? timeA - timeB : timeB - timeA;
+      }
+      
+      // Default sorting for other columns
       const valueA = a[column] || '';
       const valueB = b[column] || '';
       if (typeof valueA === 'string' && typeof valueB === 'string') {
@@ -672,7 +677,7 @@ const MainComponent: React.FC = () => {
       setEditItemId(itemId);
       setEditDesc(currentDesc || '');
       setOriginalDesc(currentDesc || '');
-      setEditCleared(currentCleared === 'G£ön+Å Yes');
+      setEditCleared(currentCleared === 'Gï¿½ï¿½n+ï¿½ Yes');
       setEditTypeSay(currentTypeSay === 'ask' ? 'ask' : 'tell');
       const table = tables.find((t) => t.name === tableName);
       const item = table?.data.find((i) => i.id === itemId);
@@ -986,7 +991,7 @@ const MainComponent: React.FC = () => {
                     ? {
                         ...item,
                         description: editDesc,
-                        cleared: editCleared ? 'G£ön+Å Yes' : 'G¥î No',
+                        cleared: editCleared ? 'Gï¿½ï¿½n+ï¿½ Yes' : 'Gï¿½ï¿½ No',
                         typeSay: editTypeSay,
                         timestamp: editTimestamp
                           ? format(new Date(editTimestamp), 'M/d/yy \n h:mm a')
@@ -1221,7 +1226,7 @@ const MainComponent: React.FC = () => {
           disabled={loading}
         >
           <Text style={{ color: '#fff', fontWeight: 'bold' }}>
-            =ƒöä Refresh Tables
+            =ï¿½ï¿½ï¿½ Refresh Tables
           </Text>
         </TouchableOpacity>
         
@@ -1252,7 +1257,7 @@ const MainComponent: React.FC = () => {
           }}
         >
           <Text style={{ color: '#fff', fontWeight: 'bold' }}>
-            =ƒöì Debug: Check Data
+            =ï¿½ï¿½ï¿½ Debug: Check Data
           </Text>
         </TouchableOpacity>
         
@@ -1360,8 +1365,8 @@ const MainComponent: React.FC = () => {
                     {col.Header}{' '}
                     {sortBy?.column === col.accessor
                       ? sortBy.order === 'asc'
-                        ? 'Gåæ'
-                        : 'Gåô'
+                        ? 'Gï¿½ï¿½'
+                        : 'Gï¿½ï¿½'
                       : ''}
                   </Text>
                 </TouchableOpacity>
