@@ -490,11 +490,8 @@ const MainComponent: React.FC = () => {
                     cleared: docSnapshot.data().cleared || false,
                   };                  if (!discussionTyped.cleared) {
                     // console.log('Processing Discussion:', discussionTyped.id);
-                    const activityAnalysis = await processPhrase(
-                      {
-                        categories: distinctCategories,
-                        description: discussionTyped.description,
-                      },
+                    const activityAnalysis = await processPhrase(                      discussionTyped.description,
+                      distinctCategories,
                       discussionCounts,
                       setDiscussionCounts,
                       discussionTyped.id,
@@ -736,9 +733,9 @@ const MainComponent: React.FC = () => {
           }
         }
 
-        if (descriptionToProcess && uid) {
-          const activityAnalysis = await processPhrase(
-            { categories: allCategories, description: descriptionToProcess },
+        if (descriptionToProcess && uid) {          const activityAnalysis = await processPhrase(
+            descriptionToProcess,
+            allCategories,
             discussionCounts,
             setDiscussionCounts,
             discussionId,
