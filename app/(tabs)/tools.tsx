@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
-import { View, StyleSheet } from 'react-native';
+import { View, StyleSheet, Alert } from 'react-native';
 import ToolsButtons from '../../src/components/ui/ToolsButtons';
 import { useAuth } from '../context/AuthContext';
+import { getDiscussions, getActivityLogs } from '../../src/services/dbServices';
+import { removeDuplicateDiscussions } from '../../src/services/dbServicesLocal';
 
 export default function ToolsScreen() {
   const { isLogged, isPaid } = useAuth();
@@ -37,6 +39,47 @@ export default function ToolsScreen() {
     }
   };
 
+  const handleCheckData = async () => {
+    setDebugLoading(true);
+    try {
+      console.log('[DEBUG] Testing direct data fetch...');
+      const discussions = await getDiscussions();
+      console.log('[DEBUG] getDiscussions returned:', discussions.length, 'records');
+      console.log('[DEBUG] First 3 discussions:', discussions.slice(0, 3));
+      
+      const activityLogs = await getActivityLogs();
+      console.log('[DEBUG] getActivityLogs returned:', activityLogs.length, 'records');
+      
+      Alert.alert(
+        'Data Check', 
+        'getDiscussions(): ' + discussions.length + ' discussions\n' +
+        'Activity logs: ' + activityLogs.length
+      );
+    } catch (error: any) {
+      console.error('[DEBUG] Error fetching data:', error);
+      Alert.alert('Error', 'Failed to fetch data: ' + (error?.message || String(error)));
+    } finally {
+      setDebugLoading(false);
+    }
+  };
+
+  const handleRemoveDuplicates = async () => {
+    setDebugLoading(true);
+    try {
+      console.log('[DEBUG] Removing duplicate discussions...');
+      const result = await removeDuplicateDiscussions();
+      Alert.alert(
+        'Cleanup Complete',
+        'Total: ' + result.total + '\nDuplicates removed: ' + result.duplicates + '\nRemaining: ' + result.remaining
+      );
+    } catch (error: any) {
+      console.error('[DEBUG] Error removing duplicates:', error);
+      Alert.alert('Error', 'Failed to remove duplicates: ' + (error?.message || String(error)));
+    } finally {
+      setDebugLoading(false);
+    }
+  };
+
   if (!isLogged && isPaid) {
     // Not logged in, but paid: show login
     return null;
@@ -49,6 +92,8 @@ export default function ToolsScreen() {
         handleDebugDeleteAll={handleDebugDeleteAll}
         handleDebugSyncAndPopulate={handleDebugSyncAndPopulate}
         handleCopyRealmToDownloads={handleCopyRealmToDownloads}
+        handleCheckData={handleCheckData}
+        handleRemoveDuplicates={handleRemoveDuplicates}
       />
     </View>
   );

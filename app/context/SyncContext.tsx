@@ -23,8 +23,20 @@ export const SyncProvider: React.FC<{ children: React.ReactNode }> = ({
   const triggerSync = useCallback(async () => {
     setIsSyncing(true);
     try {
-      const { syncFromRemote } = await import('../../src/services/dbServices');
-      await syncFromRemote();
+      // Check if user is paid and has sync enabled before syncing
+      const AsyncStorage = await import('@react-native-async-storage/async-storage');
+      const paid = await AsyncStorage.default.getItem('isPaidCustomer');
+      const syncEnabled = await AsyncStorage.default.getItem('syncWithCloud');
+      
+      if (paid === 'true' && syncEnabled === 'true') {
+        console.log('[SYNC] Starting sync for paid user...');
+        const { syncFromRemote } = await import('../../src/services/dbServices');
+        await syncFromRemote();
+        console.log('[SYNC] Sync complete');
+      } else {
+        console.log('[SYNC] Sync skipped - user not paid or sync disabled');
+      }
+      
       setLastSync(Date.now());
     } catch (e) {
       console.error('Sync error:', e);

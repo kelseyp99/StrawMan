@@ -1691,9 +1691,14 @@ export async function syncRealmRowsToFirestore(
   for (const row of realmRows) {
     try {
       const docId = row.id?.toString() || new Date().getTime().toString();
+      
+      // Clean the row data to remove Realm-specific fields that Firestore can't handle
+      const cleanRow = { ...row };
+      delete cleanRow.activityLogs; // Remove Realm List object
+      
       await setDoc(
         doc(db, `Users/${uid}/${tableName}`, docId),
-        { ...row, uid, synced: true, syncTimestamp: new Date() },
+        { ...cleanRow, uid, synced: true, syncTimestamp: new Date() },
         { merge: true }
       );
       syncedIds.push(docId);
@@ -2098,14 +2103,28 @@ export async function extractAndImportLegacyFirestoreData({
   // Helper: upsert to user-level Firestore
   async function upsertToUserFirestore(tableName: string, row: any) {
     const userDocRef = doc(db, `Users/${uid}/${tableName}`, row.id);
-    await setDoc(userDocRef, { ...row, uid }, { merge: true });
+    
+    // Remove Realm-specific fields that Firestore can't handle
+    const cleanRow = { ...row };
+    delete cleanRow.activityLogs; // Remove Realm List object
+    
+    await setDoc(userDocRef, { ...cleanRow, uid }, { merge: true });
   }
 
   // Helper: upsert to Realm
   function upsertToRealm(tableName: string, row: any) {
-    realm!.write(() => {
-      realm!.create(tableName, { ...row }, Realm.UpdateMode.Modified);
-    });
+    try {
+      realm!.write(() => {
+        realm!.create(tableName, { ...row }, Realm.UpdateMode.Modified);
+      });
+    } catch (error: any) {
+      console.error(`[upsertToRealm] Error inserting ${tableName} row:`, {
+        error: error?.message || String(error),
+        rowId: row.id,
+        rowData: JSON.stringify(row, null, 2)
+      });
+      throw error;
+    }
   }
 
   // Helper: create changelog entry (local and remote)
@@ -2121,8 +2140,10 @@ export async function extractAndImportLegacyFirestoreData({
       );
       return;
     }
-    addChangeLogEntry(tableName, row.id, 'create', ts);
-    await createAndSyncChangelogEntry(tableName, row.id, 'create', ts);
+    // Ensure row.id is a string for both functions
+    const rowIdString = String(row.id);
+    addChangeLogEntry(tableName, rowIdString, 'create', ts);
+    await createAndSyncChangelogEntry(tableName, rowIdString, 'create', ts);
   }
 
   // Main extraction logic for a table
@@ -2145,16 +2166,26 @@ export async function extractAndImportLegacyFirestoreData({
     for (const row of rows) {
       // Ensure discussionId is always set for Realm schema
       if (tableName === 'Discussion') {
-        row.discussionId = row.discussionId || row.id;
+        // Ensure all required fields are strings and present
+        row.discussionId = String(row.discussionId || row.id);
         row.synced = typeof row.synced === 'boolean' ? row.synced : false;
         row.cleared = typeof row.cleared === 'boolean' ? row.cleared : false;
-        (row as any).typeSay = (row as any).typeSay || 'tell';
+        (row as any).typeSay = String((row as any).typeSay || 'tell');
+        // Ensure description is a string
+        (row as any).description = String((row as any).description || '');
       } else if (tableName === 'ActivityLog') {
-        row.discussionId = row.discussionId || row.discussionID || row.id;
+        // Ensure all required fields are strings and present
+        row.discussionId = String(row.discussionId || row.discussionID || row.id);
         row.synced = typeof row.synced === 'boolean' ? row.synced : false;
         row.cleared = typeof row.cleared === 'boolean' ? row.cleared : false;
-        (row as any).responseType = (row as any).responseType || 'tell';
+        (row as any).responseType = String((row as any).responseType || 'tell');
+        // Ensure category and description are strings
+        (row as any).category = String((row as any).category || 'general');
+        (row as any).description = String((row as any).description || '');
       }
+      
+      // Ensure id is always a string
+      row.id = String(row.id);
       // Convert Firestore Timestamp to JS Date ONLY if needed, but NEVER use current date as fallback
       if (row.timestamp && typeof row.timestamp.toDate === 'function') {
         row.timestamp = row.timestamp.toDate();
