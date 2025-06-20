@@ -38,9 +38,8 @@ async function logSyncEntry(entry: SyncEntry): Promise<void> {
 }
 
 export async function isPaidUser(): Promise<boolean> {
-  //console.log('isPaidUser called');
-  // return local.isPaidUser();
-  return true; // TODO: Implement or update as needed
+  // For now, return true - implement based on your user subscription logic
+  return true;
 }
 
 export const findDuplicateActivityLog = async (
@@ -130,17 +129,10 @@ export async function getDiscussions(
   lastX?: number,
   discussionId?: string
 ): Promise<any[]> {
-  // console.log(
-  //   'getDiscussions called with lastX:',
-  //   lastX,
-  //   'discussionId:',
-  //   discussionId
-  // );
   try {
     const result = USE_REMOTE
       ? await remote.getDiscussions(lastX, discussionId)
       : await local.getDiscussions(lastX, discussionId);
-    //console.log('getDiscussions result:', result);
     return result;
   } catch (error) {
     console.error('getDiscussions error:', error);
@@ -918,9 +910,21 @@ export async function createRuleCandidate(data: {
 /**
  * Syncs all remote ActivityLog and Discussion rows (including legacy/unsynced) into local Realm.
  * This will populate Realm with any remote rows created by legacy apps or other clients.
+ * Updated to handle root-level Firebase collections.
  */
 export async function syncFromRemote() {
-  // Tables to sync
+  console.log('[SYNC] Starting syncFromRemote - importing legacy data from root collections');
+  
+  try {
+    // Import legacy data from root-level Firebase collections (Discussion, ActivityLog)
+    // This handles data stored at /Discussion and /ActivityLog (not under Users/{uid}/)
+    const result = await remote.extractAndImportLegacyFirestoreData({ continuous: true });
+    console.log(`[SYNC] Legacy import complete: ${result.discussionCount} discussions, ${result.activityLogCount} activity logs`);
+  } catch (e) {
+    console.warn('[SYNC] Legacy root-level import failed:', e);
+  }
+
+  // Also sync from user-specific collections if they exist
   const tables = ['ActivityLog', 'Discussion'];
   for (const tableName of tables) {
     // 1. Get all local changelog rowIds for this table
@@ -937,7 +941,7 @@ export async function syncFromRemote() {
       (localChangeLog || []).map((cl: any) => cl.rowId?.toString())
     );
 
-    // 2. Download legacy/unsynced remote rows and create remote changelog entries
+    // 2. Download from user-specific collections (Users/{uid}/{tableName})
     let newRows: any[] = [];
     let changelogEntries: any[] = [];
     try {
@@ -949,13 +953,13 @@ export async function syncFromRemote() {
       changelogEntries = result.changelogEntries;
     } catch (e) {
       console.warn(
-        `[SYNC] Could not download legacy rows for ${tableName}:`,
+        `[SYNC] Could not download user-specific rows for ${tableName}:`,
         e
       );
     }
 
     // 3. Insert newRows into Realm
-    console.log(`[SYNC] Inserting ${newRows.length} new rows for ${tableName}`);
+    console.log(`[SYNC] Inserting ${newRows.length} new user-specific rows for ${tableName}`);
     if (newRows && newRows.length > 0) {
       try {
         await local.syncTableFromRemote(tableName, newRows);

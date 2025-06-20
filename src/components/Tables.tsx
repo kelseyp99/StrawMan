@@ -35,24 +35,26 @@ import {
 } from '../services/dbServices';
 import { extractAndImportLegacyFirestoreData } from '../services/dbServicesRemote';
 import { findDuplicateActivityLog } from '../services/phraseProcessor';
+import { useSync } from '../../app/context/SyncContext';
 import RNFS from 'react-native-fs';
-import { db } from '../firebaseConfig';
-import {
-  collection,
-  doc,
-  getDocs,
-  deleteDoc,
-  updateDoc,
-  addDoc,
-  DocumentData,
-  QuerySnapshot,
-  query,
-  getDoc,
-  writeBatch,
-  where,
-  Timestamp,
-  onSnapshot,
-} from 'firebase/firestore';
+// Temporarily commented out Firebase imports to prevent lockup
+// import { db } from '../firebaseConfig';
+// import {
+//   collection,
+//   doc,
+//   getDocs,
+//   deleteDoc,
+//   updateDoc,
+//   addDoc,
+//   DocumentData,
+//   QuerySnapshot,
+//   query,
+//   getDoc,
+//   writeBatch,
+//   where,
+//   Timestamp,
+//   onSnapshot,
+// } from 'firebase/firestore';
 import { getUID } from '../utils/uidManager';
 import Swipeable from 'react-native-gesture-handler/Swipeable';
 import { processPhrase } from '../services/phraseProcessor';
@@ -225,7 +227,7 @@ const RowItem = memo(
                 key={`${item.id}-${col.accessor}`}
                 style={[styles.cell, col.style, { flex: col.flex }]}
               >
-                {item[col.accessor] ?? 'N/A'}
+                {String(item[col.accessor] ?? 'N/A')}
               </Text>
             ) : null
           )}
@@ -244,6 +246,9 @@ const RowItem = memo(
 );
 
 const MainComponent: React.FC = () => {
+  // Add sync context to detect when sync completes
+  const { lastSync } = useSync();
+  
   const [tables, setTables] = useState<SwipeableTablePropsType[]>([]);
   const [sortBy, setSortBy] = useState<{
     column: string;
@@ -285,8 +290,7 @@ const MainComponent: React.FC = () => {
   const [discussionCounts, setDiscussionCounts] = useState<
     (DiscussionCount & { description: string })[]
   >([]);
-  const [uid, setUid] = useState<string | null>(null);
-  // Add state for legacy import loading
+  const [uid, setUid] = useState<string | null>(null);  // Add state for legacy import loading
   const [importingLegacy, setImportingLegacy] = useState(false);
   // Debug: state for debug button loading
   const [debugLoading, setDebugLoading] = useState(false);
@@ -303,38 +307,45 @@ const MainComponent: React.FC = () => {
     };
     fetchUid();
   }, []);
-
   // Fetch data using dbServices router
   const fetchData = useCallback(async () => {
     if (!uid) return;
-    try {
-      setLoading(true);
-      // console.log('Fetching data...'); // Removed to prevent printing tables
+    try {      setLoading(true);
+      // console.log('[PERF] Starting data fetch...');
+      
+      // Fetch data with minimal processing
       const activityLogRaw = await getActivityLogs();
-      //    console.log('[DEBUG] All ActivityLog from Realm:', activityLogRaw); // Removed
-      // TEMP: Remove uid filter for debug
-      // const activityLogData = activityLogRaw.filter((doc: any) => doc.uid === uid)
-      // Convert Date objects to string for rendering
-      const activityLogData = activityLogRaw
-        .map((log: any) => ({
-          ...log,
-          timestamp:
-            log.timestamp instanceof Date
-              ? format(log.timestamp, 'M/d/yy \n h:mm a')
-              : typeof log.timestamp === 'string'
-              ? log.timestamp
-              : String(log.timestamp),
-        }))
-        .sort(
-          (a: any, b: any) =>
-            new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
-        );
-      //     console.log('[DEBUG] Filtered ActivityLog for uid', uid, activityLogData); // Removed
-      const discussionData = (await getDiscussions())
-        .map(mapDiscussionRow)
-        .sort((a: any, b: any) => b.rawTimestamp - a.rawTimestamp);
-      const categories = await getDistinctCategories();
-      setAllCategories((prev) => [...new Set([...prev, ...categories])]);
+      // console.log('[PERF] Fetched', activityLogRaw.length, 'activity logs');      // Process all activity logs (already sorted by date descending in dbServicesLocal)
+      const activityLogData = activityLogRaw.map((log: any) => ({
+        ...log,
+        id: String(log.id || ''),
+        category: String(log.category || ''),
+        description: String(log.description || ''),
+        timestamp: log.timestamp instanceof Date 
+          ? log.timestamp.toLocaleDateString() + ' ' + log.timestamp.toLocaleTimeString()
+          : String(log.timestamp || 'No date'),
+        cleared: Boolean(log.cleared),
+      }));
+        
+        const discussionRaw = await getDiscussions();
+        console.log('[PERF] Fetched', discussionRaw.length, 'discussions from local Realm');
+        
+        // Simplified processing for discussions - ensure all fields are strings
+      const discussionData = discussionRaw.map((discussion: any) => ({
+        ...discussion,
+        id: String(discussion.id || ''),
+        discussionId: String(discussion.discussionId || ''),
+        description: String(discussion.description || ''),
+        typeSay: String(discussion.typeSay || 'tell'),
+        timestamp: discussion.timestamp || 'No date',
+        cleared: Boolean(discussion.cleared),
+      }));
+      // console.log('[PERF] Data processing complete');
+      
+      // Skip categories for now to improve performance
+      // const categories = await getDistinctCategories();
+      // setAllCategories((prev) => [...new Set([...prev, ...categories])]);
+      
       setTables([
         {
           name: 'Activity Log Data',
@@ -388,8 +399,8 @@ const MainComponent: React.FC = () => {
           ],
           data: discussionData,
         },
-      ]);
-      setInitialized(true);
+      ]);      setInitialized(true);
+      // console.log('[PERF] Tables initialized successfully');
     } catch (error) {
       console.error('Error fetching data:', error);
       setError('Failed to fetch data. Please try again.');
@@ -397,22 +408,22 @@ const MainComponent: React.FC = () => {
       setLoading(false);
     }
   }, [uid]);
-
   useEffect(() => {
     if (uid) {
       // console.log('Mounting MainComponent, fetching data...');
       fetchData();
     }
   }, [uid, fetchData]);
-
+  
+  // Refresh data when sync completes
   useEffect(() => {
-    if (initialized && currentTableIndex === 0 && discussionSnapshot) {
-      // console.log(
-      //   'Triggering prompt2UpdateActivityLog with snapshot size:',
-      //   discussionSnapshot?.size
-      // );
-      prompt2UpdateActivityLog(discussionSnapshot);
+    if (uid && lastSync > 0) {
+      console.log('[TABLES] Sync completed, refreshing data...');
+      fetchData();
     }
+  }, [lastSync, uid, fetchData]);
+  useEffect(() => {    // Temporarily disabled to prevent lockup
+    // console.log('[DEBUG] discussionSnapshot useEffect disabled to prevent lockup');
   }, [currentTableIndex, initialized, discussionSnapshot]);
 
   const prompt2UpdateActivityLog = useCallback(
@@ -587,30 +598,25 @@ const MainComponent: React.FC = () => {
         : -1;
     });
   }, [sortBy, tables, currentTableIndex]);
-
   const filteredData = useCallback(() => {
-    /*  console.log(
-      'Current table index:',
-      currentTableIndex,
-      'tables.length:',
-      tables.length
-    ); */
-    if (tables.length === 0) return sortedData();
-    //console.log('Filtered data before applying filters:', sortedData());
-    const data = sortedData().filter((row) =>
-      Object.entries(filters).every(([column, value]) =>
-        row[column]
-          ?.toString()
-          .toLowerCase()
-          .includes((value || '').toString().toLowerCase())
-      )
+    // Simplified filtering for performance
+    if (tables.length === 0) return [];
+    
+    const sorted = sortedData();
+    
+    // Skip filtering if no filters are set
+    const hasFilters = Object.values(filters).some(value => value && value.trim());
+    if (!hasFilters) return sorted;
+    
+    // Simple filtering
+    return sorted.filter((row) =>
+      Object.entries(filters).every(([column, value]) => {
+        if (!value || !value.trim()) return true;
+        const cellValue = String(row[column] || '').toLowerCase();
+        return cellValue.includes(value.toLowerCase());
+      })
     );
-    /*  console.log(
-      'Filtered data:',
-      data.map((item) => item.id)
-    ); */
-    return data;
-  }, [tables, filters, sortBy, currentTableIndex, sortedData]);
+  }, [tables, filters, sortedData]);
 
   const handleDelete = useCallback(
     async (tableName: string, itemId: string) => {
@@ -751,13 +757,12 @@ const MainComponent: React.FC = () => {
               );
 
               let newActivityLogId: string;
-              if (existingLog) {
-                // Use router to update existing ActivityLog entry (calls all pending updates)
+              if (existingLog) {                // Use router to update existing ActivityLog entry (calls all pending updates)
                 await addOrUpdateActivityLog(); // No parameters allowed
                 newActivityLogId = String(existingLog.id);
-                console.log(
-                  `Updated existing ActivityLog entry ${existingLog.id} for discussionId ${discussionId}`
-                );
+                // console.log(
+                //   `Updated existing ActivityLog entry ${existingLog.id} for discussionId ${discussionId}`
+                // );
               } else {
                 // Use router to create new ActivityLog entry
                 const newLog = {
@@ -1160,18 +1165,10 @@ const MainComponent: React.FC = () => {
     }),
     []
   );
-
   // Extra debug: log getDiscussions() output on mount
   useEffect(() => {
-    async function debugFetchDiscussions() {
-      try {
-        const discussions = await getDiscussions();
-        //console.log('[EXTRA DEBUG] getDiscussions() raw output:', discussions); // Removed
-      } catch (e) {
-        console.error('[EXTRA DEBUG] Error calling getDiscussions:', e);
-      }
-    }
-    debugFetchDiscussions();
+    // Temporarily disabled to prevent lockup
+    console.log('[DEBUG] Extra debug useEffect disabled to prevent lockup');
   }, []);
 
   if (loading) {
@@ -1202,13 +1199,63 @@ const MainComponent: React.FC = () => {
       {/* TEMP DEBUG BUTTONS - REMOVE IN PRODUCTION */}
       <ScrollView
         horizontal={false}
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={{
+        showsVerticalScrollIndicator={false}        contentContainerStyle={{
           flexDirection: 'column',
           alignItems: 'center',
           marginVertical: 8,
         }}
       >
+        {/* Refresh Button */}
+        <TouchableOpacity
+          style={{
+            backgroundColor: '#28a745',
+            padding: 10,
+            borderRadius: 5,
+            marginBottom: 10,
+            opacity: loading ? 0.5 : 1,
+          }}
+          onPress={() => {
+            console.log('[TABLES] Manual refresh triggered');
+            fetchData();
+          }}
+          disabled={loading}
+        >
+          <Text style={{ color: '#fff', fontWeight: 'bold' }}>
+            🔄 Refresh Tables
+          </Text>
+        </TouchableOpacity>
+        
+        {/* Debug: Test Data Fetch */}
+        <TouchableOpacity
+          style={{
+            backgroundColor: '#17a2b8',
+            padding: 10,
+            borderRadius: 5,
+            marginBottom: 10,
+          }}
+          onPress={async () => {
+            console.log('[DEBUG] Testing direct data fetch...');
+            try {
+              const discussions = await getDiscussions();
+              console.log('[DEBUG] getDiscussions returned:', discussions.length, 'records');
+              console.log('[DEBUG] First 3 discussions:', discussions.slice(0, 3));
+              
+              const activityLogs = await getActivityLogs();
+              console.log('[DEBUG] getActivityLogs returned:', activityLogs.length, 'records');
+                Alert.alert(
+                'Data Check', 
+                'Found:\n' + discussions.length + ' discussions\n' + activityLogs.length + ' activity logs'
+              );} catch (error: any) {
+              console.error('[DEBUG] Error fetching data:', error);
+              Alert.alert('Error', 'Failed to fetch data: ' + (error?.message || String(error)));
+            }
+          }}
+        >
+          <Text style={{ color: '#fff', fontWeight: 'bold' }}>
+            🔍 Debug: Check Data
+          </Text>
+        </TouchableOpacity>
+        
         <TouchableOpacity
           style={{
             backgroundColor: '#ff4444',

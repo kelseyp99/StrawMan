@@ -23,6 +23,19 @@ import { addOrUpdateDiscussion as addOrUpdateDiscussionRouter } from './dbServic
 const APP_VERSION = '1.1.0';
 const APP_ID = 'com.anonymous.lifelog';
 
+// Helper function to convert various timestamp formats to milliseconds for proper sorting
+function getTimestampMs(timestamp: any): number {
+  if (timestamp instanceof Date) {
+    return timestamp.getTime();
+  } else if (typeof timestamp === 'number') {
+    return timestamp;
+  } else if (typeof timestamp === 'string') {
+    const dateMs = new Date(timestamp).getTime();
+    return isNaN(dateMs) ? 0 : dateMs;
+  }
+  return 0;
+}
+
 // Interfaces matching realmConfig.ts schemas
 interface User {
   id: string;
@@ -535,8 +548,8 @@ export async function addOrUpdateDiscussionRemote(
   typeSay: string = 'tell',
   id?: string
 ): Promise<string> {
-  // This will call the router and force remote/cloud logic
-  return await addOrUpdateDiscussionRouter(description, typeSay, id, true);
+  // This will call the router function
+  return await addOrUpdateDiscussionRouter(description, typeSay, id);
 }
 
 async function addDiscussion(
@@ -580,55 +593,38 @@ export async function getDiscussions(
   lastX?: number,
   discussionId?: string
 ): Promise<any[]> {
-  // console.log(
-  //   'getDiscussions called with lastX:',
-  //   lastX,
-  //   'and discussionId:',
-  //   discussionId
-  // );
   if (!realm) {
     console.error('Failed to open Realm instance');
     throw new Error('Failed to open Realm instance');
   }
-  const realmInstance = realm;
   try {
-    // console.log('Fetching discussions from Realm...');
-    let discussions = realmInstance
-      .objects<Discussion>('Discussion')
-      .sorted('timestamp', true);
-    // Extra debug: log all raw discussions
-    // console.log(
-    //   '[getDiscussions] Raw Realm objects:',
-    //   discussions.map((d) => ({
-    //     id: d.id,
-    //     description: d.description,
-    //     timestamp: d.timestamp,
-    //   }))
-    // );
-    if (discussionId) {
-      const discussion = realmInstance.objectForPrimaryKey<Discussion>(
-        'Discussion',
-        discussionId
-      );
-      if (discussion) {
-        discussions = discussions.filtered(
-          'timestamp < $0',
-          discussion.timestamp
-        );
+    // Get all discussions from local Realm database
+    const discussions = realm.objects<Discussion>('Discussion');
+    
+    // Convert to array and deduplicate by timestamp (no two records should have same timestamp)
+    const allDiscussions = Array.from(discussions);
+    const seen = new Set<number>();
+    const uniqueDiscussions = allDiscussions.filter((doc) => {
+      const ts = getTimestampMs(doc.timestamp);
+      
+      if (seen.has(ts)) {
+        return false; // Skip duplicate timestamp
       }
-    }
-    if (lastX !== undefined) {
-      discussions = realm
-        .objects<Discussion>('Discussion')
-        .filtered(
-          `id IN {${discussions
-            .slice(0, lastX)
-            .map((d) => d.id)
-            .join(',')}}`
-        )
-        .sorted('timestamp', true);
-    }
-    const result = discussions.map((doc) => ({
+      seen.add(ts);
+      return true;
+    });
+    
+    console.log(`[DEBUG] Total discussions: ${allDiscussions.length}, Unique by timestamp: ${uniqueDiscussions.length}`);
+    
+    // Sort by timestamp in descending order (newest first)
+    uniqueDiscussions.sort((a, b) => {
+      const aTime = getTimestampMs(a.timestamp);
+      const bTime = getTimestampMs(b.timestamp);
+      return bTime - aTime; // Descending order (newest first)
+    });
+    
+    // Convert to simple array - return all unique discussions since data is local
+    const result = uniqueDiscussions.map((doc) => ({
       id: doc.id.toString(),
       discussionId: doc.discussionId.toString(),
       description: doc.description,
@@ -636,11 +632,7 @@ export async function getDiscussions(
       cleared: doc.cleared,
       timestamp: format(new Date(doc.timestamp), 'M/d/yy \n h:mm a'),
     }));
-    // console.log(
-    //   '[DEBUG] getDiscussions returning:',
-    //   result.length,
-    //   result.slice(0, 3)
-    // ); // Show first 3
+    
     return result;
   } catch (error) {
     console.error('Error getting Discussions:', error);
@@ -1623,11 +1615,9 @@ export async function getActivityLogs() {
   }
   try {
     const logs = realm.objects('ActivityLog');
-    // console.log(
-    //   `[getActivityLogs] Found ${logs.length} ActivityLog records in Realm.`
-    // );
-    // Convert Realm Results to plain JS objects
-    return Array.from(logs).map((log: any) => ({
+    
+    // Convert Realm Results to plain JS objects and sort by timestamp descending (newest first)
+    const allLogs = Array.from(logs).map((log: any) => ({
       id: log.id,
       discussionId: log.discussionId,
       category: log.category,
@@ -1642,6 +1632,16 @@ export async function getActivityLogs() {
       lockedDescription: log.lockedDescription,
       attachedFile: log.attachedFile,
     }));
+    
+    // Sort by timestamp in descending order (newest first) - convert to Date for proper sorting
+    allLogs.sort((a, b) => {
+      const aTime = getTimestampMs(a.timestamp);
+      const bTime = getTimestampMs(b.timestamp);
+      return bTime - aTime; // Descending order (newest first)
+    });
+    
+    console.log(`[DEBUG] Fetched ${allLogs.length} ActivityLog records, sorted by date descending`);
+    return allLogs;
   } catch (error) {
     console.error('Error getting ActivityLogs:', error);
     return [];
@@ -1946,7 +1946,7 @@ function addChangeLogEntry(
       operation,
       timestamp: timestamp || new Date(),
       synced: false,
-    });
+    }, Realm.UpdateMode.Modified); // Use UpdateMode to handle duplicates
   });
 }
 
@@ -2240,6 +2240,62 @@ export function ensureStringIds(row: any): any {
 
 // Export addChangeLogEntry for use in scripts
 export { addChangeLogEntry };
+
+/**
+ * Remove duplicate Discussion records based on timestamp
+ * Keep only the first occurrence of each unique timestamp
+ */
+export async function removeDuplicateDiscussions(): Promise<{ total: number; duplicates: number; remaining: number }> {
+  if (!realm) throw new Error('Realm not initialized');
+  
+  const discussions = realm.objects<Discussion>('Discussion');
+  const allDiscussions = Array.from(discussions);
+  console.log(`[CLEANUP] Found ${allDiscussions.length} total Discussion records`);
+  
+  // Group by timestamp
+  const timestampMap = new Map<number, Discussion[]>();
+  
+  for (const discussion of allDiscussions) {
+    let ts: number = 0;
+    if (discussion.timestamp instanceof Date) {
+      ts = discussion.timestamp.getTime();
+    } else if (typeof discussion.timestamp === 'number') {
+      ts = discussion.timestamp;
+    } else if (typeof discussion.timestamp === 'string') {
+      ts = new Date(discussion.timestamp).getTime();
+    }
+    
+    if (!timestampMap.has(ts)) {
+      timestampMap.set(ts, []);
+    }
+    timestampMap.get(ts)!.push(discussion);
+  }
+  
+  // Find duplicates and remove them
+  let duplicatesRemoved = 0;
+  
+  realm.write(() => {
+    for (const [timestamp, duplicateGroup] of timestampMap.entries()) {
+      if (duplicateGroup.length > 1) {
+        // Keep the first one, delete the rest
+        for (let i = 1; i < duplicateGroup.length; i++) {
+          realm!.delete(duplicateGroup[i]);
+          duplicatesRemoved++;
+        }
+        console.log(`[CLEANUP] Removed ${duplicateGroup.length - 1} duplicates for timestamp ${timestamp}`);
+      }
+    }
+  });
+  
+  const remaining = realm.objects<Discussion>('Discussion').length;
+  console.log(`[CLEANUP] Removed ${duplicatesRemoved} duplicate discussions, ${remaining} remaining`);
+  
+  return {
+    total: allDiscussions.length,
+    duplicates: duplicatesRemoved,
+    remaining: remaining
+  };
+}
 
 /**
  * Delete all rows in the specified Realm tables: Discussion, ActivityLog, ChangeLog

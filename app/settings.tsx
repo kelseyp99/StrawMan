@@ -35,23 +35,41 @@ export default function SettingsScreen() {
 
   useEffect(() => {
     let syncInterval: NodeJS.Timeout | null = null;
+    
     const startSyncTimer = async () => {
-      const syncWithCloud =
-        (await AsyncStorage.getItem('syncWithCloud')) === 'true';
-      if (syncWithCloud) {
-        // Run immediately
-        dbServices.syncToCloud('Discussion').catch(() => {});
-        dbServices.syncToCloud('ActivityLog').catch(() => {});
-        // Then every 30 minutes
+      const syncWithCloudEnabled = await AsyncStorage.getItem('syncWithCloud');
+      const isPaid = await AsyncStorage.getItem('isPaidCustomer');
+      
+      if (syncWithCloudEnabled === 'true' && isPaid === 'true') {
+        console.log('[SETTINGS] Starting background sync timer for paid user');
+        
+        // Run legacy sync immediately (but don't block UI)
+        setTimeout(() => {
+          dbServices.syncFromRemote().catch((e) => 
+            console.warn('[SETTINGS] Background legacy sync failed:', e)
+          );
+        }, 5000);
+        
+        // Then every 30 minutes for ongoing sync
         syncInterval = setInterval(() => {
-          dbServices.syncToCloud('Discussion').catch(() => {});
-          dbServices.syncToCloud('ActivityLog').catch(() => {});
+          if (navigator.onLine !== false) { // Check if online
+            dbServices.syncFromRemote().catch(() => {});
+            dbServices.syncToCloud('Discussion').catch(() => {});
+            dbServices.syncToCloud('ActivityLog').catch(() => {});
+          }
         }, 30 * 60 * 1000);
+      } else {
+        console.log('[SETTINGS] Sync timer not started - user not paid or sync disabled');
       }
     };
+    
     startSyncTimer();
+    
     return () => {
-      if (syncInterval) clearInterval(syncInterval);
+      if (syncInterval) {
+        clearInterval(syncInterval);
+        console.log('[SETTINGS] Sync timer cleared');
+      }
     };
   }, [syncWithCloud]);
 
@@ -65,12 +83,25 @@ export default function SettingsScreen() {
   };
 
   const handleManualSync = async () => {
+    if (!isPaidCustomer) {
+      Alert.alert('Upgrade Required', 'Cloud sync is only available for paid users.');
+      return;
+    }
+    
+    if (!syncWithCloud) {
+      Alert.alert('Sync Disabled', 'Please enable cloud sync first.');
+      return;
+    }
+    
     try {
+      Alert.alert('Syncing...', 'Starting manual sync...');
+      await dbServices.syncFromRemote(); // This handles the legacy data properly
       await dbServices.syncToCloud('Discussion');
       await dbServices.syncToCloud('ActivityLog');
-      Alert.alert('Sync Complete', 'Data synced with cloud.');
+      Alert.alert('Sync Complete', 'Data synced with cloud successfully.');
     } catch (e) {
-      Alert.alert('Sync Failed', 'Could not sync data.');
+      console.error('Manual sync error:', e);
+      Alert.alert('Sync Failed', 'Could not sync data. Please try again.');
     }
   };
 
@@ -142,6 +173,36 @@ export default function SettingsScreen() {
         >
           <Text style={{ color: '#fff', fontWeight: 'bold' }}>Sync Now</Text>
         </TouchableOpacity>
+        
+        {/* Debug/Testing Section */}
+        <View style={{ marginBottom: 20, padding: 10, backgroundColor: '#f0f0f0', borderRadius: 6 }}>
+          <Text style={{ fontSize: 16, fontWeight: 'bold', marginBottom: 10 }}>Debug/Testing</Text>
+          <Text style={{ marginBottom: 10 }}>
+            Paid Customer: {isPaidCustomer ? 'Yes' : 'No'}
+          </Text>
+          <TouchableOpacity
+            style={{
+              backgroundColor: isPaidCustomer ? '#28a745' : '#ffc107',
+              padding: 10,
+              borderRadius: 6,
+              alignItems: 'center',
+              marginBottom: 10,
+            }}
+            onPress={async () => {
+              const newStatus = !isPaidCustomer;
+              await AsyncStorage.setItem('isPaidCustomer', newStatus ? 'true' : 'false');
+              setIsPaidCustomer(newStatus);
+              Alert.alert(
+                'Status Updated', 
+                `Paid customer status set to: ${newStatus ? 'True' : 'False'}`
+              );
+            }}
+          >
+            <Text style={{ color: '#fff', fontWeight: 'bold' }}>
+              {isPaidCustomer ? 'Set as Free User' : 'Set as Paid Customer'}
+            </Text>
+          </TouchableOpacity>
+        </View>
         <Modal
           visible={showUpgradeModal}
           transparent
