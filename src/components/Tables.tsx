@@ -35,7 +35,26 @@ import {
 } from '../services/dbServices';
 import { extractAndImportLegacyFirestoreData } from '../services/dbServicesRemote';
 import { findDuplicateActivityLog } from '../services/phraseProcessor';
+import { useSync } from '../../app/context/SyncContext';
 import RNFS from 'react-native-fs';
+// Temporarily commented out Firebase imports to prevent lockup
+// import { db } from '../firebaseConfig';
+// import {
+//   collection,
+//   doc,
+//   getDocs,
+//   deleteDoc,
+//   updateDoc,
+//   addDoc,
+//   DocumentData,
+//   QuerySnapshot,
+//   query,
+//   getDoc,
+//   writeBatch,
+//   where,
+//   Timestamp,
+//   onSnapshot,
+// } from 'firebase/firestore';
 import { getUID } from '../utils/uidManager';
 import Swipeable from 'react-native-gesture-handler/Swipeable';
 import { processPhrase } from '../services/phraseProcessor';
@@ -111,7 +130,7 @@ function mapDiscussionRow(row: any) {
     ...row,
     timestamp: isToday(dateObj) ? 'Today' : format(dateObj, 'M/d/yy \n h:mm a'),
     rawTimestamp: dateObj,
-    cleared: row.cleared ? 'âœ”ï¸ Yes' : 'âŒ No', // Ensure cleared is formatted for display
+    cleared: row.cleared ? 'G£ön+Å Yes' : 'G¥î No', // Ensure cleared is formatted for display
   };
 }
 
@@ -208,7 +227,7 @@ const RowItem = memo(
                 key={`${item.id}-${col.accessor}`}
                 style={[styles.cell, col.style, { flex: col.flex }]}
               >
-                {item[col.accessor] ?? 'N/A'}
+                {String(item[col.accessor] ?? 'N/A')}
               </Text>
             ) : null
           )}
@@ -227,6 +246,9 @@ const RowItem = memo(
 );
 
 const MainComponent: React.FC = () => {
+  // Add sync context to detect when sync completes
+  const { lastSync } = useSync();
+  
   const [tables, setTables] = useState<SwipeableTablePropsType[]>([]);
   const [sortBy, setSortBy] = useState<{
     column: string;
@@ -268,8 +290,7 @@ const MainComponent: React.FC = () => {
   const [discussionCounts, setDiscussionCounts] = useState<
     (DiscussionCount & { description: string })[]
   >([]);
-  const [uid, setUid] = useState<string | null>(null);
-  // Add state for legacy import loading
+  const [uid, setUid] = useState<string | null>(null);  // Add state for legacy import loading
   const [importingLegacy, setImportingLegacy] = useState(false);
   // Debug: state for debug button loading
   const [debugLoading, setDebugLoading] = useState(false);
@@ -285,58 +306,46 @@ const MainComponent: React.FC = () => {
       }
     };
     fetchUid();
-  }, []);  // Fetch data using dbServices router
+  }, []);
+  // Fetch data using dbServices router
   const fetchData = useCallback(async () => {
-    if (!uid) {
-      console.log('[TABLES] No UID available, skipping fetch');
-      return;
-    }
-    try {
-      setLoading(true);
-      console.log('[TABLES] Fetching data for uid:', uid);
+    if (!uid) return;
+    try {      setLoading(true);
+      // console.log('[PERF] Starting data fetch...');
       
+      // Fetch data with minimal processing
       const activityLogRaw = await getActivityLogs();
-      console.log('[TABLES] Raw activity logs count:', activityLogRaw.length);
-      console.log('[TABLES] First few activity logs:', activityLogRaw.slice(0, 3));
-      
-      // Check UIDs in the data
-      if (activityLogRaw.length > 0) {
-        const uids = [...new Set(activityLogRaw.map((log: any) => log.uid))];
-        console.log('[TABLES] Unique UIDs in activity logs:', uids);
-        console.log('[TABLES] Current user UID:', uid);
-      }
-      
-      //    console.log('[DEBUG] All ActivityLog from Realm:', activityLogRaw); // Removed
-      // TEMP: Remove uid filter for debug
-      // const activityLogData = activityLogRaw.filter((doc: any) => doc.uid === uid)
-      // Convert Date objects to string for rendering
-      const activityLogData = activityLogRaw
-        .map((log: any) => ({
-          ...log,
-          timestamp:
-            log.timestamp instanceof Date
-              ? format(log.timestamp, 'M/d/yy \n h:mm a')
-              : typeof log.timestamp === 'string'
-              ? log.timestamp
-              : String(log.timestamp),
-        }))
-        .sort(
-          (a: any, b: any) =>
-            new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
-        );
+      // console.log('[PERF] Fetched', activityLogRaw.length, 'activity logs');      // Process all activity logs (already sorted by date descending in dbServicesLocal)
+      const activityLogData = activityLogRaw.map((log: any) => ({
+        ...log,
+        id: String(log.id || ''),
+        category: String(log.category || ''),
+        description: String(log.description || ''),
+        timestamp: log.timestamp instanceof Date 
+          ? log.timestamp.toLocaleDateString() + ' ' + log.timestamp.toLocaleTimeString()
+          : String(log.timestamp || 'No date'),
+        cleared: Boolean(log.cleared),
+      }));
         
-      const discussionRaw = await getDiscussions();
-      console.log('[TABLES] Raw discussions count:', discussionRaw.length);
-      console.log('[TABLES] First few discussions:', discussionRaw.slice(0, 3));
-      
-      const discussionData = discussionRaw
-        .map(mapDiscussionRow)
-        .sort((a: any, b: any) => b.rawTimestamp - a.rawTimestamp);
+        const discussionRaw = await getDiscussions();
+        console.log('[PERF] Fetched', discussionRaw.length, 'discussions from local Realm');
         
-      console.log('[TABLES] Processed activity logs count:', activityLogData.length);
-      console.log('[TABLES] Processed discussions count:', discussionData.length);
-      const categories = await getDistinctCategories();
-      setAllCategories((prev) => [...new Set([...prev, ...categories])]);
+        // Simplified processing for discussions - ensure all fields are strings
+      const discussionData = discussionRaw.map((discussion: any) => ({
+        ...discussion,
+        id: String(discussion.id || ''),
+        discussionId: String(discussion.discussionId || ''),
+        description: String(discussion.description || ''),
+        typeSay: String(discussion.typeSay || 'tell'),
+        timestamp: discussion.timestamp || 'No date',
+        cleared: Boolean(discussion.cleared),
+      }));
+      // console.log('[PERF] Data processing complete');
+      
+      // Skip categories for now to improve performance
+      // const categories = await getDistinctCategories();
+      // setAllCategories((prev) => [...new Set([...prev, ...categories])]);
+      
       setTables([
         {
           name: 'Activity Log Data',
@@ -387,15 +396,11 @@ const MainComponent: React.FC = () => {
               style: styles.leftAlignCell,
               flex: 1,
             },
-          ],          data: discussionData,
+          ],
+          data: discussionData,
         },
-      ]);
-      
-      console.log('[TABLES] Setting tables with data:');
-      console.log('[TABLES] Activity Log table will have', activityLogData.length, 'rows');
-      console.log('[TABLES] Discussion table will have', discussionData.length, 'rows');
-      
-      setInitialized(true);
+      ]);      setInitialized(true);
+      // console.log('[PERF] Tables initialized successfully');
     } catch (error) {
       console.error('Error fetching data:', error);
       setError('Failed to fetch data. Please try again.');
@@ -403,22 +408,22 @@ const MainComponent: React.FC = () => {
       setLoading(false);
     }
   }, [uid]);
-
   useEffect(() => {
     if (uid) {
       // console.log('Mounting MainComponent, fetching data...');
       fetchData();
     }
   }, [uid, fetchData]);
-
+  
+  // Refresh data when sync completes
   useEffect(() => {
-    if (initialized && currentTableIndex === 0 && discussionSnapshot) {
-      // console.log(
-      //   'Triggering prompt2UpdateActivityLog with snapshot size:',
-      //   discussionSnapshot?.size
-      // );
-      prompt2UpdateActivityLog(discussionSnapshot);
+    if (uid && lastSync > 0) {
+      console.log('[TABLES] Sync completed, refreshing data...');
+      fetchData();
     }
+  }, [lastSync, uid, fetchData]);
+  useEffect(() => {    // Temporarily disabled to prevent lockup
+    // console.log('[DEBUG] discussionSnapshot useEffect disabled to prevent lockup');
   }, [currentTableIndex, initialized, discussionSnapshot]);
 
   const prompt2UpdateActivityLog = useCallback(
@@ -473,19 +478,20 @@ const MainComponent: React.FC = () => {
                     discussionId: docSnapshot.data().id || docSnapshot.id,
                     description: docSnapshot.data().description || '',
                     timestamp:
-                      docSnapshot.data().timestamp?.toDate() || new Date(),                    typeSay: docSnapshot.data().typeSay || 'tell',
+                      docSnapshot.data().timestamp?.toDate() || new Date(),
+                    typeSay: docSnapshot.data().typeSay || 'tell',
                     cleared: docSnapshot.data().cleared || false,
-                  };
-                  
-                  if (!discussionTyped.cleared) {
+                  };                  if (!discussionTyped.cleared) {
                     // console.log('Processing Discussion:', discussionTyped.id);
                     const activityAnalysis = await processPhrase(
-                      discussionTyped.description,
-                      distinctCategories,
+                      {
+                        categories: distinctCategories,
+                        description: discussionTyped.description,
+                      },
                       discussionCounts,
                       setDiscussionCounts,
                       discussionTyped.id,
-                      'local-user'
+                      uid
                     );
                     await addOrUpdateGPTResponse(
                       discussionTyped.id,
@@ -593,39 +599,24 @@ const MainComponent: React.FC = () => {
     });
   }, [sortBy, tables, currentTableIndex]);
   const filteredData = useCallback(() => {
-    /*  console.log(
-      'Current table index:',
-      currentTableIndex,
-      'tables.length:',
-      tables.length
-    ); */
-    if (tables.length === 0) {
-      console.log('[TABLES] No tables available, returning empty array');
-      return sortedData();
-    }
+    // Simplified filtering for performance
+    if (tables.length === 0) return [];
     
     const sorted = sortedData();
-    console.log('[TABLES] Sorted data count:', sorted.length);
     
-    //console.log('Filtered data before applying filters:', sortedData());
-    const data = sorted.filter((row) =>
-      Object.entries(filters).every(([column, value]) =>
-        row[column]
-          ?.toString()
-          .toLowerCase()
-          .includes((value || '').toString().toLowerCase())
-      )
+    // Skip filtering if no filters are set
+    const hasFilters = Object.values(filters).some(value => value && value.trim());
+    if (!hasFilters) return sorted;
+    
+    // Simple filtering
+    return sorted.filter((row) =>
+      Object.entries(filters).every(([column, value]) => {
+        if (!value || !value.trim()) return true;
+        const cellValue = String(row[column] || '').toLowerCase();
+        return cellValue.includes(value.toLowerCase());
+      })
     );
-    
-    console.log('[TABLES] Filtered data count:', data.length);
-    console.log('[TABLES] Applied filters:', filters);
-    
-    /*  console.log(
-      'Filtered data:',
-      data.map((item) => item.id)
-    ); */
-    return data;
-  }, [tables, filters, sortBy, currentTableIndex, sortedData]);
+  }, [tables, filters, sortedData]);
 
   const handleDelete = useCallback(
     async (tableName: string, itemId: string) => {
@@ -681,7 +672,7 @@ const MainComponent: React.FC = () => {
       setEditItemId(itemId);
       setEditDesc(currentDesc || '');
       setOriginalDesc(currentDesc || '');
-      setEditCleared(currentCleared === 'âœ”ï¸ Yes');
+      setEditCleared(currentCleared === 'G£ön+Å Yes');
       setEditTypeSay(currentTypeSay === 'ask' ? 'ask' : 'tell');
       const table = tables.find((t) => t.name === tableName);
       const item = table?.data.find((i) => i.id === itemId);
@@ -740,9 +731,9 @@ const MainComponent: React.FC = () => {
           }
         }
 
-        if (descriptionToProcess && uid) {          const activityAnalysis = await processPhrase(
-            descriptionToProcess,
-            allCategories,
+        if (descriptionToProcess && uid) {
+          const activityAnalysis = await processPhrase(
+            { categories: allCategories, description: descriptionToProcess },
             discussionCounts,
             setDiscussionCounts,
             discussionId,
@@ -766,13 +757,12 @@ const MainComponent: React.FC = () => {
               );
 
               let newActivityLogId: string;
-              if (existingLog) {
-                // Use router to update existing ActivityLog entry (calls all pending updates)
+              if (existingLog) {                // Use router to update existing ActivityLog entry (calls all pending updates)
                 await addOrUpdateActivityLog(); // No parameters allowed
                 newActivityLogId = String(existingLog.id);
-                console.log(
-                  `Updated existing ActivityLog entry ${existingLog.id} for discussionId ${discussionId}`
-                );
+                // console.log(
+                //   `Updated existing ActivityLog entry ${existingLog.id} for discussionId ${discussionId}`
+                // );
               } else {
                 // Use router to create new ActivityLog entry
                 const newLog = {
@@ -996,7 +986,7 @@ const MainComponent: React.FC = () => {
                     ? {
                         ...item,
                         description: editDesc,
-                        cleared: editCleared ? 'âœ”ï¸ Yes' : 'âŒ No',
+                        cleared: editCleared ? 'G£ön+Å Yes' : 'G¥î No',
                         typeSay: editTypeSay,
                         timestamp: editTimestamp
                           ? format(new Date(editTimestamp), 'M/d/yy \n h:mm a')
@@ -1087,50 +1077,22 @@ const MainComponent: React.FC = () => {
     } finally {
       setDebugLoading(false);
     }
-  };  // Handler for debug: run all syncs and repopulate Realm (10 rows per table)
+  };
+
+  // Handler for debug: run all syncs and repopulate Realm (10 rows per table)
   const handleDebugSyncAndPopulate = async () => {
     setDebugLoading(true);
     try {
-      console.log('[RESTORE] Starting test data creation...');
-      
-      // Import the local functions and DatabaseService
-      const local = require('../services/dbServicesLocal');
-      const { DatabaseService } = require('../services/dbServicesLocal');
-      const localDB = new DatabaseService();
-      
-      // Initialize the local database first
-      console.log('[RESTORE] Initializing local user...');
-      await local.initializeUser();
-      
-      // Create test discussions and activity logs locally only
-      for (let i = 0; i < 10; i++) {
-        const discussionId = `test-discussion-${Date.now()}-${i}`;
-        console.log(`[RESTORE] Creating discussion ${i + 1} with ID: ${discussionId}`);
-        
-        // Add discussion using the standalone function (local only)
-        await local.addOrUpdateDiscussion(`Test Discussion ${i + 1}`, 'ask', discussionId, new Date());
-        console.log(`[RESTORE] Discussion ${i + 1} created successfully`);
-        
-        // Add activity log using the class method (which is definitely local only)
-        const activityLogId = await localDB.createActivityLog({
-          discussionId: discussionId,
-          category: 'test',
-          description: `Test ActivityLog ${i + 1}`,
-          timestamp: new Date(),
-          cleared: false,
-          uid: uid || 'local-user',
-          lockedCategory: false,
-          lockedDescription: false,
-        });
-        console.log(`[RESTORE] Activity log ${i + 1} created with ID: ${activityLogId}`);
-      }
-      
-      console.log('[RESTORE] All test data created, refreshing tables...');
-      Alert.alert('Success', 'Test data created successfully!');
+      // Optionally insert 10 test rows per table for debug
+      await insertTestRowsAndExit();
+      // Then run all sync functions
+      await runAllSyncFunctions();
+      Alert.alert(
+        'Debug: Ran all syncs and repopulated Realm (10 rows per table).'
+      );
       await fetchData();
     } catch (e: any) {
-      console.error('[RESTORE] Error creating test data:', e);
-      Alert.alert('Error', `Failed to create test data: ${e.message || String(e)}`);
+      Alert.alert('Debug Sync/Populate Failed', e.message || String(e));
     } finally {
       setDebugLoading(false);
     }
@@ -1203,18 +1165,10 @@ const MainComponent: React.FC = () => {
     }),
     []
   );
-
   // Extra debug: log getDiscussions() output on mount
   useEffect(() => {
-    async function debugFetchDiscussions() {
-      try {
-        const discussions = await getDiscussions();
-        //console.log('[EXTRA DEBUG] getDiscussions() raw output:', discussions); // Removed
-      } catch (e) {
-        console.error('[EXTRA DEBUG] Error calling getDiscussions:', e);
-      }
-    }
-    debugFetchDiscussions();
+    // Temporarily disabled to prevent lockup
+    console.log('[DEBUG] Extra debug useEffect disabled to prevent lockup');
   }, []);
 
   if (loading) {
@@ -1234,58 +1188,119 @@ const MainComponent: React.FC = () => {
         </TouchableOpacity>
       </View>
     );
-  }  //console.log('Rendering MainComponent - debug');
+  }
+
+  //console.log('Rendering MainComponent - debug');
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       style={styles.container}
-    >      {/* TEMPORARY: Restore data button */}
-      <TouchableOpacity
-        style={{
-          backgroundColor: '#007bff',
-          padding: 10,
-          borderRadius: 5,
-          marginBottom: 10,
-          alignSelf: 'center',
-        }}
-        onPress={handleDebugSyncAndPopulate}
-      >
-        <Text style={{ color: '#fff', fontWeight: 'bold' }}>
-          Restore Data (Click Once)
-        </Text>
-      </TouchableOpacity>
-      
-      {/* TEMPORARY: Check database button */}
-      <TouchableOpacity
-        style={{
-          backgroundColor: '#28a745',
-          padding: 10,
-          borderRadius: 5,
-          marginBottom: 10,
-          alignSelf: 'center',
-        }}
-        onPress={async () => {
-          try {
-            console.log('[DB CHECK] Checking database contents...');
-            const local = require('../services/dbServicesLocal');
-            const activityLogs = await local.getActivityLogs();
-            const discussions = await local.getDiscussions();
-            console.log('[DB CHECK] Activity logs count:', activityLogs.length);
-            console.log('[DB CHECK] Discussions count:', discussions.length);
-            console.log('[DB CHECK] Sample activity logs:', activityLogs.slice(0, 2));
-            console.log('[DB CHECK] Sample discussions:', discussions.slice(0, 2));
-            Alert.alert('Database Check', `Activity Logs: ${activityLogs.length}, Discussions: ${discussions.length}`);
-          } catch (e: any) {
-            console.error('[DB CHECK] Error:', e);
-            Alert.alert('Error', e.message || String(e));
-          }
+    >
+      {/* TEMP DEBUG BUTTONS - REMOVE IN PRODUCTION */}
+      <ScrollView
+        horizontal={false}
+        showsVerticalScrollIndicator={false}        contentContainerStyle={{
+          flexDirection: 'column',
+          alignItems: 'center',
+          marginVertical: 8,
         }}
       >
-        <Text style={{ color: '#fff', fontWeight: 'bold' }}>
-          Check Database
-        </Text>
-      </TouchableOpacity>
-      
+        {/* Refresh Button */}
+        <TouchableOpacity
+          style={{
+            backgroundColor: '#28a745',
+            padding: 10,
+            borderRadius: 5,
+            marginBottom: 10,
+            opacity: loading ? 0.5 : 1,
+          }}
+          onPress={() => {
+            console.log('[TABLES] Manual refresh triggered');
+            fetchData();
+          }}
+          disabled={loading}
+        >
+          <Text style={{ color: '#fff', fontWeight: 'bold' }}>
+            =ƒöä Refresh Tables
+          </Text>
+        </TouchableOpacity>
+        
+        {/* Debug: Test Data Fetch */}
+        <TouchableOpacity
+          style={{
+            backgroundColor: '#17a2b8',
+            padding: 10,
+            borderRadius: 5,
+            marginBottom: 10,
+          }}
+          onPress={async () => {
+            console.log('[DEBUG] Testing direct data fetch...');
+            try {
+              const discussions = await getDiscussions();
+              console.log('[DEBUG] getDiscussions returned:', discussions.length, 'records');
+              console.log('[DEBUG] First 3 discussions:', discussions.slice(0, 3));
+              
+              const activityLogs = await getActivityLogs();
+              console.log('[DEBUG] getActivityLogs returned:', activityLogs.length, 'records');
+                Alert.alert(
+                'Data Check', 
+                'Found:\n' + discussions.length + ' discussions\n' + activityLogs.length + ' activity logs'
+              );} catch (error: any) {
+              console.error('[DEBUG] Error fetching data:', error);
+              Alert.alert('Error', 'Failed to fetch data: ' + (error?.message || String(error)));
+            }
+          }}
+        >
+          <Text style={{ color: '#fff', fontWeight: 'bold' }}>
+            =ƒöì Debug: Check Data
+          </Text>
+        </TouchableOpacity>
+        
+        <TouchableOpacity
+          style={{
+            backgroundColor: '#ff4444',
+            padding: 10,
+            borderRadius: 5,
+            marginBottom: 10,
+            opacity: debugLoading ? 0.5 : 1,
+          }}
+          onPress={handleDebugDeleteAll}
+          disabled={debugLoading}
+        >
+          <Text style={{ color: '#fff', fontWeight: 'bold' }}>
+            DEBUG: Delete All Local/Remote (ChangeLog)
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={{
+            backgroundColor: '#007bff',
+            padding: 10,
+            borderRadius: 5,
+            marginBottom: 10,
+            opacity: debugLoading ? 0.5 : 1,
+          }}
+          onPress={handleDebugSyncAndPopulate}
+          disabled={debugLoading}
+        >
+          <Text style={{ color: '#fff', fontWeight: 'bold' }}>
+            DEBUG: Sync & Repopulate (10 rows/table)
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={{
+            backgroundColor: '#00b894',
+            padding: 10,
+            borderRadius: 5,
+            opacity: debugLoading ? 0.5 : 1,
+          }}
+          onPress={handleCopyRealmToDownloads}
+          disabled={debugLoading}
+        >
+          <Text style={{ color: '#fff', fontWeight: 'bold' }}>
+            DEBUG: Copy Realm DB to Downloads
+          </Text>
+        </TouchableOpacity>
+      </ScrollView>
       {initialized && tables.length > 0 ? (
         <View style={styles.tableContainer}>
           <View style={styles.navigation}>
@@ -1345,8 +1360,8 @@ const MainComponent: React.FC = () => {
                     {col.Header}{' '}
                     {sortBy?.column === col.accessor
                       ? sortBy.order === 'asc'
-                        ? 'â†‘'
-                        : 'â†“'
+                        ? 'Gåæ'
+                        : 'Gåô'
                       : ''}
                   </Text>
                 </TouchableOpacity>
