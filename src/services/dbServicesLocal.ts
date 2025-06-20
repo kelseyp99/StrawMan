@@ -536,7 +536,7 @@ export async function addOrUpdateDiscussionRemote(
   id?: string
 ): Promise<string> {
   // This will call the router and force remote/cloud logic
-  return await addOrUpdateDiscussionRouter(description, typeSay, id, true);
+  return await addOrUpdateDiscussionRouter(description, typeSay, id);
 }
 
 async function addDiscussion(

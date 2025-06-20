@@ -285,15 +285,27 @@ const MainComponent: React.FC = () => {
       }
     };
     fetchUid();
-  }, []);
-
-  // Fetch data using dbServices router
+  }, []);  // Fetch data using dbServices router
   const fetchData = useCallback(async () => {
-    if (!uid) return;
+    if (!uid) {
+      console.log('[TABLES] No UID available, skipping fetch');
+      return;
+    }
     try {
       setLoading(true);
-      // console.log('Fetching data...'); // Removed to prevent printing tables
+      console.log('[TABLES] Fetching data for uid:', uid);
+      
       const activityLogRaw = await getActivityLogs();
+      console.log('[TABLES] Raw activity logs count:', activityLogRaw.length);
+      console.log('[TABLES] First few activity logs:', activityLogRaw.slice(0, 3));
+      
+      // Check UIDs in the data
+      if (activityLogRaw.length > 0) {
+        const uids = [...new Set(activityLogRaw.map((log: any) => log.uid))];
+        console.log('[TABLES] Unique UIDs in activity logs:', uids);
+        console.log('[TABLES] Current user UID:', uid);
+      }
+      
       //    console.log('[DEBUG] All ActivityLog from Realm:', activityLogRaw); // Removed
       // TEMP: Remove uid filter for debug
       // const activityLogData = activityLogRaw.filter((doc: any) => doc.uid === uid)
@@ -312,10 +324,17 @@ const MainComponent: React.FC = () => {
           (a: any, b: any) =>
             new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
         );
-      //     console.log('[DEBUG] Filtered ActivityLog for uid', uid, activityLogData); // Removed
-      const discussionData = (await getDiscussions())
+        
+      const discussionRaw = await getDiscussions();
+      console.log('[TABLES] Raw discussions count:', discussionRaw.length);
+      console.log('[TABLES] First few discussions:', discussionRaw.slice(0, 3));
+      
+      const discussionData = discussionRaw
         .map(mapDiscussionRow)
         .sort((a: any, b: any) => b.rawTimestamp - a.rawTimestamp);
+        
+      console.log('[TABLES] Processed activity logs count:', activityLogData.length);
+      console.log('[TABLES] Processed discussions count:', discussionData.length);
       const categories = await getDistinctCategories();
       setAllCategories((prev) => [...new Set([...prev, ...categories])]);
       setTables([
@@ -368,10 +387,14 @@ const MainComponent: React.FC = () => {
               style: styles.leftAlignCell,
               flex: 1,
             },
-          ],
-          data: discussionData,
+          ],          data: discussionData,
         },
       ]);
+      
+      console.log('[TABLES] Setting tables with data:');
+      console.log('[TABLES] Activity Log table will have', activityLogData.length, 'rows');
+      console.log('[TABLES] Discussion table will have', discussionData.length, 'rows');
+      
       setInitialized(true);
     } catch (error) {
       console.error('Error fetching data:', error);
@@ -450,20 +473,19 @@ const MainComponent: React.FC = () => {
                     discussionId: docSnapshot.data().id || docSnapshot.id,
                     description: docSnapshot.data().description || '',
                     timestamp:
-                      docSnapshot.data().timestamp?.toDate() || new Date(),
-                    typeSay: docSnapshot.data().typeSay || 'tell',
+                      docSnapshot.data().timestamp?.toDate() || new Date(),                    typeSay: docSnapshot.data().typeSay || 'tell',
                     cleared: docSnapshot.data().cleared || false,
-                  };                  if (!discussionTyped.cleared) {
+                  };
+                  
+                  if (!discussionTyped.cleared) {
                     // console.log('Processing Discussion:', discussionTyped.id);
                     const activityAnalysis = await processPhrase(
-                      {
-                        categories: distinctCategories,
-                        description: discussionTyped.description,
-                      },
+                      discussionTyped.description,
+                      distinctCategories,
                       discussionCounts,
                       setDiscussionCounts,
                       discussionTyped.id,
-                      uid
+                      'local-user'
                     );
                     await addOrUpdateGPTResponse(
                       discussionTyped.id,
@@ -570,7 +592,6 @@ const MainComponent: React.FC = () => {
         : -1;
     });
   }, [sortBy, tables, currentTableIndex]);
-
   const filteredData = useCallback(() => {
     /*  console.log(
       'Current table index:',
@@ -578,9 +599,16 @@ const MainComponent: React.FC = () => {
       'tables.length:',
       tables.length
     ); */
-    if (tables.length === 0) return sortedData();
+    if (tables.length === 0) {
+      console.log('[TABLES] No tables available, returning empty array');
+      return sortedData();
+    }
+    
+    const sorted = sortedData();
+    console.log('[TABLES] Sorted data count:', sorted.length);
+    
     //console.log('Filtered data before applying filters:', sortedData());
-    const data = sortedData().filter((row) =>
+    const data = sorted.filter((row) =>
       Object.entries(filters).every(([column, value]) =>
         row[column]
           ?.toString()
@@ -588,6 +616,10 @@ const MainComponent: React.FC = () => {
           .includes((value || '').toString().toLowerCase())
       )
     );
+    
+    console.log('[TABLES] Filtered data count:', data.length);
+    console.log('[TABLES] Applied filters:', filters);
+    
     /*  console.log(
       'Filtered data:',
       data.map((item) => item.id)
@@ -708,9 +740,9 @@ const MainComponent: React.FC = () => {
           }
         }
 
-        if (descriptionToProcess && uid) {
-          const activityAnalysis = await processPhrase(
-            { categories: allCategories, description: descriptionToProcess },
+        if (descriptionToProcess && uid) {          const activityAnalysis = await processPhrase(
+            descriptionToProcess,
+            allCategories,
             discussionCounts,
             setDiscussionCounts,
             discussionId,
@@ -1055,22 +1087,50 @@ const MainComponent: React.FC = () => {
     } finally {
       setDebugLoading(false);
     }
-  };
-
-  // Handler for debug: run all syncs and repopulate Realm (10 rows per table)
+  };  // Handler for debug: run all syncs and repopulate Realm (10 rows per table)
   const handleDebugSyncAndPopulate = async () => {
     setDebugLoading(true);
     try {
-      // Optionally insert 10 test rows per table for debug
-      await insertTestRowsAndExit();
-      // Then run all sync functions
-      await runAllSyncFunctions();
-      Alert.alert(
-        'Debug: Ran all syncs and repopulated Realm (10 rows per table).'
-      );
+      console.log('[RESTORE] Starting test data creation...');
+      
+      // Import the local functions and DatabaseService
+      const local = require('../services/dbServicesLocal');
+      const { DatabaseService } = require('../services/dbServicesLocal');
+      const localDB = new DatabaseService();
+      
+      // Initialize the local database first
+      console.log('[RESTORE] Initializing local user...');
+      await local.initializeUser();
+      
+      // Create test discussions and activity logs locally only
+      for (let i = 0; i < 10; i++) {
+        const discussionId = `test-discussion-${Date.now()}-${i}`;
+        console.log(`[RESTORE] Creating discussion ${i + 1} with ID: ${discussionId}`);
+        
+        // Add discussion using the standalone function (local only)
+        await local.addOrUpdateDiscussion(`Test Discussion ${i + 1}`, 'ask', discussionId, new Date());
+        console.log(`[RESTORE] Discussion ${i + 1} created successfully`);
+        
+        // Add activity log using the class method (which is definitely local only)
+        const activityLogId = await localDB.createActivityLog({
+          discussionId: discussionId,
+          category: 'test',
+          description: `Test ActivityLog ${i + 1}`,
+          timestamp: new Date(),
+          cleared: false,
+          uid: uid || 'local-user',
+          lockedCategory: false,
+          lockedDescription: false,
+        });
+        console.log(`[RESTORE] Activity log ${i + 1} created with ID: ${activityLogId}`);
+      }
+      
+      console.log('[RESTORE] All test data created, refreshing tables...');
+      Alert.alert('Success', 'Test data created successfully!');
       await fetchData();
     } catch (e: any) {
-      Alert.alert('Debug Sync/Populate Failed', e.message || String(e));
+      console.error('[RESTORE] Error creating test data:', e);
+      Alert.alert('Error', `Failed to create test data: ${e.message || String(e)}`);
     } finally {
       setDebugLoading(false);
     }
@@ -1174,69 +1234,58 @@ const MainComponent: React.FC = () => {
         </TouchableOpacity>
       </View>
     );
-  }
-
-  //console.log('Rendering MainComponent - debug');
+  }  //console.log('Rendering MainComponent - debug');
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       style={styles.container}
-    >
-      {/* TEMP DEBUG BUTTONS - REMOVE IN PRODUCTION */}
-      <ScrollView
-        horizontal={false}
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={{
-          flexDirection: 'column',
-          alignItems: 'center',
-          marginVertical: 8,
+    >      {/* TEMPORARY: Restore data button */}
+      <TouchableOpacity
+        style={{
+          backgroundColor: '#007bff',
+          padding: 10,
+          borderRadius: 5,
+          marginBottom: 10,
+          alignSelf: 'center',
+        }}
+        onPress={handleDebugSyncAndPopulate}
+      >
+        <Text style={{ color: '#fff', fontWeight: 'bold' }}>
+          Restore Data (Click Once)
+        </Text>
+      </TouchableOpacity>
+      
+      {/* TEMPORARY: Check database button */}
+      <TouchableOpacity
+        style={{
+          backgroundColor: '#28a745',
+          padding: 10,
+          borderRadius: 5,
+          marginBottom: 10,
+          alignSelf: 'center',
+        }}
+        onPress={async () => {
+          try {
+            console.log('[DB CHECK] Checking database contents...');
+            const local = require('../services/dbServicesLocal');
+            const activityLogs = await local.getActivityLogs();
+            const discussions = await local.getDiscussions();
+            console.log('[DB CHECK] Activity logs count:', activityLogs.length);
+            console.log('[DB CHECK] Discussions count:', discussions.length);
+            console.log('[DB CHECK] Sample activity logs:', activityLogs.slice(0, 2));
+            console.log('[DB CHECK] Sample discussions:', discussions.slice(0, 2));
+            Alert.alert('Database Check', `Activity Logs: ${activityLogs.length}, Discussions: ${discussions.length}`);
+          } catch (e: any) {
+            console.error('[DB CHECK] Error:', e);
+            Alert.alert('Error', e.message || String(e));
+          }
         }}
       >
-        <TouchableOpacity
-          style={{
-            backgroundColor: '#ff4444',
-            padding: 10,
-            borderRadius: 5,
-            marginBottom: 10,
-            opacity: debugLoading ? 0.5 : 1,
-          }}
-          onPress={handleDebugDeleteAll}
-          disabled={debugLoading}
-        >
-          <Text style={{ color: '#fff', fontWeight: 'bold' }}>
-            DEBUG: Delete All Local/Remote (ChangeLog)
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={{
-            backgroundColor: '#007bff',
-            padding: 10,
-            borderRadius: 5,
-            marginBottom: 10,
-            opacity: debugLoading ? 0.5 : 1,
-          }}
-          onPress={handleDebugSyncAndPopulate}
-          disabled={debugLoading}
-        >
-          <Text style={{ color: '#fff', fontWeight: 'bold' }}>
-            DEBUG: Sync & Repopulate (10 rows/table)
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={{
-            backgroundColor: '#00b894',
-            padding: 10,
-            borderRadius: 5,
-            opacity: debugLoading ? 0.5 : 1,
-          }}
-          onPress={handleCopyRealmToDownloads}
-          disabled={debugLoading}
-        >
-          <Text style={{ color: '#fff', fontWeight: 'bold' }}>
-            DEBUG: Copy Realm DB to Downloads
-          </Text>
-        </TouchableOpacity>
-      </ScrollView>
+        <Text style={{ color: '#fff', fontWeight: 'bold' }}>
+          Check Database
+        </Text>
+      </TouchableOpacity>
+      
       {initialized && tables.length > 0 ? (
         <View style={styles.tableContainer}>
           <View style={styles.navigation}>

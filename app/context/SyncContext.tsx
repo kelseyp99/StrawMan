@@ -39,3 +39,5 @@ export const SyncProvider: React.FC<{ children: React.ReactNode }> = ({
     </SyncContext.Provider>
   );
 };
+
+export default SyncProvider;

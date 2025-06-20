@@ -27,8 +27,8 @@ export default function SettingsScreen() {
     (async () => {
       const syncSetting = await AsyncStorage.getItem('syncWithCloud');
       setSyncWithCloud(syncSetting === 'true');
-      // TODO: Replace with real paid check
-      const paid = await AsyncStorage.getItem('isPaidCustomer');
+      // Load paid user status from storage
+      const paid = await AsyncStorage.getItem('isPaidUser');
       setIsPaidCustomer(paid === 'true');
     })();
   }, []);
@@ -142,6 +142,23 @@ export default function SettingsScreen() {
         >
           <Text style={{ color: '#fff', fontWeight: 'bold' }}>Sync Now</Text>
         </TouchableOpacity>
+        <View
+          style={{
+            flexDirection: 'row',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            marginBottom: 15,
+          }}
+        >
+          <Text>Paid User Status (Test)</Text>
+          <Switch
+            value={isPaidCustomer}
+            onValueChange={async (value) => {
+              setIsPaidCustomer(value);
+              await AsyncStorage.setItem('isPaidUser', value ? 'true' : 'false');
+            }}
+          />
+        </View>
         <Modal
           visible={showUpgradeModal}
           transparent

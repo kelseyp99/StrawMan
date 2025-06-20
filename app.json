@@ -1,14 +1,14 @@
 ﻿{
   "expo": {
-    "name": "LifeLog",
+    "name": "LifeLog - Personal Tracker",
     "slug": "LifeLog",
+    "description": "Offline-first personal life tracking app with optional Firebase authentication for cloud sync. Track your daily activities, habits, and goals with complete privacy control.",
     "orientation": "portrait",
     "icon": "src/assets/images/ask-janet-icon.png",
     "scheme": "lifelog",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "supportsTablet": true,
-      "usesAppTrackingTransparency": true
+      "supportsTablet": true
     },
     "android": {
       "adaptiveIcon": {
@@ -27,7 +27,8 @@
       [
         "realm",
         {
-          "sync": false
+          "sync": false,
+          "platform": "react-native"
         }
       ]
     ],

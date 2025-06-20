@@ -11,7 +11,8 @@ declare module 'firebase/auth' {
 import { getReactNativePersistence } from 'firebase/auth';
 
 // Check if we should enable Firebase (set to false for offline-first mode)
-const ENABLE_FIREBASE = false;
+const ENABLE_FIREBASE = true; // Enable for authentication
+const ENABLE_FIRESTORE = false; // Keep Firestore disabled for offline-first
 
 const firebaseConfig = {
   apiKey: Constants.expoConfig?.extra?.firebase?.apiKey || process.env.EXPO_PUBLIC_FIREBASE_API_KEY || "AIzaSyDba17ybV3s_h6gcZSP1-9nGgaALc1_2Pk",
@@ -23,6 +24,7 @@ const firebaseConfig = {
 };
 
 console.log("Firebase Enabled:", ENABLE_FIREBASE);
+console.log("Firestore Enabled:", ENABLE_FIRESTORE);
 if (ENABLE_FIREBASE) {
   console.log("Firebase Config:", firebaseConfig);
 }
@@ -37,9 +39,32 @@ if (ENABLE_FIREBASE) {
   auth = initializeAuth(app, {
     persistence: getReactNativePersistence(AsyncStorage)
   });
-  db = getFirestore(app);
+  
+  if (ENABLE_FIRESTORE) {
+    db = getFirestore(app);
+  } else {
+    // Mock Firestore while keeping auth enabled
+    db = {
+      collection: () => ({ 
+        doc: () => ({ 
+          get: () => Promise.reject(new Error('Firestore disabled - using offline mode')),
+          set: () => Promise.reject(new Error('Firestore disabled - using offline mode')),
+          update: () => Promise.reject(new Error('Firestore disabled - using offline mode')),
+          delete: () => Promise.reject(new Error('Firestore disabled - using offline mode')),
+        }),
+        add: () => Promise.reject(new Error('Firestore disabled - using offline mode')),
+        get: () => Promise.reject(new Error('Firestore disabled - using offline mode')),
+      }),
+      doc: () => ({ 
+        get: () => Promise.reject(new Error('Firestore disabled - using offline mode')),
+        set: () => Promise.reject(new Error('Firestore disabled - using offline mode')),
+        update: () => Promise.reject(new Error('Firestore disabled - using offline mode')),
+        delete: () => Promise.reject(new Error('Firestore disabled - using offline mode')),
+      }),
+    };
+  }
 } else {
-  // Mock Firebase services for offline mode
+  // Mock Firebase services for completely offline mode
   auth = {
     currentUser: null,
     onAuthStateChanged: () => () => {},
@@ -48,7 +73,6 @@ if (ENABLE_FIREBASE) {
     signOut: () => Promise.reject(new Error('Firebase disabled')),
   };
   db = {
-    // Mock Firestore methods to prevent errors
     collection: () => ({ 
       doc: () => ({ 
         get: () => Promise.reject(new Error('Firebase disabled')),

@@ -18,6 +18,7 @@ import {
   linkWithCredential,
 } from 'firebase/auth';
 import { useRouter } from 'expo-router';
+import { useAuth } from './context/AuthContext';
 import Icon from 'react-native-vector-icons/Ionicons'; // Changed to Ionicons
 import Header from '../src/components/Header';
 import * as FileSystem from 'expo-file-system';
@@ -39,6 +40,7 @@ export default function Login() {
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [userUID, setUserUID] = useState<string | null>(null);
   const router = useRouter();
+  const { setIsLogged } = useAuth();
 
   // Log Constants.expoConfig for debugging
   console.log('Expo Config:', JSON.stringify(Constants.expoConfig, null, 2));
@@ -71,18 +73,24 @@ export default function Login() {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       if (user) {
         console.log('User logged in:', user.uid);
+        console.log('Setting isLogged to true in AuthContext');
         setUserEmail(user.email);
         setUserUID(user.uid);
         setUID(user.uid);
+        // Update AuthContext state
+        setIsLogged(true);
+        // Initialize user data
         initializeUser().catch((error) =>
           console.error('Error initializing user:', error)
         );
-        router.replace('/(tabs)');
       } else {
+        console.log('No user authenticated');
+        console.log('Setting isLogged to false in AuthContext');
         setUserEmail(null);
         setUserUID(null);
         clearUID();
         removeUID();
+        setIsLogged(false); // Ensure AuthContext is updated
       }
     });
     return unsubscribe;
@@ -99,33 +107,31 @@ export default function Login() {
       if (currentUser) {
         // Link Google provider to the current user (e.g., email/password account)
         linkWithCredential(currentUser, credential)
-          .then((userCredential) => {
+          .then(async (userCredential) => {
             console.log(
               'Google provider linked to UID:',
               userCredential.user.uid
             );
             setUserUID(userCredential.user.uid);
             setUID(userCredential.user.uid);
-            initializeUser().catch((error) =>
-              console.error('Error initializing user:', error)
-            );
-            router.replace('/(tabs)');
+            // Don't set isLogged here - let onAuthStateChanged handle it
+            await initializeUser();
+            // Don't manually redirect - let onAuthStateChanged handle it
           })
           .catch((err) => {
             if (err.code === 'auth/credential-already-in-use') {
               // Google account is already linked to another user; sign in instead
               signInWithCredential(auth, credential)
-                .then((userCredential) => {
+                .then(async (userCredential) => {
                   console.log(
                     'Signed in with Google UID:',
                     userCredential.user.uid
                   );
                   setUserUID(userCredential.user.uid);
                   setUID(userCredential.user.uid);
-                  initializeUser().catch((error) =>
-                    console.error('Error initializing user:', error)
-                  );
-                  router.replace('/(tabs)');
+                  // Don't set isLogged here - let onAuthStateChanged handle it
+                  await initializeUser();
+                  // Don't manually redirect - let onAuthStateChanged handle it
                 })
                 .catch((signInErr) => {
                   setError(signInErr.message);
@@ -139,14 +145,13 @@ export default function Login() {
       } else {
         // No current user; sign in with Google
         signInWithCredential(auth, credential)
-          .then((userCredential) => {
+          .then(async (userCredential) => {
             console.log('Google Sign-In UID:', userCredential.user.uid);
             setUserUID(userCredential.user.uid);
             setUID(userCredential.user.uid);
-            initializeUser().catch((error) =>
-              console.error('Error initializing user:', error)
-            );
-            router.replace('/(tabs)');
+            // Don't set isLogged here - let onAuthStateChanged handle it
+            await initializeUser();
+            // Don't manually redirect - let onAuthStateChanged handle it
           })
           .catch((err) => {
             setError(err.message);
@@ -178,10 +183,8 @@ export default function Login() {
       console.log('Signed in UID:', userCredential.user.uid);
       setUserUID(userCredential.user.uid);
       setUID(userCredential.user.uid);
-      initializeUser().catch((error) =>
-        console.error('Error initializing user:', error)
-      );
-      router.replace('/(tabs)');
+      // Don't set isLogged or redirect here - let onAuthStateChanged handle it
+      await initializeUser();
     } catch (err: any) {
       setError(err.message);
       console.error('Sign-in Error:', err.message);
@@ -198,10 +201,8 @@ export default function Login() {
       console.log('Signed up UID:', userCredential.user.uid);
       setUserUID(userCredential.user.uid);
       setUID(userCredential.user.uid);
-      initializeUser().catch((error) =>
-        console.error('Error initializing user:', error)
-      );
-      router.replace('/(tabs)');
+      // Don't set isLogged or redirect here - let onAuthStateChanged handle it
+      await initializeUser();
     } catch (err: any) {
       setError(err.message);
       console.error('Sign-up Error:', err.message);
@@ -218,9 +219,20 @@ export default function Login() {
       setUserUID(null);
       clearUID();
       await removeUID();
+      await setIsLogged(false);
     } catch (err: any) {
       setError(err.message);
       console.error('Sign-out Error:', err.message);
+    }
+  };
+
+  const handleProceedToApp = async () => {
+    try {
+      console.log('Proceeding to main app...');
+      router.replace('/(tabs)');
+    } catch (error) {
+      console.error('Error navigating to app:', error);
+      setError('Failed to navigate to app. Please try again.');
     }
   };
 
@@ -244,7 +256,7 @@ export default function Login() {
   return (
     <View style={styles.container}>
       <Header />
-      <Text style={styles.title}>Login</Text>
+      <Text style={styles.title}>LifeLog - Personal Tracker</Text>
       {error ? <Text style={styles.error}>{error}</Text> : null}
       <TextInput
         style={styles.input}
@@ -266,14 +278,14 @@ export default function Login() {
           style={styles.iconContainer}
         >
           <Icon
-            name={showPassword ? 'visibility-off' : 'visibility'}
+            name={showPassword ? 'eye-off' : 'eye'}
             size={24}
             color="#666"
           />
         </TouchableOpacity>
       </View>
       <TouchableOpacity style={styles.button} onPress={handleSignIn}>
-        <Text style={styles.buttonText}>Sign In WIth Email</Text>
+        <Text style={styles.buttonText}>Sign In With Email</Text>
       </TouchableOpacity>
       <TouchableOpacity style={styles.signUpLink} onPress={handleSignUp}>
         <Text style={styles.signUpText}>Create an account</Text>
@@ -305,11 +317,17 @@ export default function Login() {
         <Text style={styles.buttonText}>Continue with Apple</Text>
       </TouchableOpacity>
       {userEmail && (
-        <View style={styles.logoutContainer}>
+        <View style={styles.userSection}>
           <Text style={styles.loggedInText}>Logged in as: {userEmail}</Text>
-          <TouchableOpacity style={styles.logoutIcon} onPress={handleSignOut}>
-            <Icon name="logout" size={20} color="#333" />
-          </TouchableOpacity>
+          <View style={styles.actionButtons}>
+            <TouchableOpacity style={styles.continueButton} onPress={handleProceedToApp}>
+              <Text style={styles.buttonText}>Continue to App</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.logoutButton} onPress={handleSignOut}>
+              <Icon name="log-out" size={16} color="#333" />
+              <Text style={styles.logoutText}>Sign Out</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       )}
       {userUID && (
@@ -422,6 +440,42 @@ const styles = StyleSheet.create({
   },
   logoutIcon: {
     padding: 5,
+  },
+  userSection: {
+    width: '100%',
+    marginVertical: 20,
+    padding: 15,
+    backgroundColor: '#f0f0f0',
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  actionButtons: {
+    flexDirection: 'row',
+    marginTop: 10,
+    gap: 10,
+  },
+  continueButton: {
+    backgroundColor: '#007AFF',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 6,
+    flex: 1,
+    alignItems: 'center',
+  },
+  logoutButton: {
+    backgroundColor: '#f8f8f8',
+    paddingHorizontal: 15,
+    paddingVertical: 10,
+    borderRadius: 6,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#ddd',
+  },
+  logoutText: {
+    color: '#333',
+    fontSize: 14,
+    marginLeft: 5,
   },
   error: {
     color: 'red',

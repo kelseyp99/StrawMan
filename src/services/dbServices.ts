@@ -5,7 +5,17 @@ import { getUID } from '../utils/uidManager';
 import { ActivityLog } from './types';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const USE_REMOTE = false;
+// Helper function to check if remote sync should be used
+async function shouldUseRemote(): Promise<boolean> {
+  try {
+    const paid = await isPaidUser();
+    const syncWithCloud = (await AsyncStorage.getItem('syncWithCloud')) === 'true';
+    return paid && syncWithCloud;
+  } catch (e) {
+    console.warn('Could not check remote sync settings:', e);
+    return false;
+  }
+}
 
 interface Discussion {
   id: string;
@@ -38,9 +48,14 @@ async function logSyncEntry(entry: SyncEntry): Promise<void> {
 }
 
 export async function isPaidUser(): Promise<boolean> {
-  //console.log('isPaidUser called');
-  // return local.isPaidUser();
-  return true; // TODO: Implement or update as needed
+  try {
+    // Check AsyncStorage for paid user status (for testing/demo purposes)
+    const paidStatus = await AsyncStorage.getItem('isPaidUser');
+    return paidStatus === 'true';
+  } catch (error) {
+    console.warn('Could not check paid user status:', error);
+    return false; // Default to free user
+  }
 }
 
 export const findDuplicateActivityLog = async (
@@ -52,7 +67,7 @@ export const findDuplicateActivityLog = async (
   // console.log('findDuplicateActivityLog called');
   try {
     const uidVal = (await getUID()) || 'unknown';
-    if (USE_REMOTE) {
+    if (await shouldUseRemote()) {
       await remote.findDuplicateActivityLog(
         discussionId,
         category,
@@ -72,7 +87,7 @@ export const findDuplicateActivityLog = async (
 export async function initializeUser(): Promise<void> {
   // console.log('initializeUser called');
   try {
-    if (USE_REMOTE) {
+    if (await shouldUseRemote()) {
       await remote.initializeUser();
     } else {
       await local.initializeUser();
@@ -88,16 +103,7 @@ export async function addOrUpdateDiscussion(
   typeSay: string = 'tell',
   id?: string
 ): Promise<string> {
-  // Determine if remote should be used
-  let useRemote = false;
-  const paid = await isPaidUser();
-  let syncWithCloud = false;
-  try {
-    syncWithCloud = (await AsyncStorage.getItem('syncWithCloud')) === 'true';
-  } catch (e) {
-    console.warn('Could not check syncWithCloud:', e);
-  }
-  useRemote = paid && syncWithCloud;
+  const useRemote = await shouldUseRemote();
 
   // Always save locally first
   await local.initializeUser();
@@ -109,8 +115,8 @@ export async function addOrUpdateDiscussion(
     await remote.addOrUpdateDiscussion(description, typeSay, id as string);
   }
 
-  // Log SyncEntry if remote or paid
-  if (useRemote || paid) {
+  // Log SyncEntry if remote is enabled
+  if (useRemote) {
     const uid = (await getUID()) || 'unknown';
     await logSyncEntry({
       id: result,
@@ -137,7 +143,8 @@ export async function getDiscussions(
   //   discussionId
   // );
   try {
-    const result = USE_REMOTE
+    const useRemote = await shouldUseRemote();
+    const result = useRemote
       ? await remote.getDiscussions(lastX, discussionId)
       : await local.getDiscussions(lastX, discussionId);
     //console.log('getDiscussions result:', result);
@@ -170,7 +177,7 @@ export async function deleteDiscussion(id: string): Promise<void> {
 export async function fetchInitialDiscussion(): Promise<any | null> {
   console.log('fetchInitialDiscussion called');
   try {
-    const result = USE_REMOTE
+    const result = await shouldUseRemote()
       ? await remote.fetchInitialDiscussion()
       : await local.fetchInitialDiscussion();
     return result;
@@ -187,7 +194,7 @@ export async function getNextOpenDiscussion(lastVisibleId?: string): Promise<{
 }> {
   console.log('getNextOpenDiscussion called with:', lastVisibleId);
   try {
-    const result = USE_REMOTE
+    const result = await shouldUseRemote()
       ? await remote.getNextOpenDiscussion(lastVisibleId)
       : await local.getNextOpenDiscussion(lastVisibleId); // pass string
     return result;
@@ -200,7 +207,7 @@ export async function getNextOpenDiscussion(lastVisibleId?: string): Promise<{
 export async function processPendingTells(): Promise<void> {
   console.log('processPendingTells called');
   try {
-    if (USE_REMOTE) {
+    if (await shouldUseRemote()) {
       await remote.processPendingTells();
     }
     await local.processPendingTells();
@@ -247,7 +254,7 @@ export async function addQuestionDiscussion(
 export async function processUnclearedGPTResponses(): Promise<void> {
   console.log('processUnclearedGPTResponses called');
   try {
-    if (USE_REMOTE) {
+    if (await shouldUseRemote()) {
       await remote.processUnclearedGPTResponses();
     }
     await local.processUnclearedGPTResponses();
@@ -270,7 +277,7 @@ export async function markDiscussionAsCleared(
 ): Promise<void> {
   console.log('markDiscussionAsCleared called with:', discussionId);
   try {
-    if (USE_REMOTE) {
+    if (await shouldUseRemote()) {
       await remote.markDiscussionAsCleared(discussionId);
     }
     await local.markDiscussionAsCleared(discussionId);
@@ -292,7 +299,7 @@ export async function clearDiscussion(discussionId: string): Promise<boolean> {
   console.log('clearDiscussion called with:', discussionId);
   try {
     let remoteResult = false;
-    if (USE_REMOTE) {
+    if (await shouldUseRemote()) {
       remoteResult = await remote.clearDiscussion(discussionId);
     }
     const localResult = await local.clearDiscussion(discussionId);
@@ -314,7 +321,7 @@ export async function clearDiscussion(discussionId: string): Promise<boolean> {
 export async function addOrUpdateActivityLog(): Promise<void> {
   console.log('addOrUpdateActivityLog called');
   try {
-    if (USE_REMOTE) {
+    if (await shouldUseRemote()) {
       await remote.addOrUpdateActivityLog();
     }
     await local.addOrUpdateActivityLog();
@@ -335,7 +342,7 @@ export async function addOrUpdateActivityLog(): Promise<void> {
 export async function renameFieldToCleared(): Promise<void> {
   console.log('renameFieldToCleared called');
   try {
-    if (USE_REMOTE) {
+    if (await shouldUseRemote()) {
       await remote.renameFieldToCleared();
     }
     await local.renameFieldToCleared();
@@ -359,7 +366,7 @@ export async function getLastOpenDiscussion(): Promise<{
 }> {
   console.log('getLastOpenDiscussion called');
   try {
-    const result = USE_REMOTE
+    const result = await shouldUseRemote()
       ? await remote.getLastOpenDiscussion()
       : await local.getLastOpenDiscussion();
     return result;
@@ -375,7 +382,7 @@ export async function disperseQuestion(
 ): Promise<string[] | undefined> {
   console.log('disperseQuestion called with:', discussionId, gptResponseId);
   try {
-    const result = USE_REMOTE
+    const result = await shouldUseRemote()
       ? await remote.disperseQuestion(discussionId, gptResponseId)
       : await local.disperseQuestion(discussionId, gptResponseId);
     return result;
@@ -426,7 +433,7 @@ export async function addOrUpdateGPTResponse(
 export async function getGPTResponses(discussionId: string): Promise<any[]> {
   console.log('getGPTResponses called with:', discussionId);
   try {
-    const result = USE_REMOTE
+    const result = await shouldUseRemote()
       ? await remote.getGPTResponses(discussionId)
       : await local.getGPTResponses(discussionId);
     return result;
@@ -441,7 +448,7 @@ export async function getParsedGPTResponses(
 ): Promise<string[]> {
   console.log('getParsedGPTResponses called with:', discussionId);
   try {
-    const result = USE_REMOTE
+    const result = await shouldUseRemote()
       ? await remote.getParsedGPTResponses(discussionId)
       : await local.getParsedGPTResponses(discussionId);
     return result;
@@ -454,7 +461,7 @@ export async function getParsedGPTResponses(
 export async function getAIResponse(question: string): Promise<string> {
   console.log('getAIResponse called with:', question);
   try {
-    const result = USE_REMOTE
+    const result = await shouldUseRemote()
       ? await remote.getAIResponse(question)
       : await local.getAIResponse(question);
     return result;
@@ -504,7 +511,7 @@ export async function syncToCloud(
 export async function getNextActiveAlert(): Promise<any | null> {
   console.log('getNextActiveAlert called');
   try {
-    const result = USE_REMOTE
+    const result = await shouldUseRemote()
       ? await remote.getNextActiveAlert()
       : await local.getNextActiveAlert();
     return result;
@@ -562,7 +569,7 @@ export async function getURLofGPT(
 ): Promise<{ url: string; apiKey: string } | null> {
   console.log('getURLofGPT called with:', gpt_name);
   try {
-    const result = USE_REMOTE
+    const result = await shouldUseRemote()
       ? await remote.getURLofGPT(gpt_name)
       : await local.getURLofGPT(gpt_name);
     return result;
@@ -577,7 +584,7 @@ export async function expandFromAbbreviation(
 ): Promise<string> {
   // console.log('expandFromAbbreviation called with:', discussion);
   try {
-    const result = USE_REMOTE
+    const result = await shouldUseRemote()
       ? await remote.expandFromAbbreviation(discussion)
       : await local.expandFromAbbreviation(discussion);
     return result;
@@ -609,7 +616,7 @@ export async function restoreLostData(): Promise<void> {
 export async function getRules(): Promise<any[]> {
   //console.log('getRules called');
   try {
-    const result = USE_REMOTE
+    const result = await shouldUseRemote()
       ? await remote.getRules()
       : await local.getRules();
     return result;
@@ -646,7 +653,7 @@ export async function updateGPTSpecialties(gptSpecialty: {
 export async function getActivityLogs(): Promise<any[]> {
   //console.log('getActivityLogs called');
   try {
-    const result = USE_REMOTE
+    const result = await shouldUseRemote()
       ? await remote.getActivityLogs()
       : await local.getActivityLogs();
     return result;
@@ -659,7 +666,7 @@ export async function getActivityLogs(): Promise<any[]> {
 export async function getParameters(): Promise<any[]> {
   //console.log('getParameters called');
   try {
-    const result = USE_REMOTE
+    const result = await shouldUseRemote()
       ? await remote.getParameters()
       : await local.getParameters();
     return result;
@@ -674,7 +681,7 @@ export async function getDescriptionsWithTimestamps(
 ): Promise<string> {
   console.log('getDescriptionsWithTimestamps called with:', categories);
   try {
-    const result = USE_REMOTE
+    const result = await shouldUseRemote()
       ? await remote.getDescriptionsWithTimestamps(categories)
       : await local.getDescriptionsWithTimestamps(categories);
     return result;
@@ -707,7 +714,7 @@ export async function createDocument(data: any): Promise<string> {
 export async function readDocuments(): Promise<any[]> {
   //console.log('readDocuments called');
   try {
-    const result = USE_REMOTE
+    const result = await shouldUseRemote()
       ? await remote.readDocuments()
       : await local.readDocuments();
     return result;
@@ -758,7 +765,7 @@ export async function deleteDocument(docId: string): Promise<void> {
 export async function getDistinctCategories(): Promise<string[]> {
   //  console.log('getDistinctCategories called');
   try {
-    const result = USE_REMOTE
+    const result = await shouldUseRemote()
       ? await remote.getDistinctCategories()
       : await local.getDistinctCategories();
     return result;
@@ -792,7 +799,7 @@ export async function queryAllFieldsByCategories(
 ): Promise<string[]> {
   console.log('queryAllFieldsByCategories called with:', categories);
   try {
-    const result = USE_REMOTE
+    const result = await shouldUseRemote()
       ? await remote.queryAllFieldsByCategories(categories)
       : await local.queryAllFieldsByCategories(categories);
     return result;
@@ -846,7 +853,7 @@ export async function synchronizeDiscussions(
 
 // Delete ActivityLog (router)
 export async function deleteActivityLog(activityLogId: string): Promise<void> {
-  if (USE_REMOTE) {
+  if (await shouldUseRemote()) {
     await remote.deleteActivityLog(activityLogId);
   } else {
     await local.deleteActivityLog(activityLogId);
@@ -865,7 +872,7 @@ export async function deleteActivityLog(activityLogId: string): Promise<void> {
 export async function createActivityLog(
   activityLog: Omit<ActivityLog, 'id'>
 ): Promise<string> {
-  if (USE_REMOTE) {
+  if (await shouldUseRemote()) {
     return await remote.createActivityLog(activityLog);
   } else {
     return await local.createActivityLog(activityLog);
@@ -882,7 +889,7 @@ export async function updateActivityLogCategory(
     category
   );
   try {
-    if (USE_REMOTE) {
+    if (await shouldUseRemote()) {
       await remote.updateActivityLogCategory(activityLogId, category);
     } else {
       await local.updateActivityLogCategory(activityLogId, category);
@@ -909,7 +916,7 @@ export async function createRuleCandidate(data: {
 }): Promise<void> {
   // console.log('createRuleCandidate called with:', data);
   try {
-    if (USE_REMOTE) {
+    if (await shouldUseRemote()) {
       await remote.createRuleCandidate(data);
     } else {
       await local.createRuleCandidate(data);

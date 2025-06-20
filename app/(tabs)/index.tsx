@@ -11,10 +11,10 @@ import {
   Alert,
   Platform,
 } from 'react-native';
-import { auth, db } from '../../src/firebaseConfig';
-import { signOut, onAuthStateChanged } from 'firebase/auth';
 import { getModelAPIkey } from '../../src/services/apiUtils';
 import { useRouter } from 'expo-router';
+import { useAuth } from '../context/AuthContext';
+import { auth } from '../../src/firebaseConfig';
 import {
   disperseQuestion,
   addQuestionDiscussion,
@@ -26,6 +26,11 @@ import {
   synchronizeActivityLog,
   markDiscussionAsCleared,
   processPendingTells,
+  findDuplicateActivityLog,
+  createActivityLog,
+  deleteActivityLog,
+  getActivityLogs,
+  getDiscussions,
 } from '../../src/services/dbServices';
 import {
   printAllRealmDataToTerminal,
@@ -35,16 +40,7 @@ import {
   debugPrintAllDiscussions,
 } from '../../src/services/dbServicesLocal';
 import { transformInput } from '../../src/services/phraseProcessor';
-import {
-  collection,
-  query,
-  where,
-  getDocs,
-  getDoc,
-  doc,
-  setDoc,
-  deleteDoc,
-} from 'firebase/firestore';
+  // Firestore imports removed for offline-first operation
 import Header from '../../src/components/Header';
 import InputField from '../../src/components/InputField';
 import ActionButtons from '../../src/components/ActionButtons';
@@ -128,10 +124,12 @@ export default function AskJanet() {
   >([]);
   const [discussion, setDiscussion] = useState<Discussion | null>(null);
   const router = useRouter();
+  const { isLogged, loading: authLoading, setIsLogged } = useAuth(); // Use local auth context
   const [responses, setResponses] = useState<
     { responseType: string; text: string }[]
   >([]);
   const [userEmail, setUserEmail] = useState<string | null>(null);
+  const [userUID, setUserUID] = useState<string | null>(null);
   const [menuVisible, setMenuVisible] = useState(false);
   const [loadingAuth, setLoadingAuth] = useState(true);
   const [discussionCounts, setDiscussionCounts] = useState<
@@ -164,50 +162,58 @@ export default function AskJanet() {
   const MAX_FETCH_ATTEMPTS = 5;
   const { lastSync } = useSync();
 
+  // Initialize user with Firebase auth (if available) or local auth system
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      if (user) {
-        setUserEmail(user.email);
-        console.log('User:', user.email, 'UID:', user.uid);
-        setUID(user.uid);
-        setTimeout(async () => {
-          try {
-            // await synchronizeDiscussions('1.1.0');
-            // await synchronizeActivityLog('1.1.0');
-            await initializeUser();
-            await loadInitialData();
-            // await processPendingTells();
-          } catch (error) {
-            console.error('Init err:', error);
-          }
-        }, 500);
-      } else {
-        console.log('No user, to login');
-        setTimeout(() => router.replace('/login'), 500);
+    let isMounted = true; // Flag to prevent navigation after component unmount
+    
+    async function initApp() {
+      if (authLoading) {
+        // Wait for auth context to load
+        return;
       }
-      setLoadingAuth(false);
-    });
-
-    if (auth.currentUser) {
-      console.log('Fallback: Detected signed-in user on startup');
-      setUserEmail(auth.currentUser.email);
-      setUID(auth.currentUser.uid);
-      setTimeout(async () => {
+      
+      if (!isMounted) return; // Prevent navigation if component unmounted
+      
+      if (isLogged) {
+        // Check if there's a Firebase user first
+        const firebaseUser = auth.currentUser;
+        
+        if (firebaseUser) {
+          // Use Firebase user information
+          console.log('User logged in with Firebase auth:', firebaseUser.email);
+          setUserEmail(firebaseUser.email);
+          setUserUID(firebaseUser.uid);
+        } else {
+          // Fall back to local auth
+          console.log('User logged in with local auth');
+          setUserEmail('local@user.app'); // Default email for local auth
+          setUserUID('local-user'); // Default UID for local auth
+        }
+        
         try {
-          // await synchronizeDiscussions('1.1.0');
-          // await synchronizeActivityLog('1.1.0');
           await initializeUser();
           await loadInitialData();
-          // await processPendingTells();
         } catch (error) {
-          console.error('Fallback init err:', error);
+          console.error('Init err:', error);
         }
-        setLoadingAuth(false);
-      }, 500);
+      } else {
+        console.log('No user logged in, redirecting to login');
+        // Add a small delay to prevent rapid navigation loops
+        setTimeout(() => {
+          if (isMounted && !isLogged) {
+            router.replace('/login');
+          }
+        }, 100);
+      }
+      setLoadingAuth(false);
     }
-
-    return () => unsubscribe();
-  }, [router]);
+    
+    initApp();
+    
+    return () => {
+      isMounted = false; // Cleanup
+    };
+  }, [isLogged, authLoading, router]);
 
   useEffect(() => {
     if (dialogVisible) {
@@ -250,10 +256,6 @@ export default function AskJanet() {
   }, [lastSync, loadingAuth]);
 
   async function loadInitialData() {
-    if (!auth.currentUser?.uid) {
-      console.error('No UID.');
-      return;
-    }
     try {
       const initialDiscussion = await fetchInitialDiscussion();
       if (initialDiscussion) {
@@ -268,33 +270,10 @@ export default function AskJanet() {
         });
       }
 
-      const uid = auth.currentUser.uid;
-      const q = query(collection(db, `Users/${uid}/DiscussionCounts`));
-      const querySnapshot = await getDocs(q);
-      const countsPromises = querySnapshot.docs.map(async (docSnapshot) => {
-        const activityLogRef = doc(
-          db,
-          `Users/${uid}/ActivityLog`,
-          docSnapshot.data().activityLogId as string
-        );
-        const activityLogSnap = await getDoc(activityLogRef);
-        if (activityLogSnap.exists()) {
-          const activityLogData = activityLogSnap.data() as ActivityLog;
-          return {
-            discussionID: docSnapshot.id,
-            activityLogId: docSnapshot.data().activityLogId as string,
-            count: docSnapshot.data().count as number,
-            description: activityLogData.description || 'No description',
-          };
-        }
-        return null;
-      });
-
-      const counts = (await Promise.all(countsPromises))
-        .filter((count): count is NonNullable<typeof count> => count !== null)
-        .sort((a, b) => b.count - a.count);
-      setDiscussionCounts(counts);
-      console.log('Counts:', counts);
+      // Use local Realm data instead of Firestore
+      console.log('Loading discussion counts from local storage...');
+      // TODO: Implement local discussion counts if needed
+      setDiscussionCounts([]);
     } catch (error) {
       console.error('Data err:', error);
     }
@@ -306,12 +285,18 @@ export default function AskJanet() {
 
   const handleSignOut = async () => {
     try {
-      await signOut(auth);
-      console.log('Signed out');
+      console.log('Signing out from local auth');
       setMenuVisible(false);
+      // Clear local state
+      setUserEmail(null);
+      setUserUID(null);
+      setDiscussion(null);
+      setDiscussionCounts([]);
+      // Clear auth state
+      await setIsLogged(false);
       router.replace('/login');
-    } catch (error: any) {
-      console.error('Sign-out err:', error.message);
+    } catch (error) {
+      console.error('Sign out err:', error);
     }
   };
 
@@ -325,12 +310,8 @@ export default function AskJanet() {
     new Promise((resolve) => setTimeout(resolve, ms));
 
   async function fetchDiscussions(maxAttempts: number = MAX_FETCH_ATTEMPTS) {
-    const uid = auth.currentUser?.uid;
-    if (!uid) {
-      console.error('No user ID.');
-      return;
-    }
-
+    console.log('Fetching discussions from local storage...');
+    
     if (isFetching || fetchAttempts >= maxAttempts) {
       console.warn(
         isFetching
@@ -344,118 +325,42 @@ export default function AskJanet() {
     }
 
     setIsFetching(true);
-    console.log('Fetching discussion...');
     try {
       setFetchAttempts((prev) => prev + 1);
+      
+      // Use local Realm database instead of Firestore
       const { snapshot, hasMore } = await getNextOpenDiscussion();
-      if (snapshot && !snapshot.empty) {
-        console.log('Docs:', snapshot.docs.length);
-        const docSnapshot = snapshot.docs[0];
+      if (snapshot && snapshot.length > 0) {
+        console.log('Found discussions:', snapshot.length);
+        const discussionData = snapshot[0]; // Get first discussion from Realm results
         const discussionTyped: Discussion = {
-          id: docSnapshot.id,
-          discussionId: docSnapshot.data().id || docSnapshot.id,
-          description: docSnapshot.data().description || 'No description',
-          timestamp: docSnapshot.data().timestamp?.toDate() || new Date(),
-          typeSay: docSnapshot.data().typeSay || 'ask',
-          cleared: docSnapshot.data().cleared || false,
+          id: discussionData.id,
+          discussionId: discussionData.discussionId || discussionData.id,
+          description: discussionData.description || 'No description',
+          timestamp: discussionData.timestamp || new Date(),
+          typeSay: discussionData.typeSay || 'ask',
+          cleared: discussionData.cleared || false,
         };
-        console.log('Process:', discussionTyped.description);
+        console.log('Processing discussion:', discussionTyped.description);
 
-        // Double-check cleared status from Firestore
-        const discussionRef = doc(
-          db,
-          `Users/${uid}/Discussion`,
-          discussionTyped.id
-        );
-        const discussionSnap = await getDoc(discussionRef);
-        if (!discussionSnap.exists() || discussionSnap.data().cleared) {
-          console.log(
-            'Discussion already cleared or deleted:',
-            discussionTyped.id
-          );
-          if (hasMore) {
-            await delay(500);
-            await fetchDiscussions(maxAttempts);
-          } else {
-            setFetchAttempts(0);
-            setProcessedDiscussions([]);
-          }
-          return;
-        }
-
-        // Skip if not an "ask", already processed, modal is open, or too recent
-        if (
-          discussionTyped.typeSay !== 'ask' ||
-          processedDiscussions.includes(discussionTyped.id) ||
-          dialogVisible ||
-          (discussionTyped.timestamp &&
-            new Date().getTime() - discussionTyped.timestamp.getTime() < 1000)
-        ) {
-          console.log(
-            'Skip:',
-            discussionTyped.id,
-            'Type:',
-            discussionTyped.typeSay,
-            'Processed:',
-            processedDiscussions.includes(discussionTyped.id),
-            'Modal Open:',
-            dialogVisible,
-            'Recent:',
-            discussionTyped.timestamp &&
-              new Date().getTime() - discussionTyped.timestamp.getTime() < 1000
-          );
-          if (hasMore) {
-            await delay(500);
-            await fetchDiscussions(maxAttempts);
-          } else {
-            setFetchAttempts(0);
-            setProcessedDiscussions([]);
-          }
-          return;
-        }
-
-        setProcessedDiscussions((prev) => [...prev, discussionTyped.id]);
-
-        console.log('Dialog:', discussionTyped.description);
-        try {
-          const categories = await getDistinctCategories();
-          console.log('Fetched categories:', categories);
-          setDistinctCategories(
-            categories.length > 0
-              ? categories
-              : ['diet', 'exercise', 'sleep', 'mood']
-          );
-          setDialogQuestion(discussionTyped.description || 'No description');
-          setCurrentDiscussion(discussionTyped);
-          setSelectedCategories([]);
-          setFilePath('');
-          setSelectedFile(null);
-          setDialogVisible(true);
-          setFetchAttempts(0);
-        } catch (error) {
-          console.error('Dialog err:', error.message, error.code);
-          await markDiscussionAsCleared(discussionTyped.id);
-          setDialogQuestion('Error');
-          setDialogVisible(false);
-          setCurrentDiscussion(null);
-          if (hasMore) {
-            await delay(500);
-            await fetchDiscussions(maxAttempts);
-          } else {
-            setFetchAttempts(0);
-            setProcessedDiscussions([]);
-          }
-        }
-      } else {
-        console.log('No unprocessed ask discussions.');
+        setCurrentDiscussion(discussionTyped);
         setFetchAttempts(0);
-        setProcessedDiscussions([]);
+        setIsFetching(false);
+        return;
+      }
+      
+      if (hasMore) {
+        console.log('More discussions available, trying again...');
+        await delay(2000);
+        await fetchDiscussions(maxAttempts);
+      } else {
+        console.log('No more discussions available');
+        setFetchAttempts(0);
+        setIsFetching(false);
       }
     } catch (error) {
-      console.error('Fetch err:', error.message, error.code);
+      console.error('Error fetching discussions:', error);
       setFetchAttempts(0);
-      setProcessedDiscussions([]);
-    } finally {
       setIsFetching(false);
     }
   }
@@ -466,19 +371,9 @@ export default function AskJanet() {
     description: string
   ) => {
     try {
-      const uid = auth.currentUser?.uid;
-      if (!uid) {
-        console.error('No UID.');
-        return false;
-      }
-      const q = query(
-        collection(db, `Users/${uid}/ActivityLog`),
-        where('discussionId', '==', discussionId),
-        where('category', '==', category),
-        where('description', '==', description)
-      );
-      const snapshot = await getDocs(q);
-      return snapshot.empty;
+      // Use dbServices broker instead of direct Firebase calls
+      const isDuplicate = await findDuplicateActivityLog(discussionId, category, description, userUID || 'local-user');
+      return !isDuplicate; // Return true if unique (no duplicate found)
     } catch (error) {
       console.error('Unique err:', error);
       return false;
@@ -486,9 +381,9 @@ export default function AskJanet() {
   };
 
   const handleAddActivityLog = async () => {
-    if (!currentDiscussion || !auth.currentUser?.uid) {
-      console.error('No discussion/user.');
-      Alert.alert('Error', 'No discussion/user.');
+    if (!currentDiscussion) {
+      console.error('No discussion.');
+      Alert.alert('Error', 'No discussion.');
       setDialogVisible(false);
       setCurrentDiscussion(null);
       setProcessedDiscussions([]);
@@ -514,22 +409,25 @@ export default function AskJanet() {
         return;
       }
 
-      const uid = auth.currentUser.uid;
-      const activityLogDoc = doc(collection(db, `Users/${uid}/ActivityLog`));
-      await setDoc(activityLogDoc, {
-        id: activityLogDoc.id,
+      // Use dbServices broker to add activity log (handles local/remote based on user type)
+      const activityLogEntry = {
         discussionId,
         description,
         category,
         timestamp: new Date(),
         cleared: false,
-        uid,
+        uid: userUID || 'local-user',
+        lockedCategory: false,
+        lockedDescription: false,
         attachedFile:
           selectedFile?.assets && selectedFile?.assets[0]?.uri
             ? selectedFile?.assets[0]?.uri
             : null,
-      });
-      console.log('Added:', activityLogDoc.id);
+      };
+      
+      // Use dbServices function to add the activity log
+      const newActivityLogId = await createActivityLog(activityLogEntry);
+      console.log('Added activity log via dbServices:', newActivityLogId);
       Alert.alert('Success', 'Added.');
       await markDiscussionAsCleared(currentDiscussion.id);
       setDialogVisible(false);
@@ -557,25 +455,19 @@ export default function AskJanet() {
     }
 
     try {
-      const uid = auth.currentUser?.uid;
-      if (!uid) {
-        console.error('No UID.');
-        return;
-      }
-      const q = query(
-        collection(db, `Users/${uid}/ActivityLog`),
-        where('discussionId', '==', currentDiscussion.id)
-      );
-      const snapshot = await getDocs(q);
-      if (!snapshot.empty) {
-        const docRef = doc(db, `Users/${uid}/ActivityLog`, snapshot.docs[0].id);
-        await deleteDoc(docRef);
-        console.log('Deleted:', snapshot.docs[0].id);
+      // Use dbServices to get activity logs and find the one with matching discussionId
+      const activityLogs = await getActivityLogs();
+      const targetLog = activityLogs.find(log => log.discussionId === currentDiscussion.id);
+      
+      if (targetLog) {
+        await deleteActivityLog(targetLog.id);
+        console.log('Deleted activity log:', targetLog.id);
         Alert.alert('Success', 'Deleted.');
       } else {
-        console.log('No entry:', currentDiscussion.id);
+        console.log('No entry found for discussion:', currentDiscussion.id);
         Alert.alert('Info', 'No entry.');
       }
+      
       await markDiscussionAsCleared(currentDiscussion.id);
       setDialogVisible(false);
       setCurrentDiscussion(null);
@@ -795,26 +687,23 @@ export default function AskJanet() {
 
   async function getActivityLogEntries(): Promise<string[]> {
     try {
-      const uid = auth.currentUser?.uid;
-      if (!uid || selectedCategories.length === 0) {
+      if (selectedCategories.length === 0) {
         return [];
       }
-      const q = query(
-        collection(db, `Users/${uid}/ActivityLog`),
-        where('uid', '==', uid),
-        where('category', 'in', selectedCategories)
-      );
-      const snapshot = await getDocs(q);
-      return snapshot.docs
-        .map((doc) => {
-          const data = doc.data() as ActivityLog;
+      
+      // Use dbServices to get activity logs
+      const activityLogs = await getActivityLogs();
+      
+      return activityLogs
+        .filter(log => selectedCategories.includes(log.category))
+        .map((data) => {
           if (
             data.description === dialogQuestion &&
             data.discussionId === currentDiscussion?.id
           ) {
             return null;
           }
-          const timestamp = new Date(data.timestamp.toDate());
+          const timestamp = new Date(data.timestamp);
           const formattedTimestamp = `${
             timestamp.getMonth() + 1
           }/${timestamp.getDate()}/${timestamp.getFullYear()} ${timestamp.getHours()}:${timestamp
@@ -885,26 +774,25 @@ export default function AskJanet() {
       } else if (currentDiscussion.typeSay === 'tell') {
         const category = selectedCategories.join(', ') || 'uncategorized';
         const description = dialogQuestion || 'No question';
-        const uid = auth.currentUser?.uid;
-        if (!uid) {
-          console.error('No UID.');
-          return;
-        }
-        const activityLogDoc = doc(collection(db, `Users/${uid}/ActivityLog`));
-        await setDoc(activityLogDoc, {
-          id: activityLogDoc.id,
+        
+        // Use dbServices to create activity log for 'tell' type
+        const activityLogEntry = {
           discussionId: currentDiscussion.id,
           description,
           category,
           timestamp: new Date(),
           cleared: false,
-          uid,
+          uid: userUID || 'local-user',
+          lockedCategory: false,
+          lockedDescription: false,
           attachedFile:
             selectedFile?.assets && selectedFile?.assets[0]?.uri
               ? selectedFile?.assets[0]?.uri
               : null,
-        });
-        console.log('ActivityLog added for tell:', activityLogDoc.id);
+        };
+        
+        const newActivityLogId = await createActivityLog(activityLogEntry);
+        console.log('ActivityLog added for tell via dbServices:', newActivityLogId);
       }
 
       await markDiscussionAsCleared(currentDiscussion.id);
@@ -946,20 +834,17 @@ export default function AskJanet() {
   const findExistingDiscussion = async (description: string, uid: string) => {
     try {
       console.log('Searching for existing discussion:', description);
-      const q = query(
-        collection(db, `Users/${uid}/Discussion`),
-        where('description', '==', description),
-        where('typeSay', '==', 'ask')
+      // Use dbServices to get discussions and filter locally
+      const discussions = await getDiscussions();
+      const existingDiscussion = discussions.find(
+        discussion => discussion.description === description && discussion.typeSay === 'ask'
       );
-      const snapshot = await getDocs(q);
-      if (!snapshot.empty) {
-        const doc = snapshot.docs[0];
-        console.log('Found existing discussion ID:', doc.id);
-        return {
-          id: doc.id,
-          ...doc.data(),
-        } as Discussion;
+      
+      if (existingDiscussion) {
+        console.log('Found existing discussion ID:', existingDiscussion.id);
+        return existingDiscussion as Discussion;
       }
+      
       console.log('No existing discussion found for:', description);
       return null;
     } catch (error) {
@@ -970,26 +855,14 @@ export default function AskJanet() {
 
   const handleResubmitQuestion = async (question: string) => {
     console.log('Resubmitting question:', question);
-    const uid = auth.currentUser?.uid;
-    if (!uid) {
-      console.error('No user ID for resubmission.');
-      return;
-    }
 
-    const existingDiscussion = await findExistingDiscussion(question, uid);
+    const existingDiscussion = await findExistingDiscussion(question, userUID || 'local-user');
     if (existingDiscussion) {
       console.log('Reusing existing discussion:', existingDiscussion.id);
       try {
-        await setDoc(
-          doc(db, `Users/${uid}/Discussion`, existingDiscussion.id),
-          {
-            ...existingDiscussion,
-            timestamp: new Date(),
-            cleared: false,
-          },
-          { merge: true }
-        );
-        console.log('Updated existing discussion:', existingDiscussion.id);
+        // Use dbServices to update the discussion - we can use addOrUpdateDiscussion with the question
+        await addOrUpdateDiscussion(question);
+        console.log('Updated existing discussion via dbServices:', existingDiscussion.id);
         setInput(question);
         setIsQuestion(true);
         setDialogQuestion(question);
@@ -1040,7 +913,7 @@ export default function AskJanet() {
           timestamp: new Date(),
           typeSay: 'ask',
           cleared: false,
-          uid: auth.currentUser?.uid,
+          uid: userUID || 'local-user',
         };
         setProcessedDiscussions((prev) => [...prev, discussionId!]);
         setDialogQuestion(transformedInput);
@@ -1093,7 +966,7 @@ export default function AskJanet() {
     })();
   }, []);
 
-  if (loadingAuth) return <ActivityIndicator size="large" color="#0000ff" />;
+  if (loadingAuth || authLoading) return <ActivityIndicator size="large" color="#0000ff" />;
 
   return (
     <View style={styles.container}>

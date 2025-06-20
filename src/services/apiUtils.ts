@@ -6,12 +6,16 @@ export interface ModelAPIkey {
   endPointURL: string;
 }
 
-export const getModelAPIkey = async () => {
+export const getModelAPIkey = async (): Promise<ModelAPIkey | null> => {
   try {
     // Get API key from local storage (offline-first approach)
     const localApiKey = await AsyncStorage.getItem('userApiKey');
     if (localApiKey) {
-      return { apiKey: localApiKey };
+      return { 
+        apiKey: localApiKey,
+        aiModel: 'gpt-3.5-turbo', // Default model
+        endPointURL: 'https://api.openai.com/v1' // Default OpenAI endpoint
+      };
     }
     
     return null;
