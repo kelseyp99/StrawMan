@@ -248,7 +248,7 @@ const RowItem = memo(
 const MainComponent: React.FC = () => {
   // Add sync context to detect when sync completes
   const { lastSync } = useSync();
-  
+
   const [tables, setTables] = useState<SwipeableTablePropsType[]>([]);
   const [sortBy, setSortBy] = useState<{
     column: string;
@@ -290,7 +290,7 @@ const MainComponent: React.FC = () => {
   const [discussionCounts, setDiscussionCounts] = useState<
     (DiscussionCount & { description: string })[]
   >([]);
-  const [uid, setUid] = useState<string | null>(null);  // Add state for legacy import loading
+  const [uid, setUid] = useState<string | null>(null); // Add state for legacy import loading
   const [importingLegacy, setImportingLegacy] = useState(false);
   // Debug: state for debug button loading
   const [debugLoading, setDebugLoading] = useState(false);
@@ -310,9 +310,10 @@ const MainComponent: React.FC = () => {
   // Fetch data using dbServices router
   const fetchData = useCallback(async () => {
     if (!uid) return;
-    try {      setLoading(true);
+    try {
+      setLoading(true);
       // console.log('[PERF] Starting data fetch...');
-      
+
       // Fetch data with minimal processing
       const activityLogRaw = await getActivityLogs();
       // console.log('[PERF] Fetched', activityLogRaw.length, 'activity logs');      // Process all activity logs and add proper date sorting
@@ -322,40 +323,58 @@ const MainComponent: React.FC = () => {
           id: String(log.id || ''),
           category: String(log.category || ''),
           description: String(log.description || ''),
-          timestamp: log.timestamp instanceof Date 
-            ? log.timestamp.toLocaleDateString() + ' ' + log.timestamp.toLocaleTimeString()
-            : String(log.timestamp || 'No date'),
-          rawTimestamp: log.timestamp instanceof Date ? log.timestamp : new Date(log.timestamp || 0),
-          cleared: Boolean(log.cleared),
+          timestamp:
+            log.timestamp instanceof Date
+              ? log.timestamp.toLocaleDateString() +
+                ' ' +
+                log.timestamp.toLocaleTimeString()
+              : String(log.timestamp || 'No date'),
+          rawTimestamp:
+            log.timestamp instanceof Date
+              ? log.timestamp
+              : new Date(log.timestamp || 0),
+          cleared: log.cleared ? '✔️ Yes' : '❌ No',
         }))
-        .sort((a: any, b: any) => b.rawTimestamp.getTime() - a.rawTimestamp.getTime());
-        
-        const discussionRaw = await getDiscussions();
-        console.log('[PERF] Fetched', discussionRaw.length, 'discussions from local Realm');
-          // Process discussions and add proper date sorting
-        const discussionData = discussionRaw
-          .map((discussion: any) => ({
-            ...discussion,
-            id: String(discussion.id || ''),
-            discussionId: String(discussion.discussionId || ''),
-            description: String(discussion.description || ''),
-            typeSay: String(discussion.typeSay || 'tell'),
-            timestamp: discussion.timestamp || 'No date',
-            rawTimestamp: discussion.timestamp instanceof Date 
-              ? discussion.timestamp 
+        .sort(
+          (a: any, b: any) =>
+            b.rawTimestamp.getTime() - a.rawTimestamp.getTime()
+        );
+
+      const discussionRaw = await getDiscussions();
+      console.log(
+        '[PERF] Fetched',
+        discussionRaw.length,
+        'discussions from local Realm'
+      );
+      // Process discussions and add proper date sorting
+      const discussionData = discussionRaw
+        .map((discussion: any) => ({
+          ...discussion,
+          id: String(discussion.id || ''),
+          discussionId: String(discussion.discussionId || ''),
+          description: String(discussion.description || ''),
+          typeSay: String(discussion.typeSay || 'tell'),
+          timestamp: discussion.timestamp || 'No date',
+          rawTimestamp:
+            discussion.timestamp instanceof Date
+              ? discussion.timestamp
               : new Date(discussion.timestamp || 0),
-            cleared: Boolean(discussion.cleared),
-          }))
-          .sort((a: any, b: any) => b.rawTimestamp.getTime() - a.rawTimestamp.getTime());
+          cleared: discussion.cleared ? '✔️ Yes' : '❌ No',
+        }))
+        .sort(
+          (a: any, b: any) =>
+            b.rawTimestamp.getTime() - a.rawTimestamp.getTime()
+        );
       // console.log('[PERF] Data processing complete');
-      
+
       // Skip categories for now to improve performance
       // const categories = await getDistinctCategories();
       // setAllCategories((prev) => [...new Set([...prev, ...categories])]);
-      
+
       setTables([
         {
-          name: 'Activity Log Data',          columns: [
+          name: 'Activity Log Data',
+          columns: [
             { Header: 'ID', accessor: 'id', hidden: true },
             { Header: 'rawTimestamp', accessor: 'rawTimestamp', hidden: true },
             { Header: 'Date', accessor: 'timestamp', flex: 1 },
@@ -369,8 +388,7 @@ const MainComponent: React.FC = () => {
               Header: 'Desc',
               accessor: 'description',
               style: styles.leftAlignCell,
-              flex: 2,
-            },
+              flex: 2,            },
             {
               Header: 'Cleared',
               accessor: 'cleared',
@@ -381,7 +399,8 @@ const MainComponent: React.FC = () => {
           data: activityLogData,
         },
         {
-          name: 'Discussion Data',          columns: [
+          name: 'Discussion Data',
+          columns: [
             { Header: 'ID', accessor: 'id', hidden: true },
             { Header: 'rawTimestamp', accessor: 'rawTimestamp', hidden: true },
             { Header: 'Date', accessor: 'timestamp', flex: 1 },
@@ -406,7 +425,8 @@ const MainComponent: React.FC = () => {
           ],
           data: discussionData,
         },
-      ]);      setInitialized(true);
+      ]);
+      setInitialized(true);
       // console.log('[PERF] Tables initialized successfully');
     } catch (error) {
       console.error('Error fetching data:', error);
@@ -421,7 +441,7 @@ const MainComponent: React.FC = () => {
       fetchData();
     }
   }, [uid, fetchData]);
-  
+
   // Refresh data when sync completes
   useEffect(() => {
     if (uid && lastSync > 0) {
@@ -429,7 +449,8 @@ const MainComponent: React.FC = () => {
       fetchData();
     }
   }, [lastSync, uid, fetchData]);
-  useEffect(() => {    // Temporarily disabled to prevent lockup
+  useEffect(() => {
+    // Temporarily disabled to prevent lockup
     // console.log('[DEBUG] discussionSnapshot useEffect disabled to prevent lockup');
   }, [currentTableIndex, initialized, discussionSnapshot]);
 
@@ -465,7 +486,8 @@ const MainComponent: React.FC = () => {
           { text: 'Cancel', style: 'cancel' },
           {
             text: 'Yes',
-            onPress: async () => {              try {
+            onPress: async () => {
+              try {
                 // console.log('Starting Activity Log update...');
                 const distinctCategories = await getDistinctCategories();
                 if (!uid) {
@@ -488,9 +510,11 @@ const MainComponent: React.FC = () => {
                       docSnapshot.data().timestamp?.toDate() || new Date(),
                     typeSay: docSnapshot.data().typeSay || 'tell',
                     cleared: docSnapshot.data().cleared || false,
-                  };                  if (!discussionTyped.cleared) {
+                  };
+                  if (!discussionTyped.cleared) {
                     // console.log('Processing Discussion:', discussionTyped.id);
-                    const activityAnalysis = await processPhrase(                      discussionTyped.description,
+                    const activityAnalysis = await processPhrase(
+                      discussionTyped.description,
                       distinctCategories,
                       discussionCounts,
                       setDiscussionCounts,
@@ -511,7 +535,8 @@ const MainComponent: React.FC = () => {
                       uid
                     );
                     let newActivityLogId: string;
-                    if (existingLog) {                      // Use router to update existing ActivityLog entry (calls all pending updates)
+                    if (existingLog) {
+                      // Use router to update existing ActivityLog entry (calls all pending updates)
                       await addOrUpdateActivityLog(); // No parameters allowed
                       newActivityLogId = String(existingLog.id);
                       // console.log(
@@ -531,7 +556,8 @@ const MainComponent: React.FC = () => {
                         uid: uid,
                         lockedCategory: false,
                         lockedDescription: false,
-                        synced: false,                      };
+                        synced: false,
+                      };
                       newActivityLogId = await createActivityLog(newLog);
                       // console.log(
                       //   `Created new ActivityLog entry ${newActivityLogId} for discussionId ${discussionTyped.id}`
@@ -539,7 +565,8 @@ const MainComponent: React.FC = () => {
                     }
 
                     // Replace direct Firestore/Realm calls with router function
-                    await markDiscussionAsCleared(discussionTyped.id);                  }
+                    await markDiscussionAsCleared(discussionTyped.id);
+                  }
                 }
                 // console.log('Activity Log update completed successfully.');
                 Alert.alert(
@@ -574,7 +601,7 @@ const MainComponent: React.FC = () => {
     if (!sortBy || tables.length === 0)
       return tables[currentTableIndex]?.data || [];
     const { column, order } = sortBy;
-    
+
     return [...tables[currentTableIndex].data].sort((a, b) => {
       // Use rawTimestamp for date sorting
       if (column === 'timestamp' && a.rawTimestamp && b.rawTimestamp) {
@@ -582,7 +609,7 @@ const MainComponent: React.FC = () => {
         const timeB = b.rawTimestamp.getTime();
         return order === 'asc' ? timeA - timeB : timeB - timeA;
       }
-      
+
       // Default sorting for other columns
       const valueA = a[column] || '';
       const valueB = b[column] || '';
@@ -603,13 +630,15 @@ const MainComponent: React.FC = () => {
   const filteredData = useCallback(() => {
     // Simplified filtering for performance
     if (tables.length === 0) return [];
-    
+
     const sorted = sortedData();
-    
+
     // Skip filtering if no filters are set
-    const hasFilters = Object.values(filters).some(value => value && value.trim());
+    const hasFilters = Object.values(filters).some(
+      (value) => value && value.trim()
+    );
     if (!hasFilters) return sorted;
-    
+
     // Simple filtering
     return sorted.filter((row) =>
       Object.entries(filters).every(([column, value]) => {
@@ -733,7 +762,8 @@ const MainComponent: React.FC = () => {
           }
         }
 
-        if (descriptionToProcess && uid) {          const activityAnalysis = await processPhrase(
+        if (descriptionToProcess && uid) {
+          const activityAnalysis = await processPhrase(
             descriptionToProcess,
             allCategories,
             discussionCounts,
@@ -759,7 +789,8 @@ const MainComponent: React.FC = () => {
               );
 
               let newActivityLogId: string;
-              if (existingLog) {                // Use router to update existing ActivityLog entry (calls all pending updates)
+              if (existingLog) {
+                // Use router to update existing ActivityLog entry (calls all pending updates)
                 await addOrUpdateActivityLog(); // No parameters allowed
                 newActivityLogId = String(existingLog.id);
                 // console.log(
@@ -1201,7 +1232,8 @@ const MainComponent: React.FC = () => {
       {/* TEMP DEBUG BUTTONS - REMOVE IN PRODUCTION */}
       <ScrollView
         horizontal={false}
-        showsVerticalScrollIndicator={false}        contentContainerStyle={{
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{
           flexDirection: 'column',
           alignItems: 'center',
           marginVertical: 8,
@@ -1226,7 +1258,7 @@ const MainComponent: React.FC = () => {
             =��� Refresh Tables
           </Text>
         </TouchableOpacity>
-        
+
         {/* Debug: Test Data Fetch */}
         <TouchableOpacity
           style={{
@@ -1239,17 +1271,36 @@ const MainComponent: React.FC = () => {
             console.log('[DEBUG] Testing direct data fetch...');
             try {
               const discussions = await getDiscussions();
-              console.log('[DEBUG] getDiscussions returned:', discussions.length, 'records');
-              console.log('[DEBUG] First 3 discussions:', discussions.slice(0, 3));
-              
+              console.log(
+                '[DEBUG] getDiscussions returned:',
+                discussions.length,
+                'records'
+              );
+              console.log(
+                '[DEBUG] First 3 discussions:',
+                discussions.slice(0, 3)
+              );
+
               const activityLogs = await getActivityLogs();
-              console.log('[DEBUG] getActivityLogs returned:', activityLogs.length, 'records');
-                Alert.alert(
-                'Data Check', 
-                'Found:\n' + discussions.length + ' discussions\n' + activityLogs.length + ' activity logs'
-              );} catch (error: any) {
+              console.log(
+                '[DEBUG] getActivityLogs returned:',
+                activityLogs.length,
+                'records'
+              );
+              Alert.alert(
+                'Data Check',
+                'Found:\n' +
+                  discussions.length +
+                  ' discussions\n' +
+                  activityLogs.length +
+                  ' activity logs'
+              );
+            } catch (error: any) {
               console.error('[DEBUG] Error fetching data:', error);
-              Alert.alert('Error', 'Failed to fetch data: ' + (error?.message || String(error)));
+              Alert.alert(
+                'Error',
+                'Failed to fetch data: ' + (error?.message || String(error))
+              );
             }
           }}
         >
@@ -1257,7 +1308,7 @@ const MainComponent: React.FC = () => {
             =��� Debug: Check Data
           </Text>
         </TouchableOpacity>
-        
+
         <TouchableOpacity
           style={{
             backgroundColor: '#ff4444',

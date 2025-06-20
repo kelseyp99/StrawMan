@@ -9,7 +9,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 async function shouldUseRemote(): Promise<boolean> {
   // Temporarily force local-only mode due to Firebase configuration issues
   return false;
-  
+
   // TODO: Re-enable this once Firebase is properly configured
   // try {
   //   const paid = await isPaidUser();
