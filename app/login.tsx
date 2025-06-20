@@ -320,10 +320,16 @@ export default function Login() {
         <View style={styles.userSection}>
           <Text style={styles.loggedInText}>Logged in as: {userEmail}</Text>
           <View style={styles.actionButtons}>
-            <TouchableOpacity style={styles.continueButton} onPress={handleProceedToApp}>
+            <TouchableOpacity
+              style={styles.continueButton}
+              onPress={handleProceedToApp}
+            >
               <Text style={styles.buttonText}>Continue to App</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.logoutButton} onPress={handleSignOut}>
+            <TouchableOpacity
+              style={styles.logoutButton}
+              onPress={handleSignOut}
+            >
               <Icon name="log-out" size={16} color="#333" />
               <Text style={styles.logoutText}>Sign Out</Text>
             </TouchableOpacity>

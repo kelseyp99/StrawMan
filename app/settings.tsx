@@ -155,7 +155,10 @@ export default function SettingsScreen() {
             value={isPaidCustomer}
             onValueChange={async (value) => {
               setIsPaidCustomer(value);
-              await AsyncStorage.setItem('isPaidUser', value ? 'true' : 'false');
+              await AsyncStorage.setItem(
+                'isPaidUser',
+                value ? 'true' : 'false'
+              );
             }}
           />
         </View>

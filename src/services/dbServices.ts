@@ -7,14 +7,19 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Helper function to check if remote sync should be used
 async function shouldUseRemote(): Promise<boolean> {
-  try {
-    const paid = await isPaidUser();
-    const syncWithCloud = (await AsyncStorage.getItem('syncWithCloud')) === 'true';
-    return paid && syncWithCloud;
-  } catch (e) {
-    console.warn('Could not check remote sync settings:', e);
-    return false;
-  }
+  // Temporarily force local-only mode due to Firebase configuration issues
+  return false;
+  
+  // TODO: Re-enable this once Firebase is properly configured
+  // try {
+  //   const paid = await isPaidUser();
+  //   const syncWithCloud =
+  //     (await AsyncStorage.getItem('syncWithCloud')) === 'true';
+  //   return paid && syncWithCloud;
+  // } catch (e) {
+  //   console.warn('Could not check remote sync settings:', e);
+  //   return false;
+  // }
 }
 
 interface Discussion {
@@ -179,7 +184,7 @@ export async function deleteDiscussion(id: string): Promise<void> {
 export async function fetchInitialDiscussion(): Promise<any | null> {
   console.log('fetchInitialDiscussion called');
   try {
-    const result = await shouldUseRemote()
+    const result = (await shouldUseRemote())
       ? await remote.fetchInitialDiscussion()
       : await local.fetchInitialDiscussion();
     return result;
@@ -196,7 +201,7 @@ export async function getNextOpenDiscussion(lastVisibleId?: string): Promise<{
 }> {
   console.log('getNextOpenDiscussion called with:', lastVisibleId);
   try {
-    const result = await shouldUseRemote()
+    const result = (await shouldUseRemote())
       ? await remote.getNextOpenDiscussion(lastVisibleId)
       : await local.getNextOpenDiscussion(lastVisibleId); // pass string
     return result;
@@ -235,10 +240,7 @@ export async function addQuestionDiscussion(
   try {
     let remoteResult = '';
     if (await shouldUseRemote()) {
-      remoteResult = await remote.addQuestionDiscussion(
-        question,
-        discussionId
-      );
+      remoteResult = await remote.addQuestionDiscussion(question, discussionId);
     }
     await local.addQuestionDiscussion(question, discussionId);
     const uid = (await getUID()) || 'unknown';
@@ -371,7 +373,7 @@ export async function getLastOpenDiscussion(): Promise<{
 }> {
   console.log('getLastOpenDiscussion called');
   try {
-    const result = await shouldUseRemote()
+    const result = (await shouldUseRemote())
       ? await remote.getLastOpenDiscussion()
       : await local.getLastOpenDiscussion();
     return result;
@@ -387,7 +389,7 @@ export async function disperseQuestion(
 ): Promise<string[] | undefined> {
   console.log('disperseQuestion called with:', discussionId, gptResponseId);
   try {
-    const result = await shouldUseRemote()
+    const result = (await shouldUseRemote())
       ? await remote.disperseQuestion(discussionId, gptResponseId)
       : await local.disperseQuestion(discussionId, gptResponseId);
     return result;
@@ -407,7 +409,8 @@ export async function addOrUpdateGPTResponse(
     'addOrUpdateGPTResponse called with:',
     discussionId,
     responseType
-  );  try {
+  );
+  try {
     if (await shouldUseRemote()) {
       await remote.addOrUpdateGPTResponse(
         discussionId,
@@ -439,7 +442,7 @@ export async function addOrUpdateGPTResponse(
 export async function getGPTResponses(discussionId: string): Promise<any[]> {
   console.log('getGPTResponses called with:', discussionId);
   try {
-    const result = await shouldUseRemote()
+    const result = (await shouldUseRemote())
       ? await remote.getGPTResponses(discussionId)
       : await local.getGPTResponses(discussionId);
     return result;
@@ -454,7 +457,7 @@ export async function getParsedGPTResponses(
 ): Promise<string[]> {
   console.log('getParsedGPTResponses called with:', discussionId);
   try {
-    const result = await shouldUseRemote()
+    const result = (await shouldUseRemote())
       ? await remote.getParsedGPTResponses(discussionId)
       : await local.getParsedGPTResponses(discussionId);
     return result;
@@ -467,7 +470,7 @@ export async function getParsedGPTResponses(
 export async function getAIResponse(question: string): Promise<string> {
   console.log('getAIResponse called with:', question);
   try {
-    const result = await shouldUseRemote()
+    const result = (await shouldUseRemote())
       ? await remote.getAIResponse(question)
       : await local.getAIResponse(question);
     return result;
@@ -519,7 +522,7 @@ export async function syncToCloud(
 export async function getNextActiveAlert(): Promise<any | null> {
   console.log('getNextActiveAlert called');
   try {
-    const result = await shouldUseRemote()
+    const result = (await shouldUseRemote())
       ? await remote.getNextActiveAlert()
       : await local.getNextActiveAlert();
     return result;
@@ -581,7 +584,7 @@ export async function getURLofGPT(
 ): Promise<{ url: string; apiKey: string } | null> {
   console.log('getURLofGPT called with:', gpt_name);
   try {
-    const result = await shouldUseRemote()
+    const result = (await shouldUseRemote())
       ? await remote.getURLofGPT(gpt_name)
       : await local.getURLofGPT(gpt_name);
     return result;
@@ -596,7 +599,7 @@ export async function expandFromAbbreviation(
 ): Promise<string> {
   // console.log('expandFromAbbreviation called with:', discussion);
   try {
-    const result = await shouldUseRemote()
+    const result = (await shouldUseRemote())
       ? await remote.expandFromAbbreviation(discussion)
       : await local.expandFromAbbreviation(discussion);
     return result;
@@ -628,7 +631,7 @@ export async function restoreLostData(): Promise<void> {
 export async function getRules(): Promise<any[]> {
   //console.log('getRules called');
   try {
-    const result = await shouldUseRemote()
+    const result = (await shouldUseRemote())
       ? await remote.getRules()
       : await local.getRules();
     return result;
@@ -665,7 +668,7 @@ export async function updateGPTSpecialties(gptSpecialty: {
 export async function getActivityLogs(): Promise<any[]> {
   //console.log('getActivityLogs called');
   try {
-    const result = await shouldUseRemote()
+    const result = (await shouldUseRemote())
       ? await remote.getActivityLogs()
       : await local.getActivityLogs();
     return result;
@@ -678,7 +681,7 @@ export async function getActivityLogs(): Promise<any[]> {
 export async function getParameters(): Promise<any[]> {
   //console.log('getParameters called');
   try {
-    const result = await shouldUseRemote()
+    const result = (await shouldUseRemote())
       ? await remote.getParameters()
       : await local.getParameters();
     return result;
@@ -693,7 +696,7 @@ export async function getDescriptionsWithTimestamps(
 ): Promise<string> {
   console.log('getDescriptionsWithTimestamps called with:', categories);
   try {
-    const result = await shouldUseRemote()
+    const result = (await shouldUseRemote())
       ? await remote.getDescriptionsWithTimestamps(categories)
       : await local.getDescriptionsWithTimestamps(categories);
     return result;
@@ -726,7 +729,7 @@ export async function createDocument(data: any): Promise<string> {
 export async function readDocuments(): Promise<any[]> {
   //console.log('readDocuments called');
   try {
-    const result = await shouldUseRemote()
+    const result = (await shouldUseRemote())
       ? await remote.readDocuments()
       : await local.readDocuments();
     return result;
@@ -777,7 +780,7 @@ export async function deleteDocument(docId: string): Promise<void> {
 export async function getDistinctCategories(): Promise<string[]> {
   //  console.log('getDistinctCategories called');
   try {
-    const result = await shouldUseRemote()
+    const result = (await shouldUseRemote())
       ? await remote.getDistinctCategories()
       : await local.getDistinctCategories();
     return result;
@@ -811,7 +814,7 @@ export async function queryAllFieldsByCategories(
 ): Promise<string[]> {
   console.log('queryAllFieldsByCategories called with:', categories);
   try {
-    const result = await shouldUseRemote()
+    const result = (await shouldUseRemote())
       ? await remote.queryAllFieldsByCategories(categories)
       : await local.queryAllFieldsByCategories(categories);
     return result;
