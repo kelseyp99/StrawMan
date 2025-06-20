@@ -158,7 +158,9 @@ export async function getDiscussions(
 export async function deleteDiscussion(id: string): Promise<void> {
   console.log('deleteDiscussion called with:', id);
   try {
-    await remote.deleteDiscussion(id);
+    if (await shouldUseRemote()) {
+      await remote.deleteDiscussion(id);
+    }
     await local.deleteDiscussion(id);
     const uid = (await getUID()) || 'unknown';
     await logSyncEntry({
@@ -231,10 +233,13 @@ export async function addQuestionDiscussion(
 ): Promise<string> {
   console.log('addQuestionDiscussion called with:', question, discussionId);
   try {
-    const remoteResult = await remote.addQuestionDiscussion(
-      question,
-      discussionId
-    );
+    let remoteResult = '';
+    if (await shouldUseRemote()) {
+      remoteResult = await remote.addQuestionDiscussion(
+        question,
+        discussionId
+      );
+    }
     await local.addQuestionDiscussion(question, discussionId);
     const uid = (await getUID()) || 'unknown';
     await logSyncEntry({
@@ -402,14 +407,15 @@ export async function addOrUpdateGPTResponse(
     'addOrUpdateGPTResponse called with:',
     discussionId,
     responseType
-  );
-  try {
-    await remote.addOrUpdateGPTResponse(
-      discussionId,
-      response,
-      responseType,
-      cleared
-    );
+  );  try {
+    if (await shouldUseRemote()) {
+      await remote.addOrUpdateGPTResponse(
+        discussionId,
+        response,
+        responseType,
+        cleared
+      );
+    }
     await local.addOrUpdateGPTResponse(
       discussionId,
       response,
@@ -481,7 +487,9 @@ export async function syncToCloud(
     console.log('syncToCloud (single-record) called with:', tableName, method);
     try {
       // Router-based upload to Firestore for a single record
-      await remote.syncRealmRowsToFirestore(tableName, [payload]);
+      if (await shouldUseRemote()) {
+        await remote.syncRealmRowsToFirestore(tableName, [payload]);
+      }
       const uid = (await getUID()) || 'unknown';
       await logSyncEntry({
         id: Date.now().toString(),
@@ -524,7 +532,9 @@ export async function getNextActiveAlert(): Promise<any | null> {
 export async function addOrUpdateAlert(alertData: any): Promise<void> {
   //console.log('addOrUpdateAlert called with:', alertData);
   try {
-    await remote.addOrUpdateAlert(alertData);
+    if (await shouldUseRemote()) {
+      await remote.addOrUpdateAlert(alertData);
+    }
     await local.addOrUpdateAlert(alertData);
     const uid = (await getUID()) || 'unknown';
     await logSyncEntry({
@@ -546,7 +556,9 @@ export async function deactivateAlertByKey(
   console.log('deactivateAlertByKey called with:', key);
   const keyStr = String(key);
   try {
-    await remote.deactivateAlertByKey(keyStr);
+    if (await shouldUseRemote()) {
+      await remote.deactivateAlertByKey(keyStr);
+    }
     // For local, if it still expects number, convert to number if possible
     const keyNum = typeof key === 'number' ? key : parseInt(keyStr, 10);
     await local.deactivateAlertByKey(keyNum);
