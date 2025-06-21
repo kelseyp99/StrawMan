@@ -32,6 +32,9 @@ import {
   getDistinctCategories,
   addOrUpdateGPTResponse,
   addOrUpdateActivityLog,
+  getCategories,
+  addOrUpdateCategory,
+  deleteCategory,
 } from '../services/dbServices';
 import { extractAndImportLegacyFirestoreData } from '../services/dbServicesRemote';
 import { findDuplicateActivityLog } from '../services/phraseProcessor';
@@ -358,8 +361,34 @@ const MainComponent: React.FC = () => {
           rawTimestamp:
             discussion.timestamp instanceof Date
               ? discussion.timestamp
-              : new Date(discussion.timestamp || 0),
-          cleared: discussion.cleared ? '✔️ Yes' : '❌ No',
+              : new Date(discussion.timestamp || 0),          cleared: discussion.cleared ? '✔️ Yes' : '❌ No',
+        }))
+        .sort(
+          (a: any, b: any) =>
+            b.rawTimestamp.getTime() - a.rawTimestamp.getTime()
+        );
+
+      // Fetch categories
+      const categoriesRaw = await getCategories();
+      console.log(
+        '[PERF] Fetched',
+        categoriesRaw.length,
+        'categories from local Realm'
+      );
+      // Process categories data
+      const categoriesData = categoriesRaw
+        .map((category: any) => ({
+          tableName: 'Categories',
+          id: String(category.id || ''),
+          name: String(category.name || ''),
+          description: String(category.description || ''),
+          createdAt: category.createdAt instanceof Date
+            ? category.createdAt.toLocaleDateString() + ' ' + category.createdAt.toLocaleTimeString()
+            : String(category.createdAt || 'No date'),
+          rawTimestamp: category.createdAt instanceof Date
+            ? category.createdAt
+            : new Date(category.createdAt || 0),
+          synced: category.synced ? '✔️ Yes' : '❌ No',
         }))
         .sort(
           (a: any, b: any) =>
@@ -421,9 +450,39 @@ const MainComponent: React.FC = () => {
               accessor: 'cleared',
               style: styles.leftAlignCell,
               flex: 1,
+            },          ],
+          data: discussionData,
+        },
+        {
+          name: 'Categories',
+          columns: [
+            { Header: 'ID', accessor: 'id', hidden: true },
+            { Header: 'rawTimestamp', accessor: 'rawTimestamp', hidden: true },
+            {
+              Header: 'Name',
+              accessor: 'name',
+              style: styles.leftAlignCell,
+              flex: 1,
+            },
+            {
+              Header: 'Description',
+              accessor: 'description',
+              style: styles.leftAlignCell,
+              flex: 2,
+            },
+            {
+              Header: 'Created',
+              accessor: 'createdAt',
+              flex: 1,
+            },
+            {
+              Header: 'Synced',
+              accessor: 'synced',
+              style: styles.leftAlignCell,
+              flex: 1,
             },
           ],
-          data: discussionData,
+          data: categoriesData,
         },
       ]);
       setInitialized(true);
@@ -650,10 +709,11 @@ const MainComponent: React.FC = () => {
   }, [tables, filters, sortedData]);
 
   const handleDelete = useCallback(
-    async (tableName: string, itemId: string) => {
-      try {
+    async (tableName: string, itemId: string) => {      try {
         if (tableName === 'Activity Log Data') {
           await deleteActivityLog(itemId);
+        } else if (tableName === 'Categories') {
+          await deleteCategory(itemId);
         } else {
           await deleteDiscussion(itemId);
         }
@@ -978,10 +1038,12 @@ const MainComponent: React.FC = () => {
       Alert.alert('Error', 'Missing user ID or item data. Please try again.');
       return;
     }
-    try {
-      if (editTableName === 'Discussion Data') {
+    try {      if (editTableName === 'Discussion Data') {
         await addOrUpdateDiscussion(editDesc, editTypeSay, editItemId);
         await markDiscussionAsCleared(editItemId);
+      } else if (editTableName === 'Categories') {
+        // Update category using the name and description from the edit form
+        await addOrUpdateCategory(editTypeSay, editDesc, editItemId);
       } else {
         // Use router to update or create ActivityLog
         // Find the log to update, or create a new one if not found
@@ -1477,6 +1539,15 @@ const MainComponent: React.FC = () => {
                       onValueChange={(value) =>
                         setEditTypeSay(value ? 'ask' : 'tell')
                       }
+                    />                  </View>
+                )}
+                {editTableName === 'Categories' && (
+                  <View>
+                    <Text style={styles.modalLabel}>Category Name:</Text>                    <TextInput
+                      style={styles.modalInput}
+                      value={editTypeSay}
+                      onChangeText={(text) => setEditTypeSay(text as 'tell' | 'ask')}
+                      placeholder="Enter category name"
                     />
                   </View>
                 )}
