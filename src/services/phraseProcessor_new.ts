@@ -42,7 +42,10 @@ export const processPhrase = async (
     !activityAnalysis.parsedDescription
   ) {
     // console.log('Applying OpenAI analysis');
-    activityAnalysis = await analyzeActivity({ text: description });
+    activityAnalysis = await analyzeActivity({ 
+      categories: categories || [], 
+      description: description 
+    });
     // console.log('OpenAI analysis result:', activityAnalysis);
   }
 

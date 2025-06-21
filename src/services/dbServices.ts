@@ -32,6 +32,17 @@ interface Discussion {
   uid?: string;
 }
 
+interface Category {
+  id: string;
+  name: string;
+  description?: string;
+  createdAt: Date | any; // Allow Timestamp from Firebase
+  updatedAt: Date | any; // Allow Timestamp from Firebase
+  synced: boolean;
+  syncTimestamp?: Date | any;
+  uid: string;
+}
+
 interface SyncEntry {
   id: string;
   tableName: string;
@@ -859,9 +870,94 @@ export async function synchronizeDiscussions(
       operation: 'update',
       timestamp: new Date(),
       uid,
+    });  } catch (error) {
+    console.error('Error in synchronizeDiscussions:', error);
+    throw error;
+  }
+}
+
+export async function synchronizeCategories(
+  appVersion: string
+): Promise<void> {
+  console.log('synchronizeCategories called with appVersion:', appVersion);
+  try {
+    if (await shouldUseRemote()) {
+      await remote.synchronizeCategories(appVersion);
+    }
+    await local.synchronizeCategories(appVersion);
+    const uid = (await getUID()) || 'unknown';
+    await logSyncEntry({
+      id: new Date().getTime().toString(),
+      tableName: 'Category',
+      operation: 'update',
+      timestamp: new Date(),
+      uid,
     });
   } catch (error) {
-    console.error('Error in synchronizeDiscussions:', error);
+    console.error('Error in synchronizeCategories:', error);
+    throw error;
+  }
+}
+
+export async function getCategories(): Promise<Category[]> {
+  console.log('getCategories called');
+  try {
+    if (await shouldUseRemote()) {
+      return await remote.getCategories();
+    } else {
+      return await local.getCategories();
+    }
+  } catch (error) {
+    console.error('Error in getCategories:', error);
+    throw error;
+  }
+}
+
+export async function addOrUpdateCategory(
+  name: string,
+  description?: string,
+  id?: string
+): Promise<string> {
+  console.log('addOrUpdateCategory called with:', { name, description, id });
+  try {
+    let categoryId: string;
+    if (await shouldUseRemote()) {
+      categoryId = await remote.addOrUpdateCategory(name, description, id);
+    } else {
+      categoryId = await local.addOrUpdateCategory(name, description, id);
+    }
+    const uid = (await getUID()) || 'unknown';
+    await logSyncEntry({
+      id: categoryId,
+      tableName: 'Category',
+      operation: id ? 'update' : 'create',
+      timestamp: new Date(),
+      uid,
+    });
+    return categoryId;
+  } catch (error) {
+    console.error('Error in addOrUpdateCategory:', error);
+    throw error;
+  }
+}
+
+export async function deleteCategory(id: string): Promise<void> {
+  console.log('deleteCategory called with:', id);
+  try {
+    if (await shouldUseRemote()) {
+      await remote.deleteCategory(id);
+    }
+    await local.deleteCategory(id);
+    const uid = (await getUID()) || 'unknown';
+    await logSyncEntry({
+      id,
+      tableName: 'Category',
+      operation: 'delete',
+      timestamp: new Date(),
+      uid,
+    });
+  } catch (error) {
+    console.error('Error in deleteCategory:', error);
     throw error;
   }
 }
@@ -1021,12 +1117,13 @@ export async function syncFromRemote() {
 export { syncTableFromRemote } from './dbServicesLocal';
 
 /**
- * Utility: Run all sync functions (Discussions, ActivityLog, and full remote sync)
+ * Utility: Run all sync functions (Discussions, ActivityLog, Categories, and full remote sync)
  */
 export async function runAllSyncFunctions(appVersion = '1.1.0') {
   // console.log('[UTIL] Running all sync functions...');
   await synchronizeDiscussions(appVersion);
   await synchronizeActivityLog(appVersion);
+  await synchronizeCategories(appVersion);
   await syncFromRemote();
   console.log('[UTIL] All sync functions complete.');
 }
@@ -1064,4 +1161,30 @@ export async function insertTestRowsAndExit() {
   if (typeof process !== 'undefined' && process.exit) {
     process.exit(0);
   }
+}
+
+/**
+ * Utility: Create sample categories for testing
+ */
+export async function createSampleCategories() {
+  console.log('[UTIL] Creating sample categories...');
+  
+  const sampleCategories = [
+    { name: 'Health', description: 'Health-related activities and discussions' },
+    { name: 'Work', description: 'Work and productivity matters' },
+    { name: 'Learning', description: 'Educational and learning activities' },
+    { name: 'Family', description: 'Family time and relationships' },
+    { name: 'Exercise', description: 'Physical fitness and exercise' },
+  ];
+
+  for (const category of sampleCategories) {
+    try {
+      await addOrUpdateCategory(category.name, category.description);
+      console.log(`[UTIL] Created category: ${category.name}`);
+    } catch (error) {
+      console.warn(`[UTIL] Failed to create category ${category.name}:`, error);
+    }
+  }
+  
+  console.log('[UTIL] Sample categories creation complete.');
 }

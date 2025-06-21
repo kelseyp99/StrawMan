@@ -167,6 +167,21 @@ const ChangeLogSchema = {
   },
 };
 
+const CategorySchema = {
+  name: 'Category',
+  primaryKey: 'id',
+  properties: {
+    id: 'string',
+    name: 'string',
+    description: 'string?',
+    createdAt: 'date',
+    updatedAt: 'date',
+    synced: 'bool',
+    syncTimestamp: 'date?',
+    uid: 'string',
+  },
+};
+
 const config: Configuration = {
   path: 'lifelog.realm', // Kept from first config
   schema: [
@@ -183,8 +198,9 @@ const config: Configuration = {
     SyncEntrySchema,
     DiscussionCountSchema,
     ChangeLogSchema,
+    CategorySchema,
   ],
-  schemaVersion: 11, // Bumped from 10 to 11 to force migration and resolve initialization errors
+  schemaVersion: 12, // Bumped from 11 to 12 to include Category schema
   onMigration: (oldRealm: Realm, newRealm: Realm) => {
     console.log(
       'Migrating Realm schema from version',
@@ -238,4 +254,5 @@ export {
   SyncEntrySchema,
   DiscussionCountSchema,
   ChangeLogSchema,
+  CategorySchema,
 };

@@ -639,7 +639,12 @@ export default function AskJanet() {
         } catch (fallbackError) {
           console.error('Fallback save err:', fallbackError);
           setFilePath('Error');
-          Alert.alert('Error', `Failed to save: ${error.message}`);
+          Alert.alert(
+            'Error',
+            `Failed to save: ${
+              error instanceof Error ? error.message : String(error)
+            }`
+          );
         }
       }
     };
@@ -681,7 +686,11 @@ export default function AskJanet() {
       }
     } catch (error) {
       console.error('Pick file err:', error);
-      Alert.alert('Error', 'Failed to pick file: ' + error.message);
+      Alert.alert(
+        'Error',
+        'Failed to pick file: ' +
+          (error instanceof Error ? error.message : String(error))
+      );
     }
   };
 

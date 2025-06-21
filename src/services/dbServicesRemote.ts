@@ -81,6 +81,18 @@ export interface DiscussionCount {
   uid?: string;
 }
 
+// Define Category interface for Firebase
+export interface Category {
+  id: string;
+  name: string;
+  description?: string;
+  createdAt: Date | Timestamp;
+  updatedAt: Date | Timestamp;
+  synced: boolean;
+  syncTimestamp?: Date | Timestamp;
+  uid: string;
+}
+
 // Fet
 
 export const findDuplicateActivityLog = async (
@@ -661,6 +673,169 @@ export async function synchronizeDiscussions(
   }
 }
 
+export async function synchronizeCategories(
+  appVersion: string
+): Promise<void> {
+  const uid = await getUID();
+  if (!uid) {
+    throw new Error('No UID available for category synchronization');
+  }
+
+  console.log(`Synchronizing Categories for UID: ${uid}`);
+  
+  try {
+    // Get all unique categories from ActivityLog entries in Firestore
+    const activityLogsQuery = query(
+      collection(db, `Users/${uid}/ActivityLog`)
+    );
+    const activityLogsSnap = await getDocs(activityLogsQuery);
+    
+    const categories = new Set<string>();
+    activityLogsSnap.docs.forEach(doc => {
+      const data = doc.data();
+      if (data.category && data.category !== 'uncategorized') {
+        categories.add(data.category);
+      }
+    });
+
+    // Sync categories to the Category collection
+    const batch = writeBatch(db);
+    
+    for (const categoryName of categories) {
+      const categoryQuery = query(
+        collection(db, `Users/${uid}/Category`),
+        where('name', '==', categoryName)
+      );
+      const existingCategorySnap = await getDocs(categoryQuery);
+      
+      if (existingCategorySnap.empty) {
+        // Create new category
+        const categoryId = Date.now().toString() + '_' + categoryName;
+        const categoryRef = doc(db, `Users/${uid}/Category`, categoryId);
+        batch.set(categoryRef, {
+          id: categoryId,
+          name: categoryName,
+          description: `Auto-generated category for ${categoryName}`,
+          createdAt: Timestamp.now(),
+          updatedAt: Timestamp.now(),
+          synced: true,
+          uid
+        });
+        console.log(`Queued creation of category: ${categoryName}`);
+      } else {
+        // Update existing category timestamp
+        const existingCategory = existingCategorySnap.docs[0];
+        batch.update(existingCategory.ref, {
+          updatedAt: Timestamp.now(),
+          synced: true
+        });
+        console.log(`Queued update of category: ${categoryName}`);
+      }
+    }
+    
+    await batch.commit();
+    console.log('Category synchronization completed.');
+  } catch (error) {
+    console.error('Error synchronizing Categories:', error);
+    throw error;
+  }
+}
+
+export async function getCategories(): Promise<Category[]> {
+  const uid = await getUID();
+  if (!uid) {
+    throw new Error('No UID available for get categories operation');
+  }
+  
+  try {
+    const snapshot = await getDocs(collection(db, `Users/${uid}/Category`));
+    return snapshot.docs.map(doc => {
+      const data = doc.data();
+      return {
+        id: data.id,
+        name: data.name,
+        description: data.description,
+        createdAt: data.createdAt,
+        updatedAt: data.updatedAt,
+        synced: data.synced,
+        syncTimestamp: data.syncTimestamp,
+        uid: data.uid
+      } as Category;
+    });
+  } catch (error) {
+    console.error('Error getting categories:', error);
+    return [];
+  }
+}
+
+export async function addOrUpdateCategory(
+  name: string,
+  description?: string,
+  id?: string
+): Promise<string> {
+  const uid = await getUID();
+  if (!uid) {
+    throw new Error('No UID available for add/update category operation');
+  }
+
+  try {
+    const categoryId = id || Date.now().toString() + '_' + name;
+    const categoryRef = doc(db, `Users/${uid}/Category`, categoryId);
+    
+    const categoryData = {
+      id: categoryId,
+      name,
+      description: description || `Category: ${name}`,
+      updatedAt: Timestamp.now(),
+      synced: true,
+      uid
+    };
+
+    const existingCategory = await getDoc(categoryRef);
+    if (existingCategory.exists()) {
+      await updateDoc(categoryRef, categoryData);
+    } else {
+      await setDoc(categoryRef, {
+        ...categoryData,
+        createdAt: Timestamp.now()
+      });
+    }
+
+    console.log(`Category ${id ? 'updated' : 'added'}: ${categoryId}`);
+    return categoryId;
+  } catch (error) {
+    console.error('Error adding/updating category:', error);
+    throw error;
+  }
+}
+
+export async function deleteCategory(id: string): Promise<void> {
+  const uid = await getUID();
+  if (!uid) {
+    throw new Error('No UID available for delete category operation');
+  }
+  
+  try {
+    const categoryRef = doc(db, `Users/${uid}/Category`, id);
+    const categorySnap = await getDoc(categoryRef);
+    
+    if (categorySnap.exists()) {
+      const categoryData = categorySnap.data();
+      if (categoryData.uid === uid) {
+        await deleteDoc(categoryRef);
+        console.log(`Category with ID ${id} deleted.`);
+      } else {
+        console.error(`You cannot delete a category that doesn't belong to you.`);
+      }
+    } else {
+      console.error(`Category with ID ${id} does not exist.`);
+    }
+  } catch (error) {
+    console.error(`Error deleting category with ID ${id}:`, error);
+    throw error;
+  }
+}
+
 // Helper function to compare versions
 function compareVersions(
   currentVersion: string,
@@ -734,8 +909,22 @@ export async function deleteDiscussion(id: string): Promise<void> {
     if (discussionSnap.exists()) {
       const discussionData = discussionSnap.data();
       if (discussionData.uid === uid) {
+        // First, delete all related activity logs
+        const activityLogsQuery = query(
+          collection(db, `Users/${uid}/ActivityLog`),
+          where('discussionId', '==', id)
+        );
+        const activityLogsSnap = await getDocs(activityLogsQuery);
+        
+        console.log(`Deleting ${activityLogsSnap.size} related activity logs for discussion ${id}`);
+        
+        // Delete all related activity logs
+        const deletePromises = activityLogsSnap.docs.map(doc => deleteDoc(doc.ref));
+        await Promise.all(deletePromises);
+        
+        // Then delete the discussion itself
         await deleteDoc(discussionRef);
-        console.log(`Discussion with ID ${id} deleted.`);
+        console.log(`Discussion with ID ${id} deleted along with its related activity logs.`);
       } else {
         console.error(
           `You cannot delete a discussion that doesn't belong to you.`
@@ -1891,9 +2080,35 @@ export async function restoreLostData(): Promise<void> {
 export async function deleteActivityLog(activityLogId: string): Promise<void> {
   const uid = await getUID();
   if (!uid) throw new Error('No UID available for delete operation');
-  const docRef = doc(db, `Users/${uid}/ActivityLog`, activityLogId);
-  await deleteDoc(docRef);
-  console.log(`ActivityLog with ID ${activityLogId} deleted.`);
+  
+  try {
+    // First, get the activity log to find its discussionId
+    const activityLogRef = doc(db, `Users/${uid}/ActivityLog`, activityLogId);
+    const activityLogSnap = await getDoc(activityLogRef);
+    
+    if (activityLogSnap.exists()) {
+      const activityLogData = activityLogSnap.data();
+      const discussionId = activityLogData.discussionId;
+      
+      // Delete the activity log
+      await deleteDoc(activityLogRef);
+      console.log(`ActivityLog with ID ${activityLogId} deleted.`);
+      
+      // Set the parent discussion's cleared status to false
+      if (discussionId) {
+        const discussionRef = doc(db, `Users/${uid}/Discussion`, discussionId);
+        await updateDoc(discussionRef, {
+          cleared: false
+        });
+        console.log(`Discussion ${discussionId} cleared status set to false due to activity log deletion.`);
+      }
+    } else {
+      console.error(`ActivityLog with ID ${activityLogId} not found.`);
+    }
+  } catch (error) {
+    console.error(`Error deleting activity log with ID ${activityLogId}:`, error);
+    throw error;
+  }
 }
 
 // Create ActivityLog

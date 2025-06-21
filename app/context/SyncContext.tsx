@@ -1,4 +1,6 @@
 import React, { createContext, useContext, useState, useCallback } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { syncFromRemote } from '../../src/services/dbServices';
 
 interface SyncContextType {
   isSyncing: boolean;
@@ -24,17 +26,11 @@ export const SyncProvider: React.FC<{ children: React.ReactNode }> = ({
     setIsSyncing(true);
     try {
       // Check if user is paid and has sync enabled before syncing
-      const AsyncStorage = await import(
-        '@react-native-async-storage/async-storage'
-      );
-      const paid = await AsyncStorage.default.getItem('isPaidCustomer');
-      const syncEnabled = await AsyncStorage.default.getItem('syncWithCloud');
+      const paid = await AsyncStorage.getItem('isPaidCustomer');
+      const syncEnabled = await AsyncStorage.getItem('syncWithCloud');
 
       if (paid === 'true' && syncEnabled === 'true') {
         console.log('[SYNC] Starting sync for paid user...');
-        const { syncFromRemote } = await import(
-          '../../src/services/dbServices'
-        );
         await syncFromRemote();
         console.log('[SYNC] Sync complete');
       } else {

@@ -7,6 +7,7 @@ import {
   DiscussionSchema,
   AlertSchema,
   ParametersSchema,
+  CategorySchema,
 } from '../realmConfig';
 import { sendQuestion, sendQuestionForParsing } from './openaiAPI';
 // import { getUID } from '../utils/uidManager';
@@ -108,6 +109,17 @@ interface CloudPayload {
 interface LastOpenDiscussion {
   id: string;
   description: string;
+}
+
+interface Category {
+  id: string;
+  name: string;
+  description?: string;
+  createdAt: Date;
+  updatedAt: Date;
+  synced: boolean;
+  syncTimestamp?: Date;
+  uid: string;
 }
 
 // src/services/dbServicesLocal.ts
@@ -434,6 +446,141 @@ export async function synchronizeDiscussions(
   }
 }
 
+export async function synchronizeCategories(
+  appVersion: string
+): Promise<void> {
+  if (!realm) {
+    console.error('Failed to open Realm instance');
+    throw new Error('Failed to open Realm instance');
+  }
+  
+  console.log(`Synchronizing Categories for local Realm...`);
+  
+  try {
+    // Get all unique categories from ActivityLog entries
+    const activityLogCategories = Array.from(
+      new Set(
+        realm?.objects<ActivityLog>('ActivityLog')?.map((item) => item.category).filter(cat => cat && cat !== 'uncategorized')
+      )
+    );
+
+    // Sync categories to the Category table
+    realm?.write(() => {
+      activityLogCategories.forEach((categoryName) => {
+        const existing = realm?.objects('Category').filtered('name == $0', categoryName)[0];
+        
+        if (!existing) {
+          const id = Date.now().toString() + '_' + categoryName;
+          realm?.create('Category', {
+            id,
+            name: categoryName,
+            description: `Auto-generated category for ${categoryName}`,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+            synced: false,
+            uid: 'local_user'
+          });
+          console.log(`Created category: ${categoryName}`);
+        } else {
+          // Update existing category timestamp
+          existing.updatedAt = new Date();
+          existing.synced = false;
+          console.log(`Updated category: ${categoryName}`);
+        }
+      });
+    });
+
+    console.log('Category synchronization completed.');
+  } catch (error) {
+    console.error('Error synchronizing Categories:', error);
+    throw error;
+  }
+}
+
+export async function getCategories(): Promise<Category[]> {
+  if (!realm) {
+    console.error('Failed to open Realm instance');
+    throw new Error('Failed to open Realm instance');
+  }
+  
+  try {
+    const categories = realm?.objects<Category>('Category').sorted('name');
+    return categories?.map(cat => ({
+      id: cat.id,
+      name: cat.name,
+      description: cat.description,
+      createdAt: cat.createdAt,
+      updatedAt: cat.updatedAt,
+      synced: cat.synced,
+      syncTimestamp: cat.syncTimestamp,
+      uid: cat.uid
+    })) ?? [];
+  } catch (error) {
+    console.error('Error getting categories:', error);
+    return [];
+  }
+}
+
+export async function addOrUpdateCategory(
+  name: string,
+  description?: string,
+  id?: string
+): Promise<string> {
+  if (!realm) {
+    console.error('Failed to open Realm instance');
+    throw new Error('Failed to open Realm instance');
+  }
+
+  try {
+    const categoryId = id || Date.now().toString() + '_' + name;
+    
+    realm?.write(() => {
+      const existing = realm?.objectForPrimaryKey<Category>('Category', categoryId);
+      const categoryData = {
+        id: categoryId,
+        name,
+        description: description || `Category: ${name}`,
+        createdAt: existing ? existing.createdAt : new Date(),
+        updatedAt: new Date(),
+        synced: false,
+        uid: 'local_user'
+      };
+
+      if (existing) {
+        Object.assign(existing, categoryData);
+      } else {
+        realm?.create('Category', categoryData);
+      }
+    });
+
+    console.log(`Category ${id ? 'updated' : 'added'}: ${categoryId}`);
+    return categoryId;
+  } catch (error) {
+    console.error('Error adding/updating category:', error);
+    throw error;
+  }
+}
+
+export async function deleteCategory(id: string): Promise<void> {
+  if (!realm) {
+    console.error('Failed to open Realm instance');
+    throw new Error('Failed to open Realm instance');
+  }
+  
+  try {
+    realm?.write(() => {
+      const category = realm?.objectForPrimaryKey<Category>('Category', id);
+      if (category && realm) {
+        realm.delete(category);
+        console.log(`Category with ID ${id} deleted.`);
+      }
+    });
+  } catch (error) {
+    console.error(`Error deleting category with ID ${id}:`, error);
+    throw error;
+  }
+}
+
 function compareVersions(
   currentVersion: string,
   targetVersion: string
@@ -656,13 +803,24 @@ export async function deleteDiscussion(id: string): Promise<void> {
   const realmInstance = realm;
   try {
     realmInstance.write(() => {
+      // First, delete all related activity logs
+      const relatedActivityLogs = realm
+        ?.objects<ActivityLog>('ActivityLog')
+        .filtered('discussionId == $0', id.toString());
+      
+      if (relatedActivityLogs && relatedActivityLogs.length > 0 && realm) {
+        console.log(`Deleting ${relatedActivityLogs.length} related activity logs for discussion ${id}`);
+        realm.delete(relatedActivityLogs);
+      }
+
+      // Then delete the discussion itself
       const discussion = realm?.objectForPrimaryKey<Discussion>(
         'Discussion',
         id.toString()
       );
       if (discussion && realm) {
-        if (realm) realm.delete(discussion);
-        console.log(`Discussion with ID ${id} deleted.`);
+        realm.delete(discussion);
+        console.log(`Discussion with ID ${id} deleted along with its related activity logs.`);
       }
     });
   } catch (error) {
@@ -1654,7 +1812,44 @@ export async function getDescriptionsWithTimestamps(categories: string[]) {
   return '[]';
 }
 export async function deleteActivityLog(activityLogId: string) {
-  return;
+  if (!realm) {
+    console.error('Failed to open Realm instance');
+    throw new Error('Failed to open Realm instance');
+  }
+  
+  try {
+    realm.write(() => {
+      // First, find the activity log to get its discussionId
+      const activityLog = realm?.objectForPrimaryKey<ActivityLog>(
+        'ActivityLog',
+        activityLogId.toString()
+      );
+      
+      if (activityLog && realm) {
+        const discussionId = activityLog.discussionId;
+        
+        // Delete the activity log
+        realm.delete(activityLog);
+        console.log(`ActivityLog with ID ${activityLogId} deleted.`);
+        
+        // Set the parent discussion's cleared status to false
+        const discussion = realm?.objectForPrimaryKey<Discussion>(
+          'Discussion',
+          discussionId.toString()
+        );
+        
+        if (discussion) {
+          discussion.cleared = false;
+          console.log(`Discussion ${discussionId} cleared status set to false due to activity log deletion.`);
+        }
+      } else {
+        console.error(`ActivityLog with ID ${activityLogId} not found.`);
+      }
+    });
+  } catch (error) {
+    console.error(`Error deleting activity log with ID ${activityLogId}:`, error);
+    throw error;
+  }
 }
 export async function createActivityLog(activityLog: any) {
   return '';

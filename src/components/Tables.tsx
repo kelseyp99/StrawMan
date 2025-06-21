@@ -361,7 +361,8 @@ const MainComponent: React.FC = () => {
           rawTimestamp:
             discussion.timestamp instanceof Date
               ? discussion.timestamp
-              : new Date(discussion.timestamp || 0),          cleared: discussion.cleared ? '✔️ Yes' : '❌ No',
+              : new Date(discussion.timestamp || 0),
+          cleared: discussion.cleared ? '✔️ Yes' : '❌ No',
         }))
         .sort(
           (a: any, b: any) =>
@@ -382,27 +383,29 @@ const MainComponent: React.FC = () => {
           id: String(category.id || ''),
           name: String(category.name || ''),
           description: String(category.description || ''),
-          createdAt: category.createdAt instanceof Date
-            ? category.createdAt.toLocaleDateString() + ' ' + category.createdAt.toLocaleTimeString()
-            : String(category.createdAt || 'No date'),
-          rawTimestamp: category.createdAt instanceof Date
-            ? category.createdAt
-            : new Date(category.createdAt || 0),
+          createdAt:
+            category.createdAt instanceof Date
+              ? category.createdAt.toLocaleDateString() +
+                ' ' +
+                category.createdAt.toLocaleTimeString()
+              : String(category.createdAt || 'No date'),
+          rawTimestamp:
+            category.createdAt instanceof Date
+              ? category.createdAt
+              : new Date(category.createdAt || 0),
           synced: category.synced ? '✔️ Yes' : '❌ No',
         }))
         .sort(
           (a: any, b: any) =>
             b.rawTimestamp.getTime() - a.rawTimestamp.getTime()
         );
-      // console.log('[PERF] Data processing complete');
-
-      // Skip categories for now to improve performance
+      // console.log('[PERF] Data processing complete');      // Skip categories for now to improve performance
       // const categories = await getDistinctCategories();
       // setAllCategories((prev) => [...new Set([...prev, ...categories])]);
 
       setTables([
         {
-          name: 'Activity Log Data',
+          name: 'Activities',
           columns: [
             { Header: 'ID', accessor: 'id', hidden: true },
             { Header: 'rawTimestamp', accessor: 'rawTimestamp', hidden: true },
@@ -417,7 +420,8 @@ const MainComponent: React.FC = () => {
               Header: 'Desc',
               accessor: 'description',
               style: styles.leftAlignCell,
-              flex: 2,            },
+              flex: 2,
+            },
             {
               Header: 'Cleared',
               accessor: 'cleared',
@@ -428,7 +432,7 @@ const MainComponent: React.FC = () => {
           data: activityLogData,
         },
         {
-          name: 'Discussion Data',
+          name: 'Discussions',
           columns: [
             { Header: 'ID', accessor: 'id', hidden: true },
             { Header: 'rawTimestamp', accessor: 'rawTimestamp', hidden: true },
@@ -450,7 +454,8 @@ const MainComponent: React.FC = () => {
               accessor: 'cleared',
               style: styles.leftAlignCell,
               flex: 1,
-            },          ],
+            },
+          ],
           data: discussionData,
         },
         {
@@ -469,17 +474,6 @@ const MainComponent: React.FC = () => {
               accessor: 'description',
               style: styles.leftAlignCell,
               flex: 2,
-            },
-            {
-              Header: 'Created',
-              accessor: 'createdAt',
-              flex: 1,
-            },
-            {
-              Header: 'Synced',
-              accessor: 'synced',
-              style: styles.leftAlignCell,
-              flex: 1,
             },
           ],
           data: categoriesData,
@@ -709,7 +703,8 @@ const MainComponent: React.FC = () => {
   }, [tables, filters, sortedData]);
 
   const handleDelete = useCallback(
-    async (tableName: string, itemId: string) => {      try {
+    async (tableName: string, itemId: string) => {
+      try {
         if (tableName === 'Activity Log Data') {
           await deleteActivityLog(itemId);
         } else if (tableName === 'Categories') {
@@ -1038,7 +1033,8 @@ const MainComponent: React.FC = () => {
       Alert.alert('Error', 'Missing user ID or item data. Please try again.');
       return;
     }
-    try {      if (editTableName === 'Discussion Data') {
+    try {
+      if (editTableName === 'Discussion Data') {
         await addOrUpdateDiscussion(editDesc, editTypeSay, editItemId);
         await markDiscussionAsCleared(editItemId);
       } else if (editTableName === 'Categories') {
@@ -1284,138 +1280,12 @@ const MainComponent: React.FC = () => {
       </View>
     );
   }
-
   //console.log('Rendering MainComponent - debug');
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       style={styles.container}
     >
-      {/* TEMP DEBUG BUTTONS - REMOVE IN PRODUCTION */}
-      <ScrollView
-        horizontal={false}
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={{
-          flexDirection: 'column',
-          alignItems: 'center',
-          marginVertical: 8,
-        }}
-      >
-        {/* Refresh Button */}
-        <TouchableOpacity
-          style={{
-            backgroundColor: '#28a745',
-            padding: 10,
-            borderRadius: 5,
-            marginBottom: 10,
-            opacity: loading ? 0.5 : 1,
-          }}
-          onPress={() => {
-            console.log('[TABLES] Manual refresh triggered');
-            fetchData();
-          }}
-          disabled={loading}
-        >
-          <Text style={{ color: '#fff', fontWeight: 'bold' }}>
-            =��� Refresh Tables
-          </Text>
-        </TouchableOpacity>
-
-        {/* Debug: Test Data Fetch */}
-        <TouchableOpacity
-          style={{
-            backgroundColor: '#17a2b8',
-            padding: 10,
-            borderRadius: 5,
-            marginBottom: 10,
-          }}
-          onPress={async () => {
-            console.log('[DEBUG] Testing direct data fetch...');
-            try {
-              const discussions = await getDiscussions();
-              console.log(
-                '[DEBUG] getDiscussions returned:',
-                discussions.length,
-                'records'
-              );
-              console.log(
-                '[DEBUG] First 3 discussions:',
-                discussions.slice(0, 3)
-              );
-
-              const activityLogs = await getActivityLogs();
-              console.log(
-                '[DEBUG] getActivityLogs returned:',
-                activityLogs.length,
-                'records'
-              );
-              Alert.alert(
-                'Data Check',
-                'Found:\n' +
-                  discussions.length +
-                  ' discussions\n' +
-                  activityLogs.length +
-                  ' activity logs'
-              );
-            } catch (error: any) {
-              console.error('[DEBUG] Error fetching data:', error);
-              Alert.alert(
-                'Error',
-                'Failed to fetch data: ' + (error?.message || String(error))
-              );
-            }
-          }}
-        >
-          <Text style={{ color: '#fff', fontWeight: 'bold' }}>
-            =��� Debug: Check Data
-          </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={{
-            backgroundColor: '#ff4444',
-            padding: 10,
-            borderRadius: 5,
-            marginBottom: 10,
-            opacity: debugLoading ? 0.5 : 1,
-          }}
-          onPress={handleDebugDeleteAll}
-          disabled={debugLoading}
-        >
-          <Text style={{ color: '#fff', fontWeight: 'bold' }}>
-            DEBUG: Delete All Local/Remote (ChangeLog)
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={{
-            backgroundColor: '#007bff',
-            padding: 10,
-            borderRadius: 5,
-            marginBottom: 10,
-            opacity: debugLoading ? 0.5 : 1,
-          }}
-          onPress={handleDebugSyncAndPopulate}
-          disabled={debugLoading}
-        >
-          <Text style={{ color: '#fff', fontWeight: 'bold' }}>
-            DEBUG: Sync & Repopulate (10 rows/table)
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={{
-            backgroundColor: '#00b894',
-            padding: 10,
-            borderRadius: 5,
-            opacity: debugLoading ? 0.5 : 1,
-          }}
-          onPress={handleCopyRealmToDownloads}
-          disabled={debugLoading}
-        >
-          <Text style={{ color: '#fff', fontWeight: 'bold' }}>
-            DEBUG: Copy Realm DB to Downloads
-          </Text>
-        </TouchableOpacity>
-      </ScrollView>
       {initialized && tables.length > 0 ? (
         <View style={styles.tableContainer}>
           <View style={styles.navigation}>
@@ -1539,14 +1409,18 @@ const MainComponent: React.FC = () => {
                       onValueChange={(value) =>
                         setEditTypeSay(value ? 'ask' : 'tell')
                       }
-                    />                  </View>
+                    />{' '}
+                  </View>
                 )}
                 {editTableName === 'Categories' && (
                   <View>
-                    <Text style={styles.modalLabel}>Category Name:</Text>                    <TextInput
+                    <Text style={styles.modalLabel}>Category Name:</Text>{' '}
+                    <TextInput
                       style={styles.modalInput}
                       value={editTypeSay}
-                      onChangeText={(text) => setEditTypeSay(text as 'tell' | 'ask')}
+                      onChangeText={(text) =>
+                        setEditTypeSay(text as 'tell' | 'ask')
+                      }
                       placeholder="Enter category name"
                     />
                   </View>
