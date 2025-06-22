@@ -536,19 +536,24 @@ export async function addOrUpdateCategory(
     
     realm?.write(() => {
       const existing = realm?.objectForPrimaryKey<Category>('Category', categoryId);
-      const categoryData = {
-        id: categoryId,
-        name,
-        description: description || `Category: ${name}`,
-        createdAt: existing ? existing.createdAt : new Date(),
-        updatedAt: new Date(),
-        synced: false,
-        uid: 'local_user'
-      };
-
+      
       if (existing) {
-        Object.assign(existing, categoryData);
+        // Update existing category (exclude id since it's the primary key)
+        existing.name = name;
+        existing.description = description || `Category: ${name}`;
+        existing.updatedAt = new Date();
+        existing.synced = false;
       } else {
+        // Create new category
+        const categoryData = {
+          id: categoryId,
+          name,
+          description: description || `Category: ${name}`,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          synced: false,
+          uid: 'local_user'
+        };
         realm?.create('Category', categoryData);
       }
     });
