@@ -35,6 +35,7 @@ import {
   getCategories,
   addOrUpdateCategory,
   deleteCategory,
+  createCategoriesFromActivityLogs,
 } from '../services/dbServices';
 import { extractAndImportLegacyFirestoreData } from '../services/dbServicesRemote';
 import { findDuplicateActivityLog } from '../services/phraseProcessor';
@@ -1261,6 +1262,32 @@ const MainComponent: React.FC = () => {
     // Temporarily disabled to prevent lockup
     console.log('[DEBUG] Extra debug useEffect disabled to prevent lockup');
   }, []);
+
+  // Handler for creating categories from ActivityLog data
+  const handleCreateCategoriesFromActivityLogs = async () => {
+    setDebugLoading(true);
+    try {
+      const result = await createCategoriesFromActivityLogs();
+      Alert.alert(
+        'Categories Created',
+        `Successfully created ${result.created} categories from ActivityLog data.\n\n` +
+          `Total unique categories found: ${result.total}\n` +
+          `Created: ${result.created}\n` +
+          `Skipped (already existed): ${result.skipped}\n\n` +
+          `Categories: ${result.categories.join(', ')}`
+      );
+      await fetchData(); // Refresh the tables to show new categories
+    } catch (error: any) {
+      console.error('Error creating categories from ActivityLog:', error);
+      Alert.alert(
+        'Error',
+        'Failed to create categories from ActivityLog: ' +
+          (error?.message || String(error))
+      );
+    } finally {
+      setDebugLoading(false);
+    }
+  };
 
   if (loading) {
     return (

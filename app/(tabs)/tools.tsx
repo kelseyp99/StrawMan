@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { View, StyleSheet, Alert } from 'react-native';
 import ToolsButtons from '../../src/components/ui/ToolsButtons';
 import { useAuth } from '../context/AuthContext';
-import { getDiscussions, getActivityLogs } from '../../src/services/dbServices';
+import { getDiscussions, getActivityLogs, createCategoriesFromActivityLogs } from '../../src/services/dbServices';
 
 export default function ToolsScreen() {
   const { isLogged, isPaid } = useAuth();
@@ -98,6 +98,28 @@ export default function ToolsScreen() {
     }
   };
 
+  const handleCreateCategoriesFromActivityLogs = async () => {
+    setDebugLoading(true);
+    try {
+      console.log('[DEBUG] Creating categories from ActivityLog data...');
+      const result = await createCategoriesFromActivityLogs();
+      Alert.alert(
+        'Categories Created',
+        `Successfully created ${result.created} categories from ActivityLog data.\n\n` +
+        `Total unique categories found: ${result.total}\n` +
+        `Created: ${result.created}\n` +
+        `Skipped (already existed): ${result.skipped}\n\n` +
+        `Categories: ${result.categories.slice(0, 10).join(', ')}` +
+        (result.categories.length > 10 ? '...' : '')
+      );
+    } catch (error: any) {
+      console.error('[DEBUG] Error creating categories from ActivityLog:', error);
+      Alert.alert('Error', 'Failed to create categories from ActivityLog: ' + (error?.message || String(error)));
+    } finally {
+      setDebugLoading(false);
+    }
+  };
+
   if (!isLogged && isPaid) {
     // Not logged in, but paid: show login
     return null;
@@ -112,6 +134,7 @@ export default function ToolsScreen() {
         handleCopyRealmToDownloads={handleCopyRealmToDownloads}
         handleCheckData={handleCheckData}
         handleRemoveDuplicates={handleRemoveDuplicates}
+        handleCreateCategoriesFromActivityLogs={handleCreateCategoriesFromActivityLogs}
       />
     </View>
   );
