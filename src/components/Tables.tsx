@@ -299,6 +299,12 @@ const MainComponent: React.FC = () => {
   // Debug: state for debug button loading
   const [debugLoading, setDebugLoading] = useState(false);
 
+  // State for separate Categories edit modal
+  const [categoryEditModalVisible, setCategoryEditModalVisible] = useState(false);
+  const [editCategoryId, setEditCategoryId] = useState<string | null>(null);
+  const [editCategoryName, setEditCategoryName] = useState('');
+  const [editCategoryDescription, setEditCategoryDescription] = useState('');
+
   // Fetch UID once on mount
   useEffect(() => {
     const fetchUid = async () => {
@@ -746,7 +752,6 @@ const MainComponent: React.FC = () => {
     },
     [uid, fetchData]
   );
-
   const handleEdit = useCallback(
     async (
       tableName: string,
@@ -755,6 +760,20 @@ const MainComponent: React.FC = () => {
       currentCleared: string,
       currentTypeSay: string
     ) => {
+      // Handle Categories with separate modal
+      if (tableName === 'Categories') {
+        const table = tables.find((t) => t.name === tableName);
+        const categoryItem = table?.data.find((i) => i.id === itemId);
+        if (categoryItem) {
+          setEditCategoryId(itemId);
+          setEditCategoryName(categoryItem.name || '');
+          setEditCategoryDescription(categoryItem.description || '');
+          setCategoryEditModalVisible(true);
+        }
+        return;
+      }
+
+      // Handle other tables with existing modal
       setEditTableName(tableName);
       setEditItemId(itemId);
       setEditDesc(currentDesc || '');
@@ -1115,12 +1134,6 @@ const MainComponent: React.FC = () => {
       setShowDatePicker(false);
       setShowTimePicker(false);
       setRelatedActivityLogs([]);
-      setActivityLogDescriptions({});
-      setActivityLogCategories({});
-      Alert.alert(
-        'Success',
-        'Item and related ActivityLog entries updated successfully.'
-      );
       fetchData(); // Refresh tables after save
     } catch (error) {
       console.error('Error in saveEdit:', error);
@@ -1139,6 +1152,56 @@ const MainComponent: React.FC = () => {
     uid,
     fetchData,
   ]);
+
+  // Save function specifically for Categories
+  const saveCategoryEdit = useCallback(async () => {
+    if (!editCategoryName || !editCategoryName.trim()) {
+      Alert.alert('Error', 'Category name cannot be empty.');
+      return;
+    }
+    if (!editCategoryId) {
+      Alert.alert('Error', 'Category ID not found. Please try again.');
+      return;
+    }
+
+    try {
+      await addOrUpdateCategory(editCategoryName, editCategoryDescription, editCategoryId);
+      
+      // Update the table data immediately
+      setTables((prevTables) =>
+        prevTables.map((table) =>
+          table.name === 'Categories'
+            ? {
+                ...table,
+                data: table.data.map((item) =>
+                  item.id === editCategoryId
+                    ? {
+                        ...item,
+                        name: editCategoryName,
+                        description: editCategoryDescription,
+                      }
+                    : item
+                ),
+              }
+            : table
+        )
+      );
+
+      // Close modal and reset fields
+      setCategoryEditModalVisible(false);
+      setEditCategoryId(null);
+      setEditCategoryName('');
+      setEditCategoryDescription('');
+      
+      Alert.alert('Success', 'Category updated successfully.');
+      
+      // Refresh data to ensure consistency
+      fetchData();
+    } catch (error) {
+      console.error('Error saving category:', error);
+      Alert.alert('Error', `Failed to save category: ${error}`);
+    }
+  }, [editCategoryName, editCategoryDescription, editCategoryId, fetchData]);
 
   // Handler for legacy import button
   const handleLegacyImport = async () => {
@@ -1613,6 +1676,61 @@ const MainComponent: React.FC = () => {
                     onPress={handleAddNewCategory}
                   >
                     <Text style={styles.modalButtonText}>Add New</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </View>          </Modal>
+
+          {/* Categories Edit Modal */}
+          <Modal
+            animationType="slide"
+            transparent={true}
+            visible={categoryEditModalVisible}
+            onRequestClose={() => {
+              setCategoryEditModalVisible(false);
+              setEditCategoryId(null);
+              setEditCategoryName('');
+              setEditCategoryDescription('');
+            }}
+          >
+            <View style={styles.modalOverlay}>
+              <View style={styles.modalContainer}>
+                <Text style={styles.modalTitle}>Edit Category</Text>
+                
+                <Text style={styles.modalLabel}>Category Name:</Text>
+                <TextInput
+                  style={styles.modalInput}
+                  value={editCategoryName}
+                  onChangeText={setEditCategoryName}
+                  placeholder="Enter category name"
+                />
+                
+                <Text style={styles.modalLabel}>Category Description:</Text>
+                <TextInput
+                  style={styles.modalInput}
+                  value={editCategoryDescription}
+                  onChangeText={setEditCategoryDescription}
+                  multiline
+                  placeholder="Enter category description"
+                />
+
+                <View style={styles.modalButtons}>
+                  <TouchableOpacity
+                    style={styles.modalButton}
+                    onPress={() => {
+                      setCategoryEditModalVisible(false);
+                      setEditCategoryId(null);
+                      setEditCategoryName('');
+                      setEditCategoryDescription('');
+                    }}
+                  >
+                    <Text style={styles.modalButtonText}>Cancel</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.modalButton, styles.saveButton]}
+                    onPress={saveCategoryEdit}
+                  >
+                    <Text style={styles.modalButtonText}>Save</Text>
                   </TouchableOpacity>
                 </View>
               </View>
