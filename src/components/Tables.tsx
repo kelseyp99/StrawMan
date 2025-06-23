@@ -27,8 +27,7 @@ import {
   deleteDiscussion,
   addOrUpdateDiscussion,
   deleteAllLocalAndRemoteRows,
-  insertTestRowsAndExit,
-  runAllSyncFunctions,  getDistinctCategories,
+  insertTestRowsAndExit,  runAllSyncFunctions,
   addOrUpdateGPTResponse,
   addOrUpdateActivityLog,
   getCategories,
@@ -571,7 +570,7 @@ const MainComponent: React.FC = () => {
             onPress: async () => {
               try {
                 // console.log('Starting Activity Log update...');
-                const distinctCategories = await getDistinctCategories();
+                const distinctCategories = await getCategoryNames();
                 if (!uid) {
                   console.error(
                     'User ID is null, cannot proceed with ActivityLog update.'
