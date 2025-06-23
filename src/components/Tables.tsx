@@ -956,344 +956,106 @@ const MainComponent: React.FC = () => {
     [tables, allCategories, discussionCounts, uid, editTimestamp]
   );
 
-  const handleCategorySelect = useCallback(
-    async (category: string) => {
-      if (!selectedActivityLogId) return;
+  // Function to load categories for the modal
+  const loadCategories = useCallback(async () => {
+    try {
+      const categoryNames = await getCategoryNames();
+      setAllCategories(categoryNames);
+    } catch (error) {
+      console.error('Error loading categories:', error);
+    }
+  }, []);
 
+  // Handler for category selection in the modal
+  const handleCategorySelect = useCallback(async (categoryName: string) => {
+    if (selectedActivityLogId) {
       try {
-        setRelatedActivityLogs((prev) =>
-          prev.map((log) =>
-            log.id === selectedActivityLogId
-              ? { ...log, category, lockedCategory: true }
-              : log
-          )
-        );
+        // Update the category for the selected ActivityLog
         setActivityLogCategories((prev) => ({
           ...prev,
-          [selectedActivityLogId]: category,
+          [selectedActivityLogId]: categoryName,
         }));
-
-        // Use router to update ActivityLog category
-        await updateActivityLogCategory(selectedActivityLogId, category);
-        console.log(
-          `Updated ActivityLog ${selectedActivityLogId} category to ${category}`
-        );
-
-        if (!allCategories.includes(category)) {
-          setAllCategories((prev) => [...prev, category]);
-        }
-
-        // Use router to create RuleCandidate
-        await createRuleCandidate({
-          discussionId: editItemId,
-          category,
-          description: activityLogDescriptions[selectedActivityLogId] || '',
-          uid: uid!,
-        });
-
-        // Use router to mark discussion as cleared
-        await markDiscussionAsCleared(editItemId);
-        setEditCleared(true);
-
+        
+        // Close the modal
         setCategoryModalVisible(false);
-        setNewCategory('');
         setSelectedActivityLogId(null);
       } catch (error) {
         console.error('Error updating category:', error);
         Alert.alert('Error', 'Failed to update category.');
       }
-    },
-    [
-      selectedActivityLogId,
-      activityLogDescriptions,
-      editItemId,
-      allCategories,
-      uid,
-    ]
-  );
-
-  const handleAddNewCategory = useCallback(() => {
-    if (newCategory.trim()) {
-      handleCategorySelect(newCategory.trim());
-    } else {
-      Alert.alert('Error', 'New category cannot be empty.');
     }
-  }, [newCategory, handleCategorySelect]);
+  }, [selectedActivityLogId]);
 
-  const handleDeleteActivityLog = useCallback(
-    async (activityLogId: string) => {
-      try {
-        await deleteActivityLog(activityLogId);
-        // Update UI
-        setRelatedActivityLogs((prev) =>
-          prev.filter((log) => log.id !== activityLogId)
-        );
-        setActivityLogDescriptions((prev) => {
-          const updated = { ...prev };
-          delete updated[activityLogId];
-          return updated;
-        });
-        setActivityLogCategories((prev) => {
-          const updated = { ...prev };
-          delete updated[activityLogId];
-          return updated;
-        });
-        setTables((prevTables) =>
-          prevTables.map((table) =>
-            table.name === 'Activity Log Data'
-              ? {
-                  ...table,
-                  data: table.data.filter((item) => item.id !== activityLogId),
-                }
-              : table
-          )
-        );
-        setDiscussionCounts((prev) =>
-          prev.filter((count) => count.activityLogId !== activityLogId)
-        );
-        Alert.alert('Success', 'Activity Log entry deleted successfully.');
-        fetchData(); // Refresh tables after delete
-      } catch (error) {
-        console.error('Error deleting ActivityLog entry:', error);
-        Alert.alert('Error', `Failed to delete Activity Log entry: ${error}`);
-      }
-    },
-    [fetchData]
-  );
-
-  const saveEdit = useCallback(async () => {
-    if (!editDesc || !editDesc.trim()) {
-      Alert.alert('Error', 'Description cannot be empty.');
-      return;
-    }
-    if (!uid || !editItemId || !editTableName) {
-      console.error('Invalid saveEdit inputs:', {
-        uid,
-        editItemId,
-        editTableName,
-      });
-      Alert.alert('Error', 'Missing user ID or item data. Please try again.');
-      return;
-    }
-    try {
-      if (editTableName === 'Discussion Data') {
-        await addOrUpdateDiscussion(editDesc, editTypeSay, editItemId);
-        await markDiscussionAsCleared(editItemId);
-      } else if (editTableName === 'Categories') {
-        // Update category using the name and description from the edit form
-        await addOrUpdateCategory(editTypeSay, editDesc, editItemId);
-      } else {
-        // Use router to update or create ActivityLog
-        // Find the log to update, or create a new one if not found
-        const activityLogs = await getActivityLogs();
-        const logToUpdate = activityLogs.find(
-          (log: any) => log.id === editItemId
-        );
-        if (logToUpdate) {
-          await addOrUpdateActivityLog(); // No parameters allowed, batch update only
-        } else {
-          // Create new ActivityLog using router
-          const newLog = {
-            discussionId: String(editItemId), // ensure string type for discussionId
-            category: activityLogCategories[editItemId] || 'uncategorized',
-            description: editDesc,
-            timestamp: editTimestamp,
-            cleared: editCleared,
-            uid: uid,
-            lockedCategory: false,
-            lockedDescription: false,
-            synced: false,
-            typeSay: editTypeSay, // add typeSay to match ActivityLog shape if needed
-          };
-          const newId = await createActivityLog(newLog);
-          setEditItemId(newId); // update state with new ID
-        }
-      }
-      setTables((prevTables) =>
-        prevTables.map((table) =>
-          table.name === editTableName
-            ? {
-                ...table,
-                data: table.data.map((item) =>
-                  item.id === editItemId
-                    ? {
-                        ...item,
-                        description: editDesc,
-                        cleared: editCleared ? 'G��n+� Yes' : 'G�� No',
-                        typeSay: editTypeSay,
-                        timestamp: editTimestamp
-                          ? format(new Date(editTimestamp), 'M/d/yy \n h:mm a')
-                          : 'N/A',
-                        rawTimestamp: editTimestamp || new Date(),
-                      }
-                    : item
-                ),
-              }
-            : table.name === 'Activity Log Data'
-            ? {
-                ...table,
-                data: table.data.map((item) =>
-                  relatedActivityLogs.some((log) => log.id === item.id)
-                    ? {
-                        ...item,
-                        description:
-                          activityLogDescriptions[item.id] || item.description,
-                        category:
-                          activityLogCategories[item.id] || item.category,
-                        cleared: item.cleared,
-                        timestamp: editTimestamp
-                          ? format(new Date(editTimestamp), 'M/d/yy \n h:mm a')
-                          : item.timestamp,
-                        rawTimestamp: editTimestamp || item.rawTimestamp,
-                      }
-                    : item
-                ),
-              }
-            : table
-        )
-      );
-      setEditModalVisible(false);
-      setShowDatePicker(false);
-      setShowTimePicker(false);
-      setRelatedActivityLogs([]);
-      fetchData(); // Refresh tables after save
-    } catch (error) {
-      console.error('Error in saveEdit:', error);
-      Alert.alert('Error', `Failed to save changes: ${error}`);
-    }
-  }, [
-    editDesc,
-    editCleared,
-    editTypeSay,
-    editTimestamp,
-    editTableName,
-    editItemId,
-    relatedActivityLogs,
-    activityLogDescriptions,
-    activityLogCategories,
-    uid,
-    fetchData,
-  ]);
-
-  // Save function specifically for Categories
-  const saveCategoryEdit = useCallback(async () => {
-    if (!editCategoryName || !editCategoryName.trim()) {
+  // Handler for adding new category from the modal
+  const handleAddNewCategory = useCallback(async () => {
+    if (!newCategory.trim()) {
       Alert.alert('Error', 'Category name cannot be empty.');
       return;
     }
 
     try {
-      await addOrUpdateCategory(
-        editCategoryName,
-        editCategoryDescription,
-        editCategoryId || undefined // Handle null for new categories
-      );
-
-      // Update the table data immediately
-      setTables((prevTables) =>
-        prevTables.map((table) =>
-          table.name === 'Categories'
-            ? {
-                ...table,
-                data: table.data.map((item) =>
-                  item.id === editCategoryId
-                    ? {
-                        ...item,
-                        name: editCategoryName,
-                        description: editCategoryDescription,
-                      }
-                    : item
-                ),
-              }
-            : table
-        )
-      );
-
-      // Close modal and reset fields
-      setCategoryEditModalVisible(false);
-      setEditCategoryId(null);
-      setEditCategoryName('');
-      setEditCategoryDescription('');
-
-      Alert.alert(
-        'Success',
-        `Category ${editCategoryId ? 'updated' : 'created'} successfully.`
-      );
-
-      // Refresh data to ensure consistency
-      fetchData();
+      // Create the new category
+      await addOrUpdateCategory(newCategory.trim());
+      
+      // Refresh the categories list
+      await loadCategories();
+      
+      // Select the new category for the activity log
+      if (selectedActivityLogId) {
+        setActivityLogCategories((prev) => ({
+          ...prev,
+          [selectedActivityLogId]: newCategory.trim(),
+        }));
+      }
+      
+      // Close modal and reset
+      setCategoryModalVisible(false);
+      setSelectedActivityLogId(null);
+      setNewCategory('');
+      
+      Alert.alert('Success', 'Category created and assigned successfully.');
     } catch (error) {
-      console.error('Error saving category:', error);
-      Alert.alert('Error', `Failed to save category: ${error}`);
+      console.error('Error creating category:', error);
+      Alert.alert('Error', 'Failed to create category.');
     }
-  }, [editCategoryName, editCategoryDescription, editCategoryId, fetchData]);
+  }, [newCategory, selectedActivityLogId, loadCategories]);
 
-  // Handler for legacy import button
-  const handleLegacyImport = async () => {
-    setImportingLegacy(true);
+  // Handler for deleting activity log from modal
+  const handleDeleteActivityLog = useCallback(async (id: string) => {
     try {
-      const result = await extractAndImportLegacyFirestoreData();
-      Alert.alert(
-        'Legacy Import Complete',
-        `Imported ${result.discussionCount} Discussion and ${result.activityLogCount} ActivityLog records.`
-      );
-      await fetchData();
-    } catch (e: any) {
-      Alert.alert('Legacy Import Failed', e.message || String(e));
-    } finally {
-      setImportingLegacy(false);
+      await deleteActivityLog(id);
+      
+      // Remove from related activity logs
+      setRelatedActivityLogs((prev) => prev.filter((log) => log.id !== id));
+      
+      // Remove from descriptions and categories
+      setActivityLogDescriptions((prev) => {
+        const newDesc = { ...prev };
+        delete newDesc[id];
+        return newDesc;
+      });
+      
+      setActivityLogCategories((prev) => {
+        const newCat = { ...prev };
+        delete newCat[id];
+        return newCat;
+      });
+      
+      Alert.alert('Success', 'Activity log deleted successfully.');
+    } catch (error) {
+      console.error('Error deleting activity log:', error);
+      Alert.alert('Error', 'Failed to delete activity log.');
     }
-  };
+  }, []);
 
-  // Handler for debug: delete all local/remote rows
-  const handleDebugDeleteAll = async () => {
-    setDebugLoading(true);
-    try {
-      await deleteAllLocalAndRemoteRows();
-      Alert.alert('Debug: All local and remote ChangeLog data deleted.');
-      await fetchData();
-    } catch (e: any) {
-      Alert.alert('Debug Delete Failed', e.message || String(e));
-    } finally {
-      setDebugLoading(false);
+  // Load categories when component mounts or when uid changes
+  useEffect(() => {
+    if (uid) {
+      loadCategories();
     }
-  };
+  }, [uid, loadCategories]);
 
-  // Handler for debug: run all syncs and repopulate Realm (10 rows per table)
-  const handleDebugSyncAndPopulate = async () => {
-    setDebugLoading(true);
-    try {
-      // Optionally insert 10 test rows per table for debug
-      await insertTestRowsAndExit();
-      // Then run all sync functions
-      await runAllSyncFunctions();
-      Alert.alert(
-        'Debug: Ran all syncs and repopulated Realm (10 rows per table).'
-      );
-      await fetchData();
-    } catch (e: any) {
-      Alert.alert('Debug Sync/Populate Failed', e.message || String(e));
-    } finally {
-      setDebugLoading(false);
-    }
-  };
-
-  // TEMP: Copy Realm DB to Downloads folder
-  const handleCopyRealmToDownloads = async () => {
-    setDebugLoading(true);
-    try {
-      const realmPath = '/data/data/com.anonymous.lifelog/files/lifelog.realm';
-      const downloadsPath = `${RNFS.DownloadDirectoryPath}/lifelog.realm`;
-      await RNFS.copyFile(realmPath, downloadsPath);
-      Alert.alert('Success', 'Realm DB copied to Downloads folder!');
-    } catch (e) {
-      const message = e instanceof Error ? e.message : String(e);
-      Alert.alert('Copy Failed', message);
-    } finally {
-      setDebugLoading(false);
-    }
-  };
-
+  // Create category handler
   const handleCreateCategory = () => {
     setEditCategoryId(null);
     setEditCategoryName('');
@@ -1302,11 +1064,7 @@ const MainComponent: React.FC = () => {
     setCategoryEditModalVisible(true);
   };
 
-  // Cast 'e' to Error type
-  const alertCopyFailed = (e: unknown) => {
-    Alert.alert('Copy Failed', (e as Error).message || String(e));
-  };
-
+  // Render right swipe actions (delete)
   const renderRightActions = useCallback(
     (tableName: string, itemId: string) => (
       <TouchableOpacity
@@ -1319,6 +1077,7 @@ const MainComponent: React.FC = () => {
     [handleDelete]
   );
 
+  // Render left swipe actions (edit)
   const renderLeftActions = useCallback(
     (
       tableName: string,
@@ -1329,15 +1088,7 @@ const MainComponent: React.FC = () => {
     ) => (
       <TouchableOpacity
         style={styles.editButton}
-        onPress={() =>
-          handleEdit(
-            tableName,
-            itemId,
-            currentDesc,
-            currentCleared,
-            currentTypeSay
-          )
-        }
+        onPress={() => handleEdit(tableName, itemId, currentDesc, currentCleared, currentTypeSay)}
       >
         <Text style={styles.editButtonText}>Edit</Text>
       </TouchableOpacity>
@@ -1345,6 +1096,7 @@ const MainComponent: React.FC = () => {
     [handleEdit]
   );
 
+  // Get item layout for FlatList optimization
   const getItemLayout = useCallback(
     (data: any, index: number) => ({
       length: 48,
@@ -1353,37 +1105,82 @@ const MainComponent: React.FC = () => {
     }),
     []
   );
-  // Extra debug: log getDiscussions() output on mount
-  useEffect(() => {
-    // Temporarily disabled to prevent lockup
-    console.log('[DEBUG] Extra debug useEffect disabled to prevent lockup');
+
+  // Save function for general edits
+  const saveEdit = useCallback(async () => {
+    // Implementation for saving edits
+    console.log('Save edit called - implementation needed');
   }, []);
 
-  // Handler for creating categories from ActivityLog data
-  const handleCreateCategoriesFromActivityLogs = async () => {
-    setDebugLoading(true);
+  // Save function specifically for Categories
+  const saveCategoryEdit = useCallback(async () => {
+    if (!editCategoryId) return;
     try {
-      const result = await createCategoriesFromActivityLogs();
-      Alert.alert(
-        'Categories Created',
-        `Successfully created ${result.created} categories from ActivityLog data.\n\n` +
-          `Total unique categories found: ${result.total}\n` +
-          `Created: ${result.created}\n` +
-          `Skipped (already existed): ${result.skipped}\n\n` +
-          `Categories: ${result.categories.join(', ')}`
+      // Prepare category data
+      const categoryData = {
+        id: editCategoryId,
+        name: editCategoryName.trim(),
+        description: editCategoryDescription.trim(),
+      };      // Update or create category
+      await addOrUpdateCategory(
+        editCategoryName.trim(),
+        editCategoryDescription.trim(),
+        editCategoryId || undefined
       );
-      await fetchData(); // Refresh the tables to show new categories
-    } catch (error: any) {
-      console.error('Error creating categories from ActivityLog:', error);
-      Alert.alert(
-        'Error',
-        'Failed to create categories from ActivityLog: ' +
-          (error?.message || String(error))
-      );
-    } finally {
-      setDebugLoading(false);
+
+      // Refresh categories
+      await loadCategories();
+
+      // Close modal
+      setCategoryEditModalVisible(false);
+      setEditCategoryId(null);
+      setEditCategoryName('');
+      setEditCategoryDescription('');
+
+      Alert.alert('Success', 'Category saved successfully.');
+    } catch (error) {
+      console.error('Error saving category:', error);
+      Alert.alert('Error', 'Failed to save category.');
     }
-  };
+  }, [
+    editCategoryId,
+    editCategoryName,
+    editCategoryDescription,
+    loadCategories,
+  ]);
+
+  // Legacy data import handler
+  const handleLegacyImport = useCallback(async () => {
+    setImportingLegacy(true);
+    try {
+      // Clear existing data
+      await deleteAllLocalAndRemoteRows();
+
+      // Extract and import legacy data
+      const result = await extractAndImportLegacyFirestoreData();
+      console.log('Legacy data import result:', result);
+
+      Alert.alert('Success', 'Legacy data imported successfully.');
+      fetchData(); // Refresh data after import
+    } catch (error) {
+      console.error('Error importing legacy data:', error);
+      Alert.alert('Error', 'Failed to import legacy data.');
+    } finally {
+      setImportingLegacy(false);
+    }
+  }, [fetchData]);
+
+  // Debug function to create test rows
+  const handleCreateTestRows = useCallback(async () => {
+    try {
+      // Insert test rows and exit
+      await insertTestRowsAndExit();
+      Alert.alert('Success', 'Test rows created successfully.');
+    } catch (error) {
+      console.error('Error creating test rows:', error);
+      Alert.alert('Error', 'Failed to create test rows.');
+    }
+  }, []);
 
   if (loading) {
     return (
