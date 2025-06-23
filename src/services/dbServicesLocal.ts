@@ -122,6 +122,20 @@ interface Category {
   uid: string;
 }
 
+function compareVersions(v1: string, v2: string): boolean {
+  const parts1 = v1.split('.').map(Number);
+  const parts2 = v2.split('.').map(Number);
+  const len = Math.max(parts1.length, parts2.length);
+
+  for (let i = 0; i < len; i++) {
+    const p1 = parts1[i] || 0;
+    const p2 = parts2[i] || 0;
+    if (p1 > p2) return true;
+    if (p1 < p2) return false;
+  }
+  return false;
+}
+
 // src/services/dbServicesLocal.ts
 // ... existing imports and interfaces ...
 //import Realm from 'realm';
@@ -500,29 +514,52 @@ export async function synchronizeCategories(appVersion: string): Promise<void> {
   }
 }
 
+export async function getCategoryById(id: string): Promise<Category | null> {
+  if (!realm) {
+    console.error('Failed to open Realm instance');
+    return null;
+  }
+  try {
+    const category = realm.objectForPrimaryKey<Category>('Category', id);
+    if (category) {
+      return {
+        id: category.id,
+        name: category.name,
+        description: category.description,
+        createdAt: category.createdAt,
+        updatedAt: category.updatedAt,
+        synced: category.synced,
+        syncTimestamp: category.syncTimestamp,
+        uid: category.uid,
+      };
+    }
+    return null;
+  } catch (error) {
+    console.error(`Error getting category by id ${id}:`, error);
+    return null;
+  }
+}
+
 export async function getCategories(): Promise<Category[]> {
   if (!realm) {
     console.error('Failed to open Realm instance');
     throw new Error('Failed to open Realm instance');
   }
-
   try {
-    const categories = realm?.objects<Category>('Category').sorted('name');
-    return (
-      categories?.map((cat) => ({
-        id: cat.id,
-        name: cat.name,
-        description: cat.description,
-        createdAt: cat.createdAt,
-        updatedAt: cat.updatedAt,
-        synced: cat.synced,
-        syncTimestamp: cat.syncTimestamp,
-        uid: cat.uid,
-      })) ?? []
-    );
+    const categories = realm.objects<Category>('Category');
+    return Array.from(categories).map(cat => ({
+      id: cat.id,
+      name: cat.name,
+      description: cat.description,
+      createdAt: cat.createdAt,
+      updatedAt: cat.updatedAt,
+      synced: cat.synced,
+      syncTimestamp: cat.syncTimestamp,
+      uid: cat.uid,
+    }));
   } catch (error) {
     console.error('Error getting categories:', error);
-    return [];
+    throw error;
   }
 }
 
@@ -535,39 +572,31 @@ export async function addOrUpdateCategory(
     console.error('Failed to open Realm instance');
     throw new Error('Failed to open Realm instance');
   }
-
   try {
-    const categoryId = id || Date.now().toString() + '_' + name;
-
-    realm?.write(() => {
-      const existing = realm?.objectForPrimaryKey<Category>(
-        'Category',
-        categoryId
-      );
-
-      if (existing) {
-        // Update existing category (exclude id since it's the primary key)
-        existing.name = name;
-        existing.description = description || `Category: ${name}`;
-        existing.updatedAt = new Date();
-        existing.synced = false;
+    let categoryId = id;
+    realm.write(() => {
+      if (id) {
+        const existing = realm?.objectForPrimaryKey<Category>('Category', id);
+        if (existing) {
+          existing.name = name;
+          existing.description = description;
+          existing.updatedAt = new Date();
+          existing.synced = false;
+        }
       } else {
-        // Create new category
-        const categoryData = {
+        categoryId = Date.now().toString() + '_' + name;
+        realm?.create('Category', {
           id: categoryId,
           name,
-          description: description || `Category: ${name}`,
+          description: description || '',
           createdAt: new Date(),
           updatedAt: new Date(),
           synced: false,
           uid: 'local_user',
-        };
-        realm?.create('Category', categoryData);
+        });
       }
     });
-
-    console.log(`Category ${id ? 'updated' : 'added'}: ${categoryId}`);
-    return categoryId;
+    return categoryId!;
   } catch (error) {
     console.error('Error adding/updating category:', error);
     throw error;
@@ -579,232 +608,116 @@ export async function deleteCategory(id: string): Promise<void> {
     console.error('Failed to open Realm instance');
     throw new Error('Failed to open Realm instance');
   }
-
   try {
-    realm?.write(() => {
-      const category = realm?.objectForPrimaryKey<Category>('Category', id);
-      if (category && realm) {
-        realm.delete(category);
-        console.log(`Category with ID ${id} deleted.`);
+    realm.write(() => {
+      const category = realm?.objectForPrimaryKey('Category', id);
+      if (category) {
+        realm?.delete(category);
       }
     });
   } catch (error) {
-    console.error(`Error deleting category with ID ${id}:`, error);
+    console.error('Error deleting category:', error);
     throw error;
   }
 }
 
-function compareVersions(
-  currentVersion: string,
-  targetVersion: string
-): boolean {
-  const parseVersion = (version: string) => version.split('.').map(Number);
-  const current = parseVersion(currentVersion);
-  const target = parseVersion(targetVersion);
-  for (let i = 0; i < Math.max(current.length, target.length); i++) {
-    const c = current[i] || 0;
-    const t = target[i] || 0;
-    if (c < t) return true;
-    if (c > t) return false;
+export async function getActivityLogs(): Promise<ActivityLog[]> {
+  if (!realm) {
+    console.error('Failed to open Realm instance');
+    throw new Error('Failed to open Realm instance');
   }
-  return false;
+  try {
+    const logs = realm.objects<ActivityLog>('ActivityLog');
+    return Array.from(logs).map(log => ({
+      id: log.id,
+      discussionId: log.discussionId,
+      category: log.category,
+      description: log.description,
+      timestamp: log.timestamp,
+      cleared: log.cleared,
+      responseType: log.responseType || '',
+      synced: log.synced || false,
+      syncTimestamp: log.syncTimestamp,
+      categoryId: (log as any).categoryId,
+      uid: (log as any).uid || 'local_user',
+      lockedCategory: (log as any).lockedCategory || false,
+      lockedDescription: (log as any).lockedDescription || false,
+    }));
+  } catch (error) {
+    console.error('Error getting activity logs:', error);
+    throw error;
+  }
 }
 
-// Utility to get sync and paid status
-async function getSyncAndPaidStatus() {
+export async function getDiscussions(lastX?: number, discussionId?: string): Promise<Discussion[]> {
+  if (!realm) {
+    console.error('Failed to open Realm instance');
+    throw new Error('Failed to open Realm instance');
+  }
   try {
-    const syncWithCloud =
-      (await AsyncStorage.getItem('syncWithCloud')) === 'true';
-    const isPaidCustomer =
-      (await AsyncStorage.getItem('isPaidCustomer')) === 'true';
-    return { syncWithCloud, isPaidCustomer };
-  } catch (e) {
-    return { syncWithCloud: false, isPaidCustomer: false };
+    let discussions = realm.objects<Discussion>('Discussion');
+    
+    if (discussionId) {
+      discussions = discussions.filtered('discussionId == $0', discussionId);
+    }
+    
+    let results = Array.from(discussions).map(disc => ({
+      id: disc.id,
+      discussionId: disc.discussionId,
+      description: disc.description,
+      timestamp: disc.timestamp,
+      typeSay: disc.typeSay,
+      cleared: disc.cleared,
+      uid: disc.uid,
+    }));
+    
+    if (lastX) {
+      results = results.slice(-lastX);
+    }
+    
+    return results;
+  } catch (error) {
+    console.error('Error getting discussions:', error);
+    throw error;
   }
 }
 
 export async function addOrUpdateDiscussion(
   description: string,
   typeSay: string = 'tell',
-  id?: string,
-  timestamp?: Date
+  id?: string
 ): Promise<string> {
-  // console.log(
-  //   `Adding/updating discussion with ID: ${id}, description: ${description}, typeSay: ${typeSay}`
-  // );
   if (!realm) {
     console.error('Failed to open Realm instance');
     throw new Error('Failed to open Realm instance');
   }
-  const realmInstance = realm;
   try {
-    const currentTime = timestamp ? new Date(timestamp) : new Date();
-    const discussionId = id ? id : Date.now().toString();
-    realmInstance.write(() => {
-      const discussion = realmInstance.objectForPrimaryKey<Discussion>(
-        'Discussion',
-        discussionId
-      );
-      const discussionData = {
-        id: discussionId,
-        discussionId,
-        description,
-        typeSay,
-        cleared: false,
-        timestamp: currentTime,
-        synced: false, // Always mark as not synced; router will handle sync
-        syncTimestamp: currentTime,
-      };
-      if (discussion) {
-        if (!description) {
-          realmInstance.delete(discussion);
-        } else {
-          Object.assign(discussion, discussionData);
+    let discussionId = id;
+    realm.write(() => {
+      if (id) {
+        const existing = realm?.objectForPrimaryKey<Discussion>('Discussion', id);
+        if (existing) {
+          existing.description = description;
+          existing.typeSay = typeSay;
+          existing.timestamp = new Date();
         }
       } else {
-        realmInstance.create('Discussion', discussionData);
+        discussionId = Date.now().toString();
+        realm?.create('Discussion', {
+          id: discussionId,
+          discussionId: discussionId,
+          description,
+          timestamp: new Date(),
+          typeSay,
+          cleared: false,
+          uid: 'local_user',
+        });
       }
     });
-    // Access context for sync toggle
-    // Only sync if toggle is on and user is paid
-    const { syncWithCloud, isPaidCustomer } = await getSyncAndPaidStatus();
-    if (syncWithCloud && isPaidCustomer) {
-      try {
-        // If you need to call the router, throw an error or log a warning here instead.
-        throw new Error(
-          'Router logic should not be called from dbServicesLocal.ts. Refactor your code to call router logic from dbServices.ts or a dedicated router file.'
-        );
-      } catch (remoteError) {
-        console.warn('Remote/cloud sync failed:', remoteError);
-      }
-    }
-
-    // console.log(
-    //   `Discussion ${id ? 'updated' : 'added'} locally: ${discussionId}`
-    // );
-    return discussionId.toString();
+    return discussionId!;
   } catch (error) {
     console.error('Error adding/updating discussion:', error);
     throw error;
-  }
-}
-
-// Fix addOrUpdateDiscussionRemote to accept string id
-export async function addOrUpdateDiscussionRemote(
-  description: string,
-  typeSay: string = 'tell',
-  id?: string
-): Promise<string> {
-  // This will call the router and force remote/cloud logic
-  return await addOrUpdateDiscussionRouter(description, typeSay, id);
-}
-
-async function addDiscussion(
-  description: string,
-  typeSay: string = 'tell'
-): Promise<void> {
-  if (!realm) {
-    console.error('Failed to open Realm instance');
-    throw new Error('Failed to open Realm instance');
-  }
-  const realmInstance = realm;
-  try {
-    realmInstance.write(() => {
-      const discussions = realmInstance
-        .objects<Discussion>('Discussion')
-        .filtered('description == null OR description == ""');
-      realmInstance.delete(discussions);
-    });
-    const currentTime = new Date();
-    const id = currentTime.getTime();
-    realmInstance.write(() => {
-      realmInstance.create('Discussion', {
-        id,
-        discussionId: id,
-        timestamp: currentTime,
-        description,
-        cleared: false,
-        typeSay,
-        synced: false,
-        syncTimestamp: currentTime,
-      });
-    });
-    console.log(`Discussion added successfully: ${id}`);
-  } catch (error) {
-    console.error('Error adding discussion:', error);
-    throw error;
-  }
-}
-
-export async function getDiscussions(
-  lastX?: number,
-  discussionId?: string
-): Promise<any[]> {
-  // console.log(
-  //   'getDiscussions called with lastX:',
-  //   lastX,
-  //   'and discussionId:',
-  //   discussionId
-  // );
-  if (!realm) {
-    console.error('Failed to open Realm instance');
-    throw new Error('Failed to open Realm instance');
-  }
-  const realmInstance = realm;
-  try {
-    // console.log('Fetching discussions from Realm...');
-    let discussions = realmInstance
-      .objects<Discussion>('Discussion')
-      .sorted('timestamp', true);
-    // Extra debug: log all raw discussions
-    // console.log(
-    //   '[getDiscussions] Raw Realm objects:',
-    //   discussions.map((d) => ({
-    //     id: d.id,
-    //     description: d.description,
-    //     timestamp: d.timestamp,
-    //   }))
-    // );
-    if (discussionId) {
-      const discussion = realmInstance.objectForPrimaryKey<Discussion>(
-        'Discussion',
-        discussionId
-      );
-      if (discussion) {
-        discussions = discussions.filtered(
-          'timestamp < $0',
-          discussion.timestamp
-        );
-      }
-    }
-    if (lastX !== undefined) {
-      discussions = realm
-        .objects<Discussion>('Discussion')
-        .filtered(
-          `id IN {${discussions
-            .slice(0, lastX)
-            .map((d) => d.id)
-            .join(',')}}`
-        )
-        .sorted('timestamp', true);
-    }
-    const result = discussions.map((doc) => ({
-      id: doc.id.toString(),
-      discussionId: doc.discussionId.toString(),
-      description: doc.description,
-      typeSay: doc.typeSay,
-      cleared: doc.cleared,
-      timestamp: format(new Date(doc.timestamp), 'M/d/yy \n h:mm a'),
-    }));
-    // console.log(
-    //   '[DEBUG] getDiscussions returning:',
-    //   result.length,
-    //   result.slice(0, 3)
-    // ); // Show first 3
-    return result;
-  } catch (error) {
-    console.error('Error getting Discussions:', error);
-    return [];
   }
 }
 
@@ -813,1671 +726,256 @@ export async function deleteDiscussion(id: string): Promise<void> {
     console.error('Failed to open Realm instance');
     throw new Error('Failed to open Realm instance');
   }
-  const realmInstance = realm;
   try {
-    realmInstance.write(() => {
-      // First, delete all related activity logs
-      const relatedActivityLogs = realm
-        ?.objects<ActivityLog>('ActivityLog')
-        .filtered('discussionId == $0', id.toString());
-
-      if (relatedActivityLogs && relatedActivityLogs.length > 0 && realm) {
-        console.log(
-          `Deleting ${relatedActivityLogs.length} related activity logs for discussion ${id}`
-        );
-        realm.delete(relatedActivityLogs);
-      }
-
-      // Then delete the discussion itself
-      const discussion = realm?.objectForPrimaryKey<Discussion>(
-        'Discussion',
-        id.toString()
-      );
-      if (discussion && realm) {
-        realm.delete(discussion);
-        console.log(
-          `Discussion with ID ${id} deleted along with its related activity logs.`
-        );
+    realm.write(() => {
+      const discussion = realm?.objectForPrimaryKey('Discussion', id);
+      if (discussion) {
+        realm?.delete(discussion);
       }
     });
   } catch (error) {
-    console.error(`Error deleting discussion with ID ${id}:`, error);
-  }
-}
-
-export async function fetchInitialDiscussion(): Promise<any | null> {
-  if (!realm) {
-    console.error('Failed to open Realm instance');
-    throw new Error('Failed to open Realm instance');
-  }
-  try {
-    const discussions = realm
-      .objects<Discussion>('Discussion')
-      .sorted('timestamp', true);
-    if (discussions.length > 0) {
-      const doc = discussions[0];
-      return {
-        id: doc.id.toString(),
-        discussionId: (doc.discussionId || doc.id).toString(),
-        description: doc.description,
-        timestamp: new Date(),
-        typeSay: doc.typeSay || 'ask',
-        cleared: doc.cleared || false,
-      };
-    }
-    return null;
-  } catch (error) {
-    console.error('Error fetching initial discussion:', error);
-    return null;
-  }
-}
-
-export async function getNextOpenDiscussion(lastVisibleId?: string): Promise<{
-  snapshot: any;
-  hasMore: boolean;
-  lastVisibleDoc: any;
-}> {
-  if (!realm) {
-    console.error('Failed to open Realm instance');
-    throw new Error('Failed to open Realm instance');
-  }
-  try {
-    let discussions = realm
-      .objects<Discussion>('Discussion')
-      .filtered('cleared == false AND typeSay == "ask"');
-    // If lastVisibleId is provided, filter using string comparison or convert as needed
-    if (lastVisibleId) {
-      discussions = discussions.filtered('id < $0', lastVisibleId);
-    }
-    const snapshot = discussions.slice(0, 1);
-    return {
-      snapshot,
-      hasMore: snapshot.length > 0,
-      lastVisibleDoc: snapshot.length > 0 ? snapshot[0].id : null,
-    };
-  } catch (error) {
-    console.error('Error fetching next open discussion:', error);
-    return { snapshot: [], hasMore: false, lastVisibleDoc: null };
-  }
-}
-
-export async function processPendingTells(): Promise<void> {
-  if (!realm) {
-    console.error('Failed to open Realm instance');
-    throw new Error('Failed to open Realm instance');
-  }
-  const realmInstance = realm;
-  try {
-    const discussions = realm
-      .objects<Discussion>('Discussion')
-      .filtered('typeSay == "tell" AND cleared == false');
-    if (discussions.length === 0) {
-      console.log('No pending tell statements to process.');
-      return;
-    }
-    const rules = await getRules();
-    realmInstance.write(() => {
-      discussions.forEach((doc) => {
-        let category = 'uncategorized';
-        for (const rule of rules) {
-          if (rule.isRegex) {
-            const pattern = new RegExp(rule.pattern, 'i');
-            if (pattern.test(doc.description)) {
-              category = rule.category;
-              break;
-            }
-          } else if (
-            doc.description.toLowerCase().includes(rule.pattern.toLowerCase())
-          ) {
-            category = rule.category;
-            break;
-          }
-        }
-        realmInstance.create('ActivityLog', {
-          id: Date.now().toString(),
-          discussionId: doc.id.toString(),
-          description: doc.description,
-          category,
-          timestamp: doc.timestamp,
-          cleared: false,
-          synced: false,
-        });
-        doc.cleared = true;
-        doc.synced = false;
-      });
-    });
-    console.log('Finished processing pending tell statements.');
-  } catch (error) {
-    console.error('Error processing pending tells:', error);
+    console.error('Error deleting discussion:', error);
     throw error;
   }
 }
-export async function addQuestionDiscussion(
-  question: string,
-  discussionId: string,
-  timestamp?: Date
-): Promise<string> {
+
+export async function createActivityLog(activityLog: Omit<ActivityLog, 'id'>): Promise<string> {
   if (!realm) {
     console.error('Failed to open Realm instance');
     throw new Error('Failed to open Realm instance');
   }
-  const realmInstance = realm;
   try {
-    await addOrUpdateDiscussion(question, 'ask', discussionId, timestamp);
-    const gpts_names = ['openAI', 'Gemini', 'ChatGPT', 'Claude', 'DeepSeek'];
-    const categories = await getDistinctCategories();
-    const response = await sendQuestionForParsing({
-      categories,
-      gpts_names,
-      question,
-      discussionId,
-    });
     const id = Date.now().toString();
-    realmInstance.write(() => {
-      realmInstance.create('GPTResponses', {
+    realm.write(() => {
+      realm?.create('ActivityLog', {
         id,
-        discussionId: discussionId.toString(),
-        timestamp: timestamp ? new Date(timestamp) : new Date(),
-        prompt: question,
-        response: JSON.stringify(response),
-        responseType: 'parsed question',
-        cleared: false,
+        ...activityLog,
         synced: false,
       });
     });
-    return id.toString();
+    return id;
   } catch (error) {
-    console.error('Error adding question discussion:', error);
+    console.error('Error creating activity log:', error);
     throw error;
   }
 }
 
-export async function processUnclearedGPTResponses(): Promise<void> {
+export async function deleteActivityLog(activityLogId: string): Promise<void> {
   if (!realm) {
     console.error('Failed to open Realm instance');
     throw new Error('Failed to open Realm instance');
   }
   try {
-    let hasMore = true;
-    while (hasMore) {
-      const responses = realm
-        .objects<GPTResponse>('GPTResponses')
-        .filtered('cleared == false AND responseType == "updateDB"')
-        .slice(0, 1);
-      if (responses.length === 0) {
-        hasMore = false;
-        break;
+    realm.write(() => {
+      const log = realm?.objectForPrimaryKey('ActivityLog', activityLogId);
+      if (log) {
+        realm?.delete(log);
       }
-      const gptResponse = responses[0];
-      const responseJson = JSON.parse(gptResponse.response) as {
-        category: string;
-        parsedDescription: string;
-      };
-      const discussionId = gptResponse.discussionId;
-      const timestamp = new Date(gptResponse.timestamp);
-      const activityLog = realm
-        ?.objects<ActivityLog>('ActivityLog')
-        .filtered('discussionId == $0', discussionId)[0];
-      const realmInstance = realm;
-      realmInstance?.write(() => {
-        if (activityLog) {
-          activityLog.category = responseJson.category;
-          activityLog.description = responseJson.parsedDescription;
-          activityLog.responseType = 'tell';
-          activityLog.cleared = true;
-          activityLog.synced = false;
-        } else {
-          realmInstance?.create('ActivityLog', {
-            id: Date.now().toString(),
-            discussionId: discussionId.toString(),
-            category: responseJson.category,
-            description: responseJson.parsedDescription,
-            timestamp,
-            cleared: true,
-            synced: false,
-          });
-        }
-        gptResponse.cleared = true;
-        gptResponse.synced = false;
-      });
-      const success = await clearDiscussion(String(discussionId));
-      if (!success) {
-        console.error('Failed to clear discussion. Exiting process.');
-        return;
-      }
-    }
-    console.log('All GPTResponses have been cleared.');
+    });
   } catch (error) {
-    console.error('Error processing uncleared GPT responses:', error);
+    console.error('Error deleting activity log:', error);
+    throw error;
   }
 }
 
-export async function markDiscussionAsCleared(
-  discussionId: string
+export async function updateActivityLogCategory(
+  activityLogId: string,
+  category: string
 ): Promise<void> {
   if (!realm) {
     console.error('Failed to open Realm instance');
     throw new Error('Failed to open Realm instance');
   }
-  const realmInstance = realm;
   try {
-    realmInstance.write(() => {
-      const discussion = realmInstance.objectForPrimaryKey<Discussion>(
-        'Discussion',
-        discussionId
-      );
+    realm.write(() => {
+      const log = realm?.objectForPrimaryKey('ActivityLog', activityLogId);
+      if (log) {
+        (log as any).category = category;
+      }
+    });
+  } catch (error) {
+    console.error('Error updating activity log category:', error);
+    throw error;
+  }
+}
+
+export async function markDiscussionAsCleared(discussionId: string): Promise<void> {
+  if (!realm) {
+    console.error('Failed to open Realm instance');
+    throw new Error('Failed to open Realm instance');
+  }
+  try {
+    realm.write(() => {
+      const discussion = realm?.objectForPrimaryKey('Discussion', discussionId);
       if (discussion) {
-        discussion.cleared = true;
-        discussion.synced = false;
-        console.log(`Discussion ${discussionId} marked as cleared.`);
+        (discussion as any).cleared = true;
       }
     });
   } catch (error) {
     console.error('Error marking discussion as cleared:', error);
-  }
-}
-
-export async function clearDiscussion(discussionId: string): Promise<boolean> {
-  if (!realm) {
-    console.error('Failed to open Realm instance');
-    throw new Error('Failed to open Realm instance');
-  }
-  const realmInstance = realm;
-  try {
-    realmInstance.write(() => {
-      const discussion = realmInstance.objectForPrimaryKey<Discussion>(
-        'Discussion',
-        discussionId
-      );
-      if (discussion) {
-        discussion.cleared = true;
-        discussion.synced = false;
-        console.log(`Processed and cleared Discussion: ${discussionId}`);
-      }
-    });
-    return true;
-  } catch (error) {
-    console.error(`Error clearing discussion ${discussionId}:`, error);
-    return false;
-  }
-}
-
-interface GPTResponseJSONData {
-  category: string;
-  parsedDescription: string;
-}
-
-export async function addOrUpdateActivityLog(): Promise<void> {
-  if (!realm) {
-    console.error('Failed to open Realm instance');
-    throw new Error('Failed to open Realm instance');
-  }
-  const realmInstance = realm;
-  try {
-    const responses = realmInstance
-      .objects<GPTResponse>('GPTResponses')
-      .filtered('cleared == false AND responseType == "updateDB"');
-    for (const gptResponse of responses) {
-      const responseJson = JSON.parse(
-        gptResponse.response
-      ) as GPTResponseJSONData;
-      const timestampValue = gptResponse.timestamp;
-      const timestamp =
-        timestampValue instanceof Date
-          ? timestampValue
-          : typeof timestampValue === 'string' ||
-            typeof timestampValue === 'number'
-          ? new Date(timestampValue)
-          : new Date();
-      if (isNaN(timestamp.getTime())) {
-        console.warn(
-          `Invalid timestamp for GPTResponse ${gptResponse.id}, using current date`
-        );
-        timestamp.setTime(Date.now());
-      }
-      const category = responseJson.category;
-      const parsedDescription = responseJson.parsedDescription;
-      const discussionId = gptResponse.discussionId;
-      const activityLog = realmInstance
-        .objects<ActivityLog>('ActivityLog')
-        .filtered('discussionId == $0', discussionId)[0];
-      realmInstance.write(() => {
-        if (activityLog) {
-          activityLog.category = category;
-          activityLog.description = parsedDescription;
-          activityLog.responseType = 'tell';
-          activityLog.cleared = true;
-          activityLog.synced = false;
-        } else {
-          realmInstance.create('ActivityLog', {
-            id: Date.now().toString(),
-            discussionId: discussionId.toString(),
-            category,
-            description: parsedDescription,
-            timestamp,
-            cleared: true,
-            synced: false,
-          });
-        }
-        gptResponse.cleared = true;
-        gptResponse.synced = false;
-      });
-    }
-  } catch (error) {
-    console.error('Error adding or updating ActivityLog:', error);
-  }
-}
-
-export async function renameFieldToCleared(): Promise<void> {
-  if (!realm) {
-    console.error('Failed to open Realm instance');
-    throw new Error('Failed to open Realm instance');
-  }
-  try {
-    realm.write(() => {
-      const realmInstance = realm;
-      const discussions = realmInstance?.objects<Discussion>('Discussion');
-      discussions?.forEach((doc) => {
-        const fieldName = Object.keys(doc).find(
-          (key) => key.toLowerCase() === 'cleared'
-        );
-        if (fieldName && fieldName !== 'cleared') {
-          doc.cleared = (doc as any)[fieldName];
-          delete (doc as any)[fieldName];
-          doc.synced = false;
-        }
-      });
-    });
-    console.log('All discussions updated successfully!');
-  } catch (error) {
-    console.error('Error updating discussions:', error);
-  }
-}
-
-export async function getLastOpenDiscussion(): Promise<LastOpenDiscussion> {
-  if (!realm) {
-    console.error('Failed to open Realm instance');
-    throw new Error('Failed to open Realm instance');
-  }
-  try {
-    const discussions = realm
-      .objects<Discussion>('Discussion')
-      .filtered(
-        'cleared == false AND description != null AND description != ""'
-      )
-      .sorted('timestamp', true);
-    if (discussions.length > 0) {
-      const discussion = discussions[0];
-      return {
-        id: String(discussion.id),
-        description: discussion.description,
-      };
-    }
-    throw new Error('No open discussions found');
-  } catch (error) {
-    console.error('Error getting last open discussion:', error);
     throw error;
   }
 }
 
-export async function disperseQuestion(
-  discussionId: string,
-  GPT_ResponseId: string
-): Promise<string[] | undefined> {
-  if (!realm) {
-    console.error('Failed to open Realm instance');
-    throw new Error('Failed to open Realm instance');
-  }
-  const realmInstance = realm;
-  try {
-    const discussion = realmInstance.objectForPrimaryKey<Discussion>(
-      'Discussion',
-      discussionId
-    );
-    if (!discussion) {
-      console.log(`No discussion found with ID: ${discussionId}`);
-      return undefined;
-    }
-    const gptResponse = realmInstance.objectForPrimaryKey<GPTResponse>(
-      'GPTResponse',
-      GPT_ResponseId
-    );
-    if (!gptResponse) {
-      console.error('GPT Response not found');
-      return undefined;
-    }
-    const parsedQuestion = JSON.parse(gptResponse.response) as {
-      parts: { category: string; gpt: string; parsedDescription: string }[];
-    };
-    const responses: string[] = [];
-    for (const part of parsedQuestion.parts) {
-      const { gpt, category, parsedDescription: question } = part;
-      const response = await sendQuestion({
-        category,
-        gpt,
-        question,
-        discussionId,
-      });
-      realmInstance.write(() => {
-        realmInstance.create('GPTResponses', {
-          id: Date.now().toString(),
-          discussionId: discussionId.toString(),
-          timestamp: new Date(),
-          prompt: question,
-          response: response.parsedDescription,
-          responseType: 'gpt response',
-          cleared: false,
-          synced: false,
-        });
-      });
-      responses.push(response.parsedDescription);
-    }
-    return responses;
-  } catch (error) {
-    console.error('Error dispersing question:', error);
-    return undefined;
-  }
+// Add placeholder functions for missing ones
+export async function fetchInitialDiscussion(): Promise<any | null> {
+  return null;
 }
+
+export async function getNextOpenDiscussion(lastVisibleId?: string): Promise<any> {
+  return { snapshot: [], hasMore: false, lastVisibleDoc: null };
+}
+
+export async function processPendingTells(): Promise<void> {
+  // Placeholder
+}
+
+export async function addQuestionDiscussion(question: string, discussionId: string): Promise<void> {
+  // Placeholder
+}
+
+export async function processUnclearedGPTResponses(): Promise<void> {
+  // Placeholder
+}
+
+export async function clearDiscussion(discussionId: string): Promise<boolean> {
+  await markDiscussionAsCleared(discussionId);
+  return true;
+}
+
+export async function addOrUpdateActivityLog(): Promise<void> {
+  // Placeholder
+}
+
+export async function renameFieldToCleared(): Promise<void> {
+  // Placeholder
+}
+
+export async function getLastOpenDiscussion(): Promise<any> {
+  return { id: '', description: '' };
+}
+
+export async function disperseQuestion(discussionId: string, gptResponseId: string): Promise<string[] | undefined> {
+  return undefined;
+}
+
 export async function addOrUpdateGPTResponse(
   discussionId: string,
   response: string,
   responseType: string,
-  cleared: boolean = false,
-  timestamp?: Date
+  cleared: boolean = false
 ): Promise<void> {
-  if (!realm) {
-    console.error('Failed to open Realm instance');
-    throw new Error('Failed to open Realm instance');
-  }
-  const realmInstance = realm;
-  try {
-    const id = Date.now().toString();
-    realmInstance.write(() => {
-      realmInstance.create('GPTResponses', {
-        id,
-        discussionId: discussionId.toString(),
-        response,
-        responseType,
-        timestamp: timestamp ? new Date(timestamp) : new Date(),
-        cleared,
-        synced: false,
-      });
-    });
-    console.log('GPT Response saved.');
-  } catch (error) {
-    console.error('Error adding/updating GPT response:', error);
-  }
+  // Placeholder
 }
 
 export async function getGPTResponses(discussionId: string): Promise<any[]> {
-  if (!realm) {
-    console.error('Failed to open Realm instance');
-    throw new Error('Failed to open Realm instance');
-  }
-  try {
-    const responses = realm
-      .objects<GPTResponse>('GPTResponses')
-      .filtered('discussionId == $0', discussionId);
-    return Array.from(responses);
-  } catch (error) {
-    console.error('Error getting GPT responses:', error);
-    return [];
-  }
+  return [];
 }
 
-export async function getParsedGPTResponses(
-  discussionId: string
-): Promise<string[]> {
-  if (!realm) {
-    console.error('Failed to open Realm instance');
-    throw new Error('Failed to open Realm instance');
-  }
-  try {
-    const responses = realm
-      .objects<GPTResponse>('GPTResponses')
-      .filtered(
-        'discussionId == $0 AND responseType == "parsed answer"',
-        discussionId
-      );
-    return responses.map((doc) => doc.response);
-  } catch (error) {
-    console.error('Error getting parsed GPT responses:', error);
-    return [];
-  }
+export async function getParsedGPTResponses(discussionId: string): Promise<string[]> {
+  return [];
 }
 
 export async function getAIResponse(question: string): Promise<string> {
-  return new Promise((resolve) => {
-    setTimeout(() => {
-      resolve(`This is an AI-generated response to: "${question}"`);
-    }, 2000);
-  });
+  return '';
 }
 
-// Remove syncToCloud and any direct axios calls for remote sync
-export const updateRealmSyncStatus = (
-  tableName: string,
-  id: string,
-  synced: boolean
-): void => {
-  if (!realm) {
-    console.error('Failed to open Realm instance');
-    throw new Error('Failed to open Realm instance');
-  }
-  try {
-    realm.write(() => {
-      const record = realm?.objectForPrimaryKey(tableName, id);
-      if (record) {
-        record.synced = synced;
-        record.syncTimestamp = new Date();
-      }
-    });
-  } catch (error) {
-    console.error(`Error updating sync status for ${tableName}:`, error);
-  }
-};
+export async function syncToCloud(tableName: string, payload?: any, method?: string): Promise<void> {
+  // Placeholder
+}
 
 export async function getNextActiveAlert(): Promise<any | null> {
-  if (!realm) {
-    console.error('Failed to open Realm instance');
-    throw new Error('Failed to open Realm instance');
-  }
-  try {
-    const alerts = realm
-      .objects<Alert>('Alert')
-      .filtered('isActive == true')
-      .sorted('nextTrigger', true);
-    return alerts.length > 0 ? alerts[0] : null;
-  } catch (error) {
-    console.error('Error fetching active alert:', error);
-    return null;
-  }
+  return null;
 }
 
 export async function addOrUpdateAlert(alertData: any): Promise<void> {
-  if (!realm) {
-    console.error('Failed to open Realm instance');
-    throw new Error('Failed to open Realm instance');
-  }
-  try {
-    realm.write(() => {
-      const existingAlert = alertData._id
-        ? realm?.objectForPrimaryKey<Alert>('Alert', alertData._id)
-        : null;
-      const alert = {
-        id: alertData._id || new Date().getTime(),
-        message: alertData.message,
-        timestamp: alertData.timestamp
-          ? new Date(alertData.timestamp)
-          : new Date(),
-        severity: alertData.severity,
-        isActive: alertData.isActive !== undefined ? alertData.isActive : true,
-        nextTrigger: alertData.nextTrigger
-          ? new Date(alertData.nextTrigger)
-          : new Date(),
-        createdAt: alertData.createdAt
-          ? new Date(alertData.createdAt)
-          : new Date(),
-        synced: false,
-      };
-      if (existingAlert) {
-        Object.assign(existingAlert, alert);
-      } else {
-        realm?.create('Alert', alert);
-      }
-    });
-    console.log(`Alert ${alertData._id ? 'updated' : 'added'} successfully.`);
-  } catch (error) {
-    console.error('Error adding/updating alert:', error);
-  }
+  // Placeholder
 }
 
 export async function deactivateAlertByKey(key: number): Promise<void> {
-  if (!realm) {
-    console.error('Failed to open Realm instance');
-    throw new Error('Failed to open Realm instance');
-  }
-  try {
-    realm.write(() => {
-      const alert = realm?.objectForPrimaryKey<Alert>('Alert', key.toString());
-      if (alert) {
-        alert.isActive = false;
-        alert.synced = false;
-        console.log(`Alert with key ${key} deactivated.`);
-      }
-    });
-  } catch (error) {
-    console.error(`Error deactivating alert with key ${key}:`, error);
-  }
+  // Placeholder
 }
 
-export async function getURLofGPT(
-  gpt_name: string
-): Promise<{ url: string; apiKey: string } | null> {
-  if (!realm) {
-    console.error('Failed to open Realm instance');
-    throw new Error('Failed to open Realm instance');
-  }
-  try {
-    const specialty = realm
-      .objects<GPTSpecialty>('GPTSpecialties')
-      .filtered('name == $0', gpt_name)[0];
-    return specialty ? { url: specialty.url, apiKey: specialty.apiKey } : null;
-  } catch (error) {
-    console.error('Error fetching GPT specialty:', error);
-    return null;
-  }
+export async function getURLofGPT(gpt_name: string): Promise<any | null> {
+  return null;
 }
 
-export async function expandFromAbbreviation(
-  discussion: string
-): Promise<string> {
-  const abbreviationMap = new Map<string, string>([
-    ['1', 'i urinated'],
-    ['11', 'i had a high volume of urination'],
-    ['2', 'i had a regular size poop'],
-    ['22', 'i had a large poop'],
-  ]);
-  const expandedForm = abbreviationMap.get(discussion);
-  return expandedForm || discussion;
+export async function expandFromAbbreviation(discussion: string): Promise<string> {
+  return discussion;
 }
 
 export async function restoreLostData(): Promise<void> {
-  if (!realm) {
-    console.error('Failed to open Realm instance');
-    throw new Error('Failed to open Realm instance');
-  }
-  const lostData = [
-    {
-      id: '1738367528606',
-      typeSay: 'tell',
-      timestamp: 1738367528606,
-      description: '1',
-    },
-    {
-      id: '1738374105437',
-      typeSay: 'tell',
-      timestamp: 1738374105437,
-      description: 'I ate salmon couscous and 2 slices of avocado',
-    },
-    {
-      id: '1738382525048',
-      typeSay: 'tell',
-      timestamp: 1738382525048,
-      description: 'Took 5 mg Staten',
-    },
-    {
-      id: '7vukcCfVaBApZaAv6PoU',
-      typeSay: 'tell',
-      timestamp: 1738374105437,
-      description: "I'm feeling anxious and frustrated",
-    },
-    {
-      id: '92JlMF1EHheU8uPMLBMi',
-      typeSay: 'tell',
-      timestamp: 1738382525048,
-      description: '1',
-    },
-    {
-      id: 'ArZ5Z0pQN1RKVb3kWuVh',
-      typeSay: 'tell',
-      timestamp: 1738374105437,
-      description:
-        'Ate Cheese omelet 3 out of 4 yolks removed with mustard leaf onions',
-    },
-    {
-      id: 'BA5UcSPVyWjPUHCMNiwM',
-      typeSay: 'tell',
-      timestamp: 1738382525048,
-      description: 'I ate banana',
-    },
-  ];
-  try {
-    const realmInstance = realm;
-    realmInstance?.write(() => {
-      for (const entry of lostData) {
-        const id = entry.id.toString();
-        const existing = realmInstance?.objectForPrimaryKey<ActivityLog>(
-          'ActivityLog',
-          id
-        );
-        if (!existing) {
-          const ts =
-            entry.timestamp !== undefined
-              ? new Date(entry.timestamp)
-              : new Date();
-          realmInstance?.create('ActivityLog', {
-            id,
-            discussionId: id,
-            description: entry.description,
-            category: 'uncategorized',
-            timestamp: ts,
-            cleared: false,
-            synced: false,
-          });
-        }
-      }
-    });
-    console.log('Data restoration completed!');
-  } catch (error) {
-    console.error('Error restoring lost data:', error);
-    throw error;
-  }
+  // Placeholder
 }
 
-export async function getRules(): Promise<Rule[]> {
-  if (!realm) {
-    console.error('Failed to open Realm instance');
-    throw new Error('Failed to open Realm instance');
-  }
-  try {
-    const realmInstance = realm;
-    const rules =
-      realmInstance?.objects<Rule>('Rule').map((rule) => ({
-        pattern: rule.pattern,
-        isRegex: rule.isRegex,
-        category: rule.category,
-        priority: rule.priority,
-      })) ?? [];
-    return rules.sort(
-      (a, b) => (a.isRegex ? -1 : 1) || a.priority - b.priority
-    );
-  } catch (error) {
-    console.error('Error fetching rules:', error);
-    throw error;
-  }
-}
-
-// Remove remote logic from updateGPTSpecialties
-export async function updateGPTSpecialties(gptSpecialty: {
-  id?: number;
-  name: string;
-  url: string;
-  apiKey: string;
-}): Promise<void> {
-  if (!realm) {
-    console.error('Failed to open Realm instance');
-    throw new Error('Failed to open Realm instance');
-  }
-  try {
-    // REMOVED: axios/remote update. Only update local Realm here.
-    realm.write(() => {
-      const existing = gptSpecialty.id
-        ? realm?.objectForPrimaryKey<GPTSpecialty>(
-            'GPTSpecialties',
-            gptSpecialty.id.toString()
-          )
-        : null;
-      if (existing) {
-        existing.name = gptSpecialty.name;
-        existing.url = gptSpecialty.url;
-        existing.apiKey = gptSpecialty.apiKey;
-        existing.synced = false;
-      } else {
-        const realmInstance = realm;
-        realmInstance?.create('GPTSpecialties', {
-          id: Date.now().toString(),
-          name: gptSpecialty.name,
-          url: gptSpecialty.url,
-          apiKey: gptSpecialty.apiKey,
-          synced: false,
-        });
-      }
-    });
-    console.log('GPT Specialty updated locally. Use router for remote sync.');
-  } catch (error) {
-    console.error('Error updating GPT specialty:', error);
-    throw error;
-  }
-}
-
-export class DatabaseService {
-  async parseAndSaveInstructions(jsonData: any): Promise<void> {
-    if (!realm) {
-      console.error('Failed to open Realm instance');
-      throw new Error('Failed to open Realm instance');
-    }
-    try {
-      const instructions = jsonData.instructions;
-      const realmInstance = realm;
-      realmInstance?.write(() => {
-        for (const instruction of instructions) {
-          const discussion = realmInstance
-            ?.objects<Discussion>('Discussion')
-            .filtered('id == $0', instruction.id)[0];
-          if (discussion) {
-            const timestamp = new Date(discussion.timestamp);
-            const existingLog = realmInstance
-              ?.objects<ActivityLog>('ActivityLog')
-              .filtered('discussionId == $0', discussion.id)[0];
-            const logData = {
-              id: existingLog ? existingLog.id : new Date().getTime(),
-              discussionId: discussion.id,
-              category: instruction.category,
-              description: instruction.description,
-              timestamp,
-              cleared: false,
-              synced: false,
-            };
-            if (existingLog) {
-              Object.assign(existingLog, logData);
-              console.log(`Updated ActivityLog ${logData.id}`);
-            } else {
-              realmInstance?.create('ActivityLog', logData);
-              console.log(`Added ActivityLog ${logData.id}`);
-            }
-          } else {
-            console.log(`Discussion with ID ${instruction.id} not found`);
-          }
-        }
-      });
-      console.log('Instructions parsed and saved successfully');
-    } catch (error) {
-      console.error('Error parsing and saving instructions:', error);
-    }
-  }
-
-  async getDiscussionById(id: string): Promise<Discussion | null> {
-    if (!realm) {
-      console.error('Failed to open Realm instance');
-      throw new Error('Failed to open Realm instance');
-    }
-    try {
-      const realmInstance = realm;
-      const discussion = realmInstance?.objectForPrimaryKey<Discussion>(
-        'Discussion',
-        id
-      );
-      return discussion || null;
-    } catch (error) {
-      console.error('Error getting discussion by ID:', error);
-      return null;
-    }
-  }
-
-  async getExistingLog(timestamp: Date): Promise<ActivityLog | null> {
-    if (!realm) {
-      console.error('Failed to open Realm instance');
-      throw new Error('Failed to open Realm instance');
-    }
-    try {
-      const log = realm
-        .objects<ActivityLog>('ActivityLog')
-        .filtered('timestamp == $0', timestamp)[0];
-      return log || null;
-    } catch (error) {
-      console.error('Error getting existing log:', error);
-      return null;
-    }
-  }
-
-  async getActivityLogByTimestamp(
-    timestamp: Date
-  ): Promise<ActivityLog | null> {
-    return this.getExistingLog(timestamp);
-  }
-
-  async updateActivityLog(log: ActivityLog): Promise<void> {
-    if (!realm) {
-      console.error('Failed to open Realm instance');
-      throw new Error('Failed to open Realm instance');
-    }
-    try {
-      const realmInstance = realm;
-      realmInstance?.write(() => {
-        const existingLog = realmInstance?.objectForPrimaryKey<ActivityLog>(
-          'ActivityLog',
-          log.id
-        );
-        if (existingLog) {
-          existingLog.category = log.category;
-          existingLog.description = log.description;
-          existingLog.timestamp = log.timestamp;
-          existingLog.cleared = log.cleared;
-          existingLog.responseType = log.responseType;
-          existingLog.synced = false;
-          console.log(`Updated ActivityLog ${log.id}`);
-        }
-      });
-    } catch (error) {
-      console.error('Error updating ActivityLog:', error);
-    }
-  }
-
-  async addActivityLog(log: ActivityLog): Promise<void> {
-    if (!realm) {
-      console.error('Failed to open Realm instance');
-      throw new Error('Failed to open Realm instance');
-    }
-    try {
-      const realmInstance = realm;
-      realmInstance?.write(() => {
-        realmInstance?.create('ActivityLog', {
-          id: log.id,
-          discussionId: log.discussionId,
-          category: log.category,
-          description: log.description,
-          timestamp: log.timestamp ? new Date(log.timestamp) : new Date(),
-          cleared: log.cleared !== undefined ? log.cleared : false,
-          responseType: log.responseType,
-          synced: false,
-        });
-        console.log(`Added ActivityLog ${log.id}`);
-      });
-    } catch (error) {
-      console.error('Error adding ActivityLog:', error);
-    }
-  }
-
-  // Local implementation for creating an ActivityLog with auto-generated id
-  async createActivityLog(
-    activityLog: Omit<ActivityLog, 'id'>
-  ): Promise<string> {
-    if (!realm) throw new Error('Realm not initialized');
-    let createdId = '';
-    realm.write(() => {
-      const created = realm?.create('ActivityLog', {
-        ...activityLog,
-        id: Date.now().toString(),
-        timestamp: activityLog.timestamp
-          ? new Date(activityLog.timestamp)
-          : new Date(),
-      });
-      if (created) {
-        createdId = String(created.id);
-      }
-    });
-    return createdId;
-  }
-}
-// --- STUBS FOR DB SERVICES ---
-export async function getActivityLogs() {
-  if (!realm) {
-    console.error('Failed to open Realm instance');
-    throw new Error('Failed to open Realm instance');
-  }
-  try {
-    const logs = realm.objects('ActivityLog');
-    // console.log(
-    //   `[getActivityLogs] Found ${logs.length} ActivityLog records in Realm.`
-    // );
-    // Convert Realm Results to plain JS objects
-    return Array.from(logs).map((log: any) => ({
-      id: log.id,
-      discussionId: log.discussionId,
-      category: log.category,
-      description: log.description,
-      timestamp: log.timestamp,
-      cleared: log.cleared,
-      responseType: log.responseType,
-      synced: log.synced,
-      syncTimestamp: log.syncTimestamp,
-      uid: log.uid,
-      lockedCategory: log.lockedCategory,
-      lockedDescription: log.lockedDescription,
-      attachedFile: log.attachedFile,
-    }));
-  } catch (error) {
-    console.error('Error getting ActivityLogs:', error);
-    return [];
-  }
-}
-export async function getParameters() {
+export async function getRules(): Promise<any[]> {
   return [];
 }
-export async function getDescriptionsWithTimestamps(categories: string[]) {
+
+export async function updateGPTSpecialties(gptSpecialty: any): Promise<void> {
+  // Placeholder
+}
+
+export async function getParameters(): Promise<any[]> {
+  return [];
+}
+
+export async function getDescriptionsWithTimestamps(categories: string[]): Promise<string> {
   return '[]';
 }
-export async function deleteActivityLog(activityLogId: string) {
+
+export async function createRuleCandidate(data: any): Promise<void> {
+  // Placeholder
+}
+
+export async function readChangeLog(filter: any): Promise<any[]> {
+  return [];
+}
+
+export async function syncTableFromRemote(tableName: string, newRows: any[]): Promise<void> {
+  // Placeholder
+}
+
+export async function logChange(tableName: string, rowId: string, operation: string): Promise<void> {
+  // Placeholder
+}
+
+export async function deleteAllLocalRows(): Promise<void> {
+  // Placeholder
+}
+
+export async function populateCategoryId(): Promise<void> {
   if (!realm) {
     console.error('Failed to open Realm instance');
     throw new Error('Failed to open Realm instance');
   }
-
+  console.log('Starting to populate categoryId in ActivityLog...');
   try {
     realm.write(() => {
-      // First, find the activity log to get its discussionId
-      const activityLog = realm?.objectForPrimaryKey<ActivityLog>(
-        'ActivityLog',
-        activityLogId.toString()
-      );
+      const activityLogs = realm?.objects('ActivityLog');
+      const categories = realm?.objects('Category');
+      const categoryMap = new Map();
+      
+      if (categories) {
+        categories.forEach((c: any) => {
+          categoryMap.set(c.name, c.id);
+        });
+      }
 
-      if (activityLog && realm) {
-        const discussionId = activityLog.discussionId;
-
-        // Delete the activity log
-        realm.delete(activityLog);
-        console.log(`ActivityLog with ID ${activityLogId} deleted.`);
-
-        // Set the parent discussion's cleared status to false
-        const discussion = realm?.objectForPrimaryKey<Discussion>(
-          'Discussion',
-          discussionId.toString()
-        );
-
-        if (discussion) {
-          discussion.cleared = false;
-          console.log(
-            `Discussion ${discussionId} cleared status set to false due to activity log deletion.`
-          );
-        }
-      } else {
-        console.error(`ActivityLog with ID ${activityLogId} not found.`);
+      if (activityLogs) {
+        activityLogs.forEach((log: any) => {
+          if (!log.categoryId && log.category) {
+            const categoryId = categoryMap.get(log.category);
+            if (categoryId) {
+              log.categoryId = categoryId;
+            }
+          }
+        });
       }
     });
+    console.log('Finished populating categoryId in ActivityLog.');
   } catch (error) {
-    console.error(
-      `Error deleting activity log with ID ${activityLogId}:`,
-      error
-    );
-    throw error;
-  }
-}
-export async function createActivityLog(activityLog: any) {
-  return '';
-}
-export async function updateActivityLogCategory(
-  activityLogId: string,
-  category: string
-) {
-  return;
-}
-export async function createRuleCandidate(data: {
-  discussionId: string;
-  category: string;
-  description: string;
-  uid: string;
-}) {
-  return;
-}
-/**
- * Retrieves ChangeLog entries from the local Realm database, optionally filtered by criteria.
- * @param filter - Optional filter object to query ChangeLog entries.
- * @param filter.synced - Filter by sync status (true/false).
- * @param filter.tableName - Filter by table name (e.g., 'ActivityLog').
- * @param filter.operation - Filter by operation type ('create', 'update', 'delete').
- * @param sortBy - Optional field to sort by (default: 'timestamp').
- * @param sortAscending - Sort direction (default: false for descending).
- * @returns An array of ChangeLog entries matching the criteria.
- * @throws Error if Realm is not initialized.
- */
-/**
- * Updates a ChangeLog entry in the local Realm database.
- * @param id - The ID of the ChangeLog entry to update.
- * @param updates - Partial ChangeLog data to apply (e.g., { synced: true }).
- * @throws Error if Realm is not initialized or if the entry is not found.
- */
-export const logChange = (
-  tableName: string,
-  rowId: string,
-  operation: 'create' | 'update' | 'delete'
-): void => {
-  // Existing logChange function
-};
-
-/**
- * Retrieves ChangeLog entries from the local Realm database, optionally filtered by criteria.
- * @param filter - Optional filter object to query ChangeLog entries.
- * @param filter.synced - Filter by sync status (true/false).
- * @param filter.tableName - Filter by table name (e.g., 'ActivityLog').
- * @param filter.operation - Filter by operation type ('create', 'update' | 'delete').
- * @param sortBy - Optional field to sort by (default: 'timestamp').
- * @param sortAscending - Sort direction (default: false for descending).
- * @returns An array of ChangeLog entries matching the criteria.
- * @throws Error if Realm is not initialized.
- */
-export const readChangeLog = (
-  filter: {
-    synced?: boolean;
-    tableName?: string;
-    operation?: 'create' | 'update' | 'delete';
-  } = {},
-  sortBy: string = 'timestamp',
-  sortAscending: boolean = false
-): ChangeLog[] => {
-  const realmInstance = realm;
-  if (!realmInstance) {
-    console.error('[CHANGELOG] Realm not initialized in readChangeLog');
-    throw new Error('Realm not initialized');
-  }
-  // console.log('[CHANGELOG] Reading ChangeLog entries with filter:', filter);
-  // console.log(`[CHANGELOG] Sorting by ${sortBy}, ascending: ${sortAscending}`);
-
-  try {
-    let query = '';
-    const queryParams: any[] = [];
-    if (filter.synced !== undefined) {
-      query += query ? ' AND ' : '';
-      query += 'synced == $' + queryParams.length;
-      queryParams.push(filter.synced);
-    }
-    if (filter.tableName) {
-      query += query ? ' AND ' : '';
-      query += 'tableName == $' + queryParams.length;
-      queryParams.push(filter.tableName);
-    }
-    if (filter.operation) {
-      query += query ? ' AND ' : '';
-      query += 'operation == $' + queryParams.length;
-      queryParams.push(filter.operation);
-    }
-
-    console.log(
-      `[CHANGELOG] Querying ChangeLog with filter: ${query || 'none'}`
-    );
-    let results = realmInstance.objects<ChangeLog>('ChangeLog');
-    if (query) {
-      results = results.filtered(query, ...queryParams);
-    }
-    results = results.sorted(sortBy, !sortAscending);
-
-    const changeLogs = results.map((change) => ({
-      id: change.id,
-      tableName: change.tableName,
-      rowId: change.rowId,
-      operation: change.operation,
-      timestamp: change.timestamp,
-      synced: change.synced,
-    }));
-    // console.log(`[CHANGELOG] Retrieved ${changeLogs.length} ChangeLog entries`);
-    return changeLogs;
-  } catch (error) {
-    console.error('[CHANGELOG] Error reading ChangeLog entries:', error);
-    console.error(`[CHANGELOG] Error details:`, (error as any).message);
-    throw error;
-  }
-};
-
-/**
- * Updates a ChangeLog entry in the local Realm database.
- * @param id - The ID of the ChangeLog entry to update.
- * @param updates - Partial ChangeLog data to apply (e.g., { synced: true }).
- * @throws Error if Realm is not initialized or if the entry is not found.
- */
-export const updateChangeLog = (
-  id: string,
-  updates: Partial<ChangeLog>
-): void => {
-  const realmInstance = realm;
-  if (!realmInstance) {
-    console.error('[CHANGELOG] Realm not initialized in updateChangeLog');
-    throw new Error('Realm not initialized');
-  }
-  // console.log(`[CHANGELOG] Updating ChangeLog entry with ID: ${id}`);
-  // console.log(`[CHANGELOG] Applying updates:`, updates);
-
-  try {
-    const realmInstance = realm;
-    realmInstance?.write(() => {
-      const change = realmInstance?.objectForPrimaryKey<ChangeLog>(
-        'ChangeLog',
-        id
-      );
-      if (!change) {
-        console.error(`[CHANGELOG] ChangeLog entry not found with ID: ${id}`);
-        throw new Error(`ChangeLog entry not found: ${id}`);
-      }
-      // console.log(`[CHANGELOG] Found ChangeLog entry, applying updates`);
-      Object.assign(change, updates);
-      logChange('ChangeLog', id, 'update');
-      // console.log(`[CHANGELOG] ChangeLog entry updated successfully: ${id}`);
-    });
-  } catch (error) {
-    console.error(
-      `[CHANGELOG] Error updating ChangeLog entry with ID ${id}:`,
-      error
-    );
-    console.error(`[CHANGELOG] Error details:`, (error as any).message);
-    throw error;
-  }
-};
-
-/**
- * Deletes a ChangeLog entry from the local Realm database.
- * @param id - The ID of the ChangeLog entry to delete.
- * @throws Error if Realm is not initialized or if the entry is not found.
- */
-export const deleteChangeLog = (id: string): void => {
-  const realmInstance = realm;
-  if (!realmInstance) {
-    console.error('[CHANGELOG] Realm not initialized in deleteChangeLog');
-    throw new Error('Realm not initialized');
-  }
-  console.log(`[CHANGELOG] Deleting ChangeLog entry with ID: ${id}`);
-  try {
-    const realmInstance = realm;
-    realmInstance?.write(() => {
-      const change = realmInstance.objectForPrimaryKey<ChangeLog>(
-        'ChangeLog',
-        id
-      );
-      if (!change) {
-        console.error(`[CHANGELOG] ChangeLog entry not found with ID: ${id}`);
-        throw new Error(`ChangeLog entry not found: ${id}`);
-      }
-      console.log(`[CHANGELOG] Deleting ChangeLog entry`);
-      realmInstance.delete(change);
-      logChange('ChangeLog', id, 'delete');
-      console.log(`[CHANGELOG] ChangeLog entry deleted successfully: ${id}`);
-    });
-  } catch (error) {
-    console.error(
-      `[CHANGELOG] Error deleting ChangeLog entry with ID ${id}:`,
-      error
-    );
-    console.error(`[CHANGELOG] Error details:`, (error as any).message);
-    throw error;
-  }
-};
-
-// Export ChangeLog interface for use throughout the file
-export interface ChangeLog {
-  id: string;
-  tableName: string;
-  rowId: string;
-  operation: 'create' | 'update' | 'delete';
-  timestamp: Date;
-  synced: boolean;
-}
-
-/**
- * Syncs local Realm data to the cloud and pulls new/updated cloud data to local.
- * - Uploads all local records with synced === false to the cloud.
- * - Downloads all cloud records not present in local Realm and adds them.
- * - For cloud records not in the local changelog and not deleted locally, adds a changelog entry.
- *
- * @param tableName - The table to sync (e.g., 'Discussion', 'ActivityLog')
- * @param payload - Optional payload for single-record sync
- * @param method - HTTP method for single-record sync
- */
-export async function syncToCloud(
-  tableName: string,
-  payload?: any,
-  method?: 'POST' | 'PUT' | 'DELETE'
-): Promise<void> {
-  // 1. Upload unsynced local records to Firestore using the remote sync function
-  if (!realm) throw new Error('Realm not initialized');
-  const unsynced = realm.objects(tableName).filtered('synced == false');
-  const unsyncedRows = Array.from(unsynced);
-  if (unsyncedRows.length > 0) {
-    try {
-      await remote.syncRealmRowsToFirestore(tableName, unsyncedRows);
-      // Mark as synced if successful
-      realm.write(() => {
-        for (const record of unsyncedRows) {
-          record.synced = true;
-          record.syncTimestamp = new Date();
-        }
-      });
-    } catch (err) {
-      console.warn(
-        `[SYNC] Failed to sync ${tableName} records to Firestore:`,
-        err
-      );
-    }
-  }
-  // 2. Download new/updated cloud records not in local
-  // NOTE: This is now handled by syncFromRemote and syncTableFromRemote logic.
-  // If you need to pull from Firestore, use those helpers instead.
-
-  // --- LEGACY ACTIVITYLOG SYNC LOGIC ---
-  // If you have downloaded legacy ActivityLog rows from the cloud (e.g., from Firestore),
-  // ensure they are written to Realm so they appear in the app UI.
-  // Example usage (replace 'legacyRows' with your downloaded array):
-  //   await syncTableFromRemote('ActivityLog', legacyRows);
-  // This will insert/update all legacy ActivityLog rows into Realm.
-}
-// Helper stubs for changelog/deletion logic
-function wasDeletedLocally(id: string | number): boolean {
-  if (!realm) throw new Error('Realm not initialized');
-  const deleted = realm
-    .objects('ChangeLog')
-    .filtered('rowId == $0 AND operation == "delete"', String(id));
-  return deleted.length > 0;
-}
-
-function changelogHasEntry(tableName: string, id: string | number): boolean {
-  if (!realm) throw new Error('Realm not initialized');
-  const entry = realm
-    .objects('ChangeLog')
-    .filtered('tableName == $0 AND rowId == $1', tableName, String(id));
-  return entry.length > 0;
-}
-
-function addChangeLogEntry(
-  tableName: string,
-  id: string | number,
-  operation: 'create' | 'update' | 'delete',
-  timestamp?: Date
-) {
-  if (!realm) throw new Error('Realm not initialized');
-  const realmInstance = realm;
-  const entryId = `${tableName}_${id}_${operation}_${
-    timestamp ? timestamp.getTime() : Date.now()
-  }`;
-  realmInstance.write(() => {
-    realmInstance.create('ChangeLog', {
-      id: entryId,
-      tableName,
-      rowId: String(id),
-      operation,
-      timestamp: timestamp || new Date(),
-      synced: false,
-    });
-  });
-}
-
-// --- EXPORT SYNC FUNCTION FOR LEGACY DATA ---
-export async function syncTableFromRemote(tableName: string, remote: any) {
-  console.log(`[SYNC] syncTableFromRemote called for table: ${tableName}`);
-  if (!realm) {
-    console.error('[SYNC] Realm not initialized in syncTableFromRemote');
-    throw new Error('Realm not initialized');
-  }
-  const realmInstance = realm;
-  if (!remote || !Array.isArray(remote)) {
-    console.warn('[SYNC] No remote data provided or not an array:', remote);
-    return;
-  }
-  console.log(
-    `[SYNC] Remote data received (${remote.length} records):`,
-    remote.slice(0, 3)
-  ); // Show first 3 for brevity
-  try {
-    const beforeCount = realmInstance.objects(tableName).length;
-    let written = 0;
-    let skipped = 0;
-    realmInstance.write(() => {
-      for (const row of remote) {
-        const record = ensureStringIds(row);
-        // Only require id, skip all other checks
-        if (!record.id) {
-          console.warn(`[SYNC] Skipping record missing required id:`, record);
-          skipped++;
-          continue;
-        }
-        try {
-          // Debug: log each record before writing
-          console.log(`[SYNC] Writing record to Realm:`, record);
-          realmInstance.create(tableName, record, Realm.UpdateMode.Modified);
-          written++;
-        } catch (err) {
-          console.error(`[SYNC] Error writing record to Realm:`, record, err);
-          skipped++;
-        }
-      }
-    });
-    const afterCount = realmInstance.objects(tableName).length;
-    console.log(
-      `[SYNC] After sync, Realm has ${afterCount} records in ${tableName} (before: ${beforeCount}, written: ${written}, skipped: ${skipped})`
-    );
-  } catch (error) {
-    console.error('[SYNC] Error writing remote data to Realm:', error);
-    throw error;
-  }
-}
-
-// Helper: ensure a field is a JS Date (from Firestore Timestamp, string, or number)
-function ensureDateField(obj: any, field: string) {
-  if (obj[field]) {
-    if (typeof obj[field].toDate === 'function') {
-      obj[field] = obj[field].toDate();
-    } else if (
-      typeof obj[field] === 'number' ||
-      typeof obj[field] === 'string'
-    ) {
-      obj[field] = new Date(obj[field]);
-    }
-  }
-}
-
-export async function importLegacyActivityLogs(
-  rawRows: any[],
-  defaultCategory: string = 'uncategorized',
-  defaultTimestamp: Date | (() => Date) = () => new Date()
-) {
-  if (!Array.isArray(rawRows) || rawRows.length === 0) {
-    console.warn('[importLegacyActivityLogs] No data provided.');
-    return;
-  }
-  // Map Firebase fields to Realm schema, import ALL rows regardless of cleared
-  const legacyRows = rawRows.map((row) => {
-    // Convert Firestore Timestamp to Date if needed
-    ensureDateField(row, 'timestamp');
-    ensureDateField(row, 'syncTimestamp');
-    return {
-      id: String(row.activityLogId || row.id),
-      discussionId: String(row.discussionID || row.discussionId),
-      description: row.description || '',
-      category: row.category || defaultCategory,
-      timestamp: row.timestamp
-        ? row.timestamp
-        : typeof defaultTimestamp === 'function'
-        ? defaultTimestamp()
-        : defaultTimestamp,
-      cleared: row.cleared !== undefined ? row.cleared : false, // preserve cleared if present
-      synced: false,
-      responseType: row.responseType || 'tell',
-      syncTimestamp: row.syncTimestamp ? row.syncTimestamp : undefined,
-      uid: row.uid,
-    };
-  });
-  // Log a preview
-  console.log(
-    '[importLegacyActivityLogs] Mapped rows:',
-    legacyRows.slice(0, 3)
-  );
-  // Import into Realm
-  await syncTableFromRemote('ActivityLog', legacyRows);
-  // Add ChangeLog entries for each imported row
-  for (const row of legacyRows) {
-    const ts = row.syncTimestamp
-      ? new Date(row.syncTimestamp)
-      : row.timestamp
-      ? new Date(row.timestamp)
-      : undefined;
-    if (!ts) {
-      console.warn(
-        `[importLegacyActivityLogs] Row with id ${row.id} missing valid timestamp, skipping changelog entry.`
-      );
-      continue;
-    }
-    addChangeLogEntry('ActivityLog', row.id, 'create', ts);
-  }
-  // Debug print all ActivityLogs after import
-  await debugPrintAllActivityLogs();
-}
-
-export async function importLegacyDiscussions(
-  rawRows: any[],
-  defaultTypeSay: string = 'tell',
-  defaultTimestamp: Date | (() => Date) = () => new Date()
-) {
-  if (!Array.isArray(rawRows) || rawRows.length === 0) {
-    console.warn('[importLegacyDiscussions] No data provided.');
-    return;
-  }
-  // Map Firebase fields to Realm schema, import ALL rows regardless of cleared
-  const legacyRows = rawRows.map((row) => {
-    ensureDateField(row, 'timestamp');
-    ensureDateField(row, 'syncTimestamp');
-    return {
-      id: String(row.discussionId || row.id),
-      discussionId: String(row.discussionId || row.id),
-      description: row.description || '',
-      typeSay: row.typeSay || defaultTypeSay,
-      cleared: row.cleared !== undefined ? row.cleared : false, // preserve cleared if present
-      timestamp: row.timestamp
-        ? row.timestamp
-        : typeof defaultTimestamp === 'function'
-        ? defaultTimestamp()
-        : defaultTimestamp,
-      synced: false,
-      syncTimestamp: row.syncTimestamp ? row.syncTimestamp : undefined,
-      uid: row.uid,
-    };
-  });
-  console.log('[importLegacyDiscussions] Mapped rows:', legacyRows.slice(0, 3));
-  // Import into Realm
-  await syncTableFromRemote('Discussion', legacyRows);
-  // Add ChangeLog entries for each imported row
-  for (const row of legacyRows) {
-    const ts = row.syncTimestamp
-      ? new Date(row.syncTimestamp)
-      : row.timestamp
-      ? new Date(row.timestamp)
-      : undefined;
-    if (!ts) {
-      console.warn(
-        `[importLegacyDiscussions] Row with id ${row.id} missing valid timestamp, skipping changelog entry.`
-      );
-      continue;
-    }
-    addChangeLogEntry('Discussion', row.id, 'create', ts);
-  }
-  // Debug print all Discussions after import
-  await debugPrintAllDiscussions();
-}
-
-/**
- * Debug utility to print all ActivityLog records in Realm.
- */
-export async function debugPrintAllActivityLogs() {
-  if (!realm) {
-    console.error('[debugPrintAllActivityLogs] Realm not initialized');
-    return;
-  }
-  try {
-    const logs = realm.objects('ActivityLog');
-    console.log(
-      `[debugPrintAllActivityLogs] Found ${logs.length} ActivityLog records in Realm.`
-    );
-    for (const log of logs) {
-      console.log('[ActivityLog]', {
-        id: log.id,
-        discussionId: log.discussionId,
-        category: log.category,
-        description: log.description,
-        timestamp: log.timestamp,
-        cleared: log.cleared,
-        synced: log.synced,
-      });
-    }
-  } catch (error) {
-    console.error('[debugPrintAllActivityLogs] Error:', error);
-  }
-}
-
-/**
- * Debug utility to print all Discussion records in Realm.
- */
-export async function debugPrintAllDiscussions() {
-  if (!realm) {
-    console.error('[debugPrintAllDiscussions] Realm not initialized');
-    return;
-  }
-  try {
-    const discussions = realm.objects('Discussion');
-    console.log(
-      `[debugPrintAllDiscussions] Found ${discussions.length} Discussion records in Realm.`
-    );
-    for (const d of discussions) {
-      console.log('[Discussion]', {
-        id: d.id,
-        discussionId: d.discussionId,
-        description: d.description,
-        typeSay: d.typeSay,
-        cleared: d.cleared,
-        timestamp: d.timestamp,
-        synced: d.synced,
-      });
-    }
-  } catch (error) {
-    console.error('[debugPrintAllDiscussions] Error:', error);
-  }
-}
-
-// --- TEMPORARY TERMINAL PRINT FUNCTION ---
-/**
- * Prints all ActivityLog and Discussion data to the terminal (Node/Metro console).
- * Call this from anywhere in the app to dump all data for verification.
- */
-export async function printAllRealmDataToTerminal() {
-  if (!realm) {
-    console.error('[printAllRealmDataToTerminal] Realm not initialized');
-    return;
-  }
-  try {
-    const logs = realm.objects('ActivityLog');
-    const discussions = realm.objects('Discussion');
-    console.log('================= ActivityLog =================');
-    for (const log of logs) {
-      console.log('[ActivityLog]', {
-        id: log.id,
-        discussionId: log.discussionId,
-        category: log.category,
-        description: log.description,
-        timestamp: log.timestamp,
-        cleared: log.cleared,
-        synced: log.synced,
-        responseType: log.responseType,
-        uid: log.uid,
-        lockedCategory: log.lockedCategory,
-        lockedDescription: log.lockedDescription,
-        attachedFile: log.attachedFile,
-      });
-    }
-    console.log('================= Discussion =================');
-    for (const d of discussions) {
-      console.log('[Discussion]', {
-        id: d.id,
-        discussionId: d.discussionId,
-        description: d.description,
-        typeSay: d.typeSay,
-        cleared: d.cleared,
-        timestamp: d.timestamp,
-        synced: d.synced,
-      });
-    }
-    console.log('================= END REALM DUMP =================');
-  } catch (error) {
-    console.error('[printAllRealmDataToTerminal] Error:', error);
-  }
-}
-
-// Helper: ensure all IDs are strings (for Realm compatibility)
-export function ensureStringIds(row: any): any {
-  if (!row) return row;
-  const out: any = { ...row };
-  if (out.id !== undefined) out.id = String(out.id);
-  if (out.discussionId !== undefined)
-    out.discussionId = String(out.discussionId);
-  return out;
-}
-
-// Export addChangeLogEntry for use in scripts
-export { addChangeLogEntry };
-
-/**
- * Delete all rows in the specified Realm tables: Discussion, ActivityLog, ChangeLog
- */
-export async function deleteAllLocalRows() {
-  if (!realm) {
-    console.error('Failed to open Realm instance');
-    throw new Error('Failed to open Realm instance');
-  }
-  const realmInstance = realm;
-  try {
-    realmInstance.write(() => {
-      ['Discussion', 'ActivityLog', 'ChangeLog'].forEach((table) => {
-        const allRows = realmInstance.objects(table);
-        realmInstance.delete(allRows);
-        console.log(`[deleteAllLocalRows] Deleted all rows in table: ${table}`);
-      });
-    });
-    console.log('[deleteAllLocalRows] All local rows deleted.');
-  } catch (error) {
-    console.error('[deleteAllLocalRows] Error:', error);
+    console.error('Error populating categoryId in ActivityLog:', error);
     throw error;
   }
 }

@@ -21,6 +21,7 @@ const ActivityLogSchema = {
   properties: {
     id: 'string',
     discussionId: 'string',
+    categoryId: 'string',
     category: 'string',
     description: 'string',
     timestamp: 'date',
@@ -200,7 +201,7 @@ const config: Configuration = {
     ChangeLogSchema,
     CategorySchema,
   ],
-  schemaVersion: 12, // Bumped from 11 to 12 to include Category schema
+  schemaVersion: 13, // Bumped from 12 to 13 to include categoryID in activity log schema
   onMigration: (oldRealm: Realm, newRealm: Realm) => {
     console.log(
       'Migrating Realm schema from version',

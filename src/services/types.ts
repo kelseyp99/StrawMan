@@ -3,6 +3,7 @@
 export interface ActivityLog {
   id: string;
   discussionId: string;
+  categoryId?: string; // Optional because it's being migrated
   category: string;
   description: string;
   timestamp: Date | string;

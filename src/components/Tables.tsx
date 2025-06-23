@@ -36,6 +36,7 @@ import {
   addOrUpdateCategory,
   deleteCategory,
   createCategoriesFromActivityLogs,
+  getCategoryById,
 } from '../services/dbServices';
 import { extractAndImportLegacyFirestoreData } from '../services/dbServicesRemote';
 import { findDuplicateActivityLog } from '../services/phraseProcessor';
@@ -330,28 +331,47 @@ const MainComponent: React.FC = () => {
       // Fetch data with minimal processing
       const activityLogRaw = await getActivityLogs();
       // console.log('[PERF] Fetched', activityLogRaw.length, 'activity logs');      // Process all activity logs and add proper date sorting
-      const activityLogData = activityLogRaw
-        .map((log: any) => ({
-          ...log,
-          id: String(log.id || ''),
-          category: String(log.category || ''),
-          description: String(log.description || ''),
-          timestamp:
-            log.timestamp instanceof Date
-              ? log.timestamp.toLocaleDateString() +
-                ' ' +
-                log.timestamp.toLocaleTimeString()
-              : String(log.timestamp || 'No date'),
-          rawTimestamp:
-            log.timestamp instanceof Date
-              ? log.timestamp
-              : new Date(log.timestamp || 0),
-          cleared: log.cleared ? '✔️ Yes' : '❌ No',
-        }))
-        .sort(
-          (a: any, b: any) =>
-            b.rawTimestamp.getTime() - a.rawTimestamp.getTime()
-        );
+      const activityLogData = (
+        await Promise.all(
+          activityLogRaw.map(async (log: any) => {
+            let categoryName = log.category;
+            if (log.categoryId) {
+              try {
+                const categoryObj = await getCategoryById(log.categoryId);
+                if (categoryObj) {
+                  categoryName = categoryObj.name;
+                }
+              } catch (error) {
+                console.warn(
+                  `Could not fetch category for id ${log.categoryId}:`,
+                  error
+                );
+              }
+            }
+            return {
+              ...log,
+              id: String(log.id || ''),
+              categoryId: String(log.categoryId || ''),
+              category: String(categoryName || ''),
+              description: String(log.description || ''),
+              timestamp:
+                log.timestamp instanceof Date
+                  ? log.timestamp.toLocaleDateString() +
+                    ' ' +
+                    log.timestamp.toLocaleTimeString()
+                  : String(log.timestamp || 'No date'),
+              rawTimestamp:
+                log.timestamp instanceof Date
+                  ? log.timestamp
+                  : new Date(log.timestamp || 0),
+              cleared: log.cleared ? '✔️ Yes' : '❌ No',
+            };
+          })
+        )
+      ).sort(
+        (a: any, b: any) =>
+          b.rawTimestamp.getTime() - a.rawTimestamp.getTime()
+      );
 
       const discussionRaw = await getDiscussions();
       console.log(

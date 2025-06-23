@@ -6,6 +6,7 @@ import {
   getDiscussions,
   getActivityLogs,
   createCategoriesFromActivityLogs,
+  populateCategoryId,
 } from '../../src/services/dbServices';
 
 export default function ToolsScreen() {
@@ -102,6 +103,23 @@ export default function ToolsScreen() {
     }
   };
 
+  const handlePopulateCategoryId = async () => {
+    setDebugLoading(true);
+    try {
+      console.log('[DEBUG] Populating categoryId...');
+      await populateCategoryId();
+      Alert.alert('Success', 'Finished populating categoryId in ActivityLog.');
+    } catch (error: any) {
+      console.error('[DEBUG] Error populating categoryId:', error);
+      Alert.alert(
+        'Error',
+        'Failed to populate categoryId: ' + (error?.message || String(error))
+      );
+    } finally {
+      setDebugLoading(false);
+    }
+  };
+
   const handleCreateCategoriesFromActivityLogs = async () => {
     setDebugLoading(true);
     try {
@@ -148,6 +166,7 @@ export default function ToolsScreen() {
         handleCreateCategoriesFromActivityLogs={
           handleCreateCategoriesFromActivityLogs
         }
+        handlePopulateCategoryId={handlePopulateCategoryId}
       />
     </View>
   );

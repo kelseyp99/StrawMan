@@ -491,6 +491,16 @@ export async function getAIResponse(question: string): Promise<string> {
   }
 }
 
+export async function populateCategoryId(): Promise<void> {
+  console.log('populateCategoryId called');
+  try {
+    await local.populateCategoryId();
+  } catch (error) {
+    console.error('Error in populateCategoryId:', error);
+    throw error;
+  }
+}
+
 export async function syncToCloud(
   tableName: string,
   payload?: any,
@@ -801,6 +811,19 @@ export async function getDistinctCategories(): Promise<string[]> {
   }
 }
 
+export async function getCategoryById(id: string): Promise<Category | null> {
+  //  console.log('getCategory called with:', id);
+  try {
+    const result = (await shouldUseRemote())
+      ? null // Remote doesn't support getCategoryById with id parameter yet
+      : await local.getCategoryById(id);
+    return result;
+  } catch (error) {
+    console.error('Error in getCategory:', error);
+    return null;
+  }
+}
+
 export async function insertJsonFile(jsonData: any): Promise<void> {
   // console.log('insertJsonFile called with:', jsonData);
   try {
@@ -1052,11 +1075,10 @@ export async function createRuleCandidate(data: {
 export async function syncFromRemote() {
   // Tables to sync
   const tables = ['ActivityLog', 'Discussion'];
-  for (const tableName of tables) {
-    // 1. Get all local changelog rowIds for this table
+  for (const tableName of tables) {    // 1. Get all local changelog rowIds for this table
     let localChangeLog: any[] = [];
     try {
-      localChangeLog = local.readChangeLog({ tableName });
+      localChangeLog = await local.readChangeLog({ tableName });
     } catch (e) {
       console.warn(
         `[SYNC] Could not read local changelog for ${tableName}:`,
@@ -1145,8 +1167,7 @@ export async function insertTestRowsAndExit() {
     '[UTIL] Inserting 10 test rows into Discussion and ActivityLog...'
   );
   for (let i = 0; i < 10; i++) {
-    await addOrUpdateDiscussion(`Test Discussion ${i + 1}`, 'test', undefined);
-    await local.createActivityLog({
+    await addOrUpdateDiscussion(`Test Discussion ${i + 1}`, 'test', undefined);    await local.createActivityLog({
       discussionId: `test-discussion-${i + 1}`,
       category: 'test',
       description: `Test ActivityLog ${i + 1}`,
@@ -1154,6 +1175,9 @@ export async function insertTestRowsAndExit() {
       cleared: false,
       responseType: 'test',
       synced: false,
+      uid: 'local_user',
+      lockedCategory: false,
+      lockedDescription: false,
     });
   }
   console.log('[UTIL] Test rows inserted. Exiting process.');
