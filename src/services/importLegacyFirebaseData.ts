@@ -3,8 +3,8 @@ import {
   importLegacyDiscussions,
   importLegacyActivityLogs,
   ensureStringIds,
-} from './dbServicesLocal';
-import { addChangeLogEntry } from './dbServicesLocal';
+  addChangeLogEntry,
+} from './dbServices';
 import { createAndSyncChangelogEntry } from './dbServicesRemote';
 import fs from 'fs';
 import path from 'path';
@@ -32,10 +32,10 @@ export async function importLegacyFirebaseDataWithChangelog(filePath: string) {
   if (data.discussions && Array.isArray(data.discussions)) {
     await importLegacyDiscussions(data.discussions);
     discussions = data.discussions.length;
-    for (const d of data.discussions) {
-      const discussion = ensureStringIds(d);
+    await ensureStringIds('Discussion');
+    for (const discussion of data.discussions) {
       const ts = getRowTimestamp(discussion);
-      addChangeLogEntry('Discussion', discussion.id, 'create', ts);
+      await addChangeLogEntry('Discussion', discussion.id, 'create', ts);
       await createAndSyncChangelogEntry(
         'Discussion',
         discussion.id,
@@ -50,10 +50,10 @@ export async function importLegacyFirebaseDataWithChangelog(filePath: string) {
   if (data.activityLogs && Array.isArray(data.activityLogs)) {
     await importLegacyActivityLogs(data.activityLogs);
     activityLogs = data.activityLogs.length;
-    for (const a of data.activityLogs) {
-      const activityLog = ensureStringIds(a);
+    await ensureStringIds('ActivityLog');
+    for (const activityLog of data.activityLogs) {
       const ts = getRowTimestamp(activityLog);
-      addChangeLogEntry('ActivityLog', activityLog.id, 'create', ts);
+      await addChangeLogEntry('ActivityLog', activityLog.id, 'create', ts);
       await createAndSyncChangelogEntry(
         'ActivityLog',
         activityLog.id,

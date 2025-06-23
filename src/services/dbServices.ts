@@ -1293,3 +1293,52 @@ export async function createCategoriesFromActivityLogs() {
     throw error;
   }
 }
+
+export async function addChangeLogEntry(
+  tableName: string,
+  rowId: string,
+  operation: 'create' | 'update' | 'delete',
+  timestamp?: Date
+): Promise<void> {
+  console.log('addChangeLogEntry called with:', tableName, rowId, operation);
+  try {
+    if (await shouldUseRemote()) {
+      // If remote implementation exists, call it here
+      // await remote.addChangeLogEntry(tableName, rowId, operation, timestamp);
+    }
+    await local.addChangeLogEntry(tableName, rowId, operation, timestamp);
+  } catch (error) {
+    console.error('Error in addChangeLogEntry:', error);
+    throw error;
+  }
+}
+
+export async function importLegacyDiscussions(discussions: any[]): Promise<number> {
+  console.log('importLegacyDiscussions called with:', discussions.length, 'discussions');
+  try {
+    return await local.importLegacyDiscussions(discussions);
+  } catch (error) {
+    console.error('Error in importLegacyDiscussions:', error);
+    throw error;
+  }
+}
+
+export async function importLegacyActivityLogs(activityLogs: any[]): Promise<number> {
+  console.log('importLegacyActivityLogs called with:', activityLogs.length, 'activity logs');
+  try {
+    return await local.importLegacyActivityLogs(activityLogs);
+  } catch (error) {
+    console.error('Error in importLegacyActivityLogs:', error);
+    throw error;
+  }
+}
+
+export async function ensureStringIds(tableName: string): Promise<void> {
+  console.log('ensureStringIds called for:', tableName);
+  try {
+    await local.ensureStringIds(tableName);
+  } catch (error) {
+    console.error('Error in ensureStringIds:', error);
+    throw error;
+  }
+}

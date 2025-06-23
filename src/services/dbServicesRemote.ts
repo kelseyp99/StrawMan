@@ -31,7 +31,7 @@ import { getUID } from '../utils/uidManager';
 import { format } from 'date-fns';
 import { sendQuestionForParsing, sendQuestion } from './openaiAPI';
 import { ActivityLog } from './types';
-import { addChangeLogEntry } from './dbServicesLocal';
+import { addChangeLogEntry } from './dbServices';
 
 // Constants to match dbServicesLocal.ts
 const ENABLE_ACTIVITYLOG_SYNC = false;
@@ -2464,4 +2464,8 @@ export async function deleteAllRemoteChangeLogs() {
   console.log(
     `[deleteAllRemoteChangeLogs] Deleted ${count} remote ChangeLog entries.`
   );
+}
+
+export function getCategoryById() {
+  throw new Error('Function not implemented.');
 }

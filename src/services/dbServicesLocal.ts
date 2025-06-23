@@ -944,6 +944,118 @@ export async function deleteAllLocalRows(): Promise<void> {
   // Placeholder
 }
 
+export async function addChangeLogEntry(
+  tableName: string,
+  rowId: string,
+  operation: 'create' | 'update' | 'delete',
+  timestamp?: Date
+): Promise<void> {
+  if (!realm) {
+    console.warn('Realm not initialized, skipping ChangeLog entry');
+    return;
+  }
+  try {
+    const ts = timestamp || new Date();
+    realm.write(() => {
+      realm?.create('ChangeLog', {
+        id: `${tableName}_${rowId}_${ts.getTime()}`,
+        tableName,
+        rowId,
+        operation,
+        timestamp: ts,
+        synced: false,
+      });
+    });
+    console.log(`Added ChangeLog entry: ${tableName} ${rowId} ${operation}`);
+  } catch (error) {
+    console.error('Error adding ChangeLog entry:', error);
+    throw error;
+  }
+}
+
+export async function importLegacyDiscussions(discussions: any[]): Promise<number> {
+  if (!realm) {
+    console.error('Failed to open Realm instance');
+    throw new Error('Failed to open Realm instance');
+  }
+  let count = 0;
+  try {
+    realm.write(() => {
+      discussions.forEach((discussion: any) => {
+        realm?.create('Discussion', {
+          id: discussion.id || Date.now().toString(),
+          discussionId: discussion.discussionId || discussion.id,
+          description: discussion.description || '',
+          timestamp: discussion.timestamp || new Date(),
+          typeSay: discussion.typeSay || 'tell',
+          cleared: discussion.cleared || false,
+          uid: discussion.uid || 'legacy_user',
+        });
+        count++;
+      });
+    });
+    console.log(`Imported ${count} legacy discussions`);
+  } catch (error) {
+    console.error('Error importing legacy discussions:', error);
+    throw error;
+  }
+  return count;
+}
+
+export async function importLegacyActivityLogs(activityLogs: any[]): Promise<number> {
+  if (!realm) {
+    console.error('Failed to open Realm instance');
+    throw new Error('Failed to open Realm instance');
+  }
+  let count = 0;
+  try {
+    realm.write(() => {
+      activityLogs.forEach((log: any) => {
+        realm?.create('ActivityLog', {
+          id: log.id || Date.now().toString(),
+          discussionId: log.discussionId || '',
+          category: log.category || 'uncategorized',
+          description: log.description || '',
+          timestamp: log.timestamp || new Date(),
+          cleared: log.cleared || false,
+          responseType: log.responseType || '',
+          synced: false,
+          uid: log.uid || 'legacy_user',
+        });
+        count++;
+      });
+    });
+    console.log(`Imported ${count} legacy activity logs`);
+  } catch (error) {
+    console.error('Error importing legacy activity logs:', error);
+    throw error;
+  }
+  return count;
+}
+
+export async function ensureStringIds(tableName: string): Promise<void> {
+  if (!realm) {
+    console.error('Failed to open Realm instance');
+    throw new Error('Failed to open Realm instance');
+  }
+  try {
+    realm.write(() => {
+      const objects = realm?.objects(tableName);
+      if (objects) {
+        objects.forEach((obj: any) => {
+          if (typeof obj.id !== 'string') {
+            obj.id = String(obj.id);
+          }
+        });
+      }
+    });
+    console.log(`Ensured string IDs for ${tableName}`);
+  } catch (error) {
+    console.error(`Error ensuring string IDs for ${tableName}:`, error);
+    throw error;
+  }
+}
+
 export async function populateCategoryId(): Promise<void> {
   if (!realm) {
     console.error('Failed to open Realm instance');
@@ -976,6 +1088,59 @@ export async function populateCategoryId(): Promise<void> {
     console.log('Finished populating categoryId in ActivityLog.');
   } catch (error) {
     console.error('Error populating categoryId in ActivityLog:', error);
+    throw error;
+  }
+}
+
+export async function createCategoriesFromLogs(): Promise<void> {
+  if (!realm) {
+    console.error('Failed to open Realm instance');
+    throw new Error('Failed to open Realm instance');
+  }
+  try {
+    realm.write(() => {
+      const activityLogs = realm?.objects('ActivityLog');
+      const categories = realm?.objects('Category');
+      const categorySet = new Set();
+
+      // Collect unique categories from ActivityLog
+      if (activityLogs) {
+        activityLogs.forEach((log: any) => {
+          if (log.category && log.category !== 'uncategorized') {
+            categorySet.add(log.category);
+          }
+        });
+      }
+
+      // Create or update categories in the Category table
+      categorySet.forEach((categoryName) => {
+        let category;
+        if (categories) {
+          category = categories.filtered('name == $0', categoryName)[0];
+        }
+        if (!category) {
+          // Create new category
+          const id = new Date().getTime() + '_' + categoryName;
+          realm?.create('Category', {
+            id,
+            name: categoryName,
+            description: `Auto-generated category for ${categoryName}`,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+            synced: false,
+            uid: 'local_user',
+          });
+          console.log(`Created category: ${categoryName}`);
+        } else {
+          // Update existing category
+          (category as any).updatedAt = new Date();
+          (category as any).synced = false;
+          console.log(`Updated category: ${categoryName}`);
+        }
+      });
+    });
+  } catch (error) {
+    console.error('Error creating categories from logs:', error);
     throw error;
   }
 }
