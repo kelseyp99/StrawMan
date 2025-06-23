@@ -1144,3 +1144,80 @@ export async function createCategoriesFromLogs(): Promise<void> {
     throw error;
   }
 }
+
+export async function printAllRealmDataToTerminal(): Promise<void> {
+  if (!realm) {
+    console.error('Failed to open Realm instance');
+    return;
+  }
+  try {
+    console.log('=== REALM DATA DUMP ===');
+    
+    // Print all tables
+    const schemaNames = ['Discussion', 'ActivityLog', 'Category', 'GPTResponse', 'Alert', 'User'];
+    
+    for (const tableName of schemaNames) {
+      try {
+        const objects = realm.objects(tableName);
+        console.log(`\n--- ${tableName} (${objects.length} records) ---`);
+        Array.from(objects).forEach((obj: any, index: number) => {
+          console.log(`${index + 1}:`, JSON.stringify(obj, null, 2));
+        });
+      } catch (error) {
+        console.warn(`Could not read ${tableName}:`, error);
+      }
+    }
+    
+    console.log('\n=== END REALM DATA DUMP ===');
+  } catch (error) {
+    console.error('Error printing realm data:', error);
+  }
+}
+
+export async function debugPrintAllActivityLogs(): Promise<void> {
+  if (!realm) {
+    console.error('Failed to open Realm instance');
+    return;
+  }
+  try {
+    const logs = realm.objects('ActivityLog');
+    console.log(`=== ACTIVITY LOGS (${logs.length} records) ===`);
+    Array.from(logs).forEach((log: any, index: number) => {
+      console.log(`${index + 1}:`, {
+        id: log.id,
+        categoryId: log.categoryId,
+        category: log.category,
+        description: log.description,
+        timestamp: log.timestamp,
+        cleared: log.cleared,
+      });
+    });
+    console.log('=== END ACTIVITY LOGS ===');
+  } catch (error) {
+    console.error('Error printing activity logs:', error);
+  }
+}
+
+export async function debugPrintAllDiscussions(): Promise<void> {
+  if (!realm) {
+    console.error('Failed to open Realm instance');
+    return;
+  }
+  try {
+    const discussions = realm.objects('Discussion');
+    console.log(`=== DISCUSSIONS (${discussions.length} records) ===`);
+    Array.from(discussions).forEach((discussion: any, index: number) => {
+      console.log(`${index + 1}:`, {
+        id: discussion.id,
+        discussionId: discussion.discussionId,
+        description: discussion.description,
+        timestamp: discussion.timestamp,
+        typeSay: discussion.typeSay,
+        cleared: discussion.cleared,
+      });
+    });
+    console.log('=== END DISCUSSIONS ===');
+  } catch (error) {
+    console.error('Error printing discussions:', error);
+  }
+}

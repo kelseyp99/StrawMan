@@ -1342,3 +1342,33 @@ export async function ensureStringIds(tableName: string): Promise<void> {
     throw error;
   }
 }
+
+export async function printAllRealmDataToTerminal(): Promise<void> {
+  console.log('printAllRealmDataToTerminal called');
+  try {
+    await local.printAllRealmDataToTerminal();
+  } catch (error) {
+    console.error('Error in printAllRealmDataToTerminal:', error);
+    throw error;
+  }
+}
+
+export async function debugPrintAllActivityLogs(): Promise<void> {
+  console.log('debugPrintAllActivityLogs called');
+  try {
+    await local.debugPrintAllActivityLogs();
+  } catch (error) {
+    console.error('Error in debugPrintAllActivityLogs:', error);
+    throw error;
+  }
+}
+
+export async function debugPrintAllDiscussions(): Promise<void> {
+  console.log('debugPrintAllDiscussions called');
+  try {
+    await local.debugPrintAllDiscussions();
+  } catch (error) {
+    console.error('Error in debugPrintAllDiscussions:', error);
+    throw error;
+  }
+}

@@ -31,14 +31,12 @@ import {
   deleteActivityLog,
   getActivityLogs,
   getDiscussions,
-} from '../../src/services/dbServices';
-import {
   printAllRealmDataToTerminal,
   importLegacyActivityLogs,
   importLegacyDiscussions,
   debugPrintAllActivityLogs,
   debugPrintAllDiscussions,
-} from '../../src/services/dbServicesLocal';
+} from '../../src/services/dbServices';
 import { transformInput } from '../../src/services/phraseProcessor';
 // Firestore imports removed for offline-first operation
 import Header from '../../src/components/Header';
