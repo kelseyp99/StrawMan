@@ -1075,7 +1075,8 @@ export async function createRuleCandidate(data: {
 export async function syncFromRemote() {
   // Tables to sync
   const tables = ['ActivityLog', 'Discussion'];
-  for (const tableName of tables) {    // 1. Get all local changelog rowIds for this table
+  for (const tableName of tables) {
+    // 1. Get all local changelog rowIds for this table
     let localChangeLog: any[] = [];
     try {
       localChangeLog = await local.readChangeLog({ tableName });
@@ -1167,7 +1168,8 @@ export async function insertTestRowsAndExit() {
     '[UTIL] Inserting 10 test rows into Discussion and ActivityLog...'
   );
   for (let i = 0; i < 10; i++) {
-    await addOrUpdateDiscussion(`Test Discussion ${i + 1}`, 'test', undefined);    await local.createActivityLog({
+    await addOrUpdateDiscussion(`Test Discussion ${i + 1}`, 'test', undefined);
+    await local.createActivityLog({
       discussionId: `test-discussion-${i + 1}`,
       category: 'test',
       description: `Test ActivityLog ${i + 1}`,
@@ -1313,8 +1315,14 @@ export async function addChangeLogEntry(
   }
 }
 
-export async function importLegacyDiscussions(discussions: any[]): Promise<number> {
-  console.log('importLegacyDiscussions called with:', discussions.length, 'discussions');
+export async function importLegacyDiscussions(
+  discussions: any[]
+): Promise<number> {
+  console.log(
+    'importLegacyDiscussions called with:',
+    discussions.length,
+    'discussions'
+  );
   try {
     return await local.importLegacyDiscussions(discussions);
   } catch (error) {
@@ -1323,8 +1331,14 @@ export async function importLegacyDiscussions(discussions: any[]): Promise<numbe
   }
 }
 
-export async function importLegacyActivityLogs(activityLogs: any[]): Promise<number> {
-  console.log('importLegacyActivityLogs called with:', activityLogs.length, 'activity logs');
+export async function importLegacyActivityLogs(
+  activityLogs: any[]
+): Promise<number> {
+  console.log(
+    'importLegacyActivityLogs called with:',
+    activityLogs.length,
+    'activity logs'
+  );
   try {
     return await local.importLegacyActivityLogs(activityLogs);
   } catch (error) {
@@ -1369,6 +1383,19 @@ export async function debugPrintAllDiscussions(): Promise<void> {
     await local.debugPrintAllDiscussions();
   } catch (error) {
     console.error('Error in debugPrintAllDiscussions:', error);
+    throw error;
+  }
+}
+
+export async function removeDuplicateActivityLogs(): Promise<{
+  duplicatesFound: number;
+  duplicatesRemoved: number;
+}> {
+  console.log('removeDuplicateActivityLogs called');
+  try {
+    return await local.removeDuplicateActivityLogs();
+  } catch (error) {
+    console.error('Error in removeDuplicateActivityLogs:', error);
     throw error;
   }
 }

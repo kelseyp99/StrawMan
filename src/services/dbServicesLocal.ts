@@ -154,11 +154,12 @@ export const findDuplicateActivityLog = (
 ): ActivityLog | null => {
   if (!realm) throw new Error('Realm not initialized');
   console.log(
-    `Checking for duplicate ActivityLog: ${discussionId}, ${category}`
+    `Checking for duplicate ActivityLog: ${discussionId}, ${category}, ${description.substring(0, 50)}...`
   );
 
   try {
-    const logs = realm
+    // First check for exact matches
+    let logs = realm
       ?.objects<ActivityLog>('ActivityLog')
       .filtered(
         'discussionId == $0 AND category == $1 AND description == $2',
@@ -167,29 +168,112 @@ export const findDuplicateActivityLog = (
         description
       );
 
-    if (!logs || logs.length === 0) {
-      console.log('No duplicate ActivityLog found');
-      return null;
+    if (logs && logs.length > 0) {
+      const log = logs[0];
+      console.log(`Found exact duplicate ActivityLog: ${log.id}`);
+      return {
+        id: log.id,
+        discussionId: log.discussionId,
+        category: log.category,
+        description: log.description,
+        timestamp: log.timestamp,
+        cleared: log.cleared,
+        responseType: log.responseType,
+        synced: log.synced,
+        syncTimestamp: log.syncTimestamp,
+        uid: (log as any).uid || 'local_user',
+        lockedCategory: (log as any).lockedCategory || false,
+        lockedDescription: (log as any).lockedDescription || false,
+        categoryId: (log as any).categoryId,
+      } as ActivityLog;
     }
 
-    const log = logs[0];
-    console.log(`Found duplicate ActivityLog: ${log.id}`);
-    return {
-      id: log.id,
-      discussionId: log.discussionId,
-      category: log.category,
-      description: log.description,
-      timestamp: log.timestamp,
-      cleared: log.cleared,
-      responseType: log.responseType,
-      synced: log.synced,
-      syncTimestamp: log.syncTimestamp,
-    } as ActivityLog;
+    // Check for recent duplicates with same discussionId and category (within last 5 minutes)
+    const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
+    logs = realm
+      ?.objects<ActivityLog>('ActivityLog')
+      .filtered(
+        'discussionId == $0 AND category == $1 AND timestamp > $2',
+        discussionId,
+        category,
+        fiveMinutesAgo
+      );
+
+    if (logs && logs.length > 0) {
+      // Check if any recent logs have very similar descriptions (> 80% similar)
+      for (const log of Array.from(logs)) {
+        const similarity = calculateStringSimilarity(log.description, description);
+        if (similarity > 0.8) {
+          console.log(`Found similar recent ActivityLog (${Math.round(similarity * 100)}% similar): ${log.id}`);
+          return {
+            id: log.id,
+            discussionId: log.discussionId,
+            category: log.category,
+            description: log.description,
+            timestamp: log.timestamp,
+            cleared: log.cleared,
+            responseType: log.responseType,
+            synced: log.synced,
+            syncTimestamp: log.syncTimestamp,
+            uid: (log as any).uid || 'local_user',
+            lockedCategory: (log as any).lockedCategory || false,
+            lockedDescription: (log as any).lockedDescription || false,
+            categoryId: (log as any).categoryId,
+          } as ActivityLog;
+        }
+      }
+    }
+
+    console.log('No duplicate ActivityLog found');
+    return null;
   } catch (error) {
     console.error('Error finding duplicate ActivityLog:', error);
     throw error;
   }
 };
+
+// Helper function to calculate string similarity
+function calculateStringSimilarity(str1: string, str2: string): number {
+  if (str1 === str2) return 1;
+  if (str1.length === 0 || str2.length === 0) return 0;
+  
+  const longer = str1.length > str2.length ? str1 : str2;
+  const shorter = str1.length > str2.length ? str2 : str1;
+  
+  if (longer.length === 0) return 1;
+  
+  const editDistance = levenshteinDistance(longer, shorter);
+  return (longer.length - editDistance) / longer.length;
+}
+
+// Levenshtein distance calculation
+function levenshteinDistance(str1: string, str2: string): number {
+  const matrix = [];
+  
+  for (let i = 0; i <= str2.length; i++) {
+    matrix[i] = [i];
+  }
+  
+  for (let j = 0; j <= str1.length; j++) {
+    matrix[0][j] = j;
+  }
+  
+  for (let i = 1; i <= str2.length; i++) {
+    for (let j = 1; j <= str1.length; j++) {
+      if (str2.charAt(i - 1) === str1.charAt(j - 1)) {
+        matrix[i][j] = matrix[i - 1][j - 1];
+      } else {
+        matrix[i][j] = Math.min(
+          matrix[i - 1][j - 1] + 1,
+          matrix[i][j - 1] + 1,
+          matrix[i - 1][j] + 1
+        );
+      }
+    }
+  }
+  
+  return matrix[str2.length][str1.length];
+}
 
 /**
  * Logs a synchronization entry to the Realm database.
@@ -547,7 +631,7 @@ export async function getCategories(): Promise<Category[]> {
   }
   try {
     const categories = realm.objects<Category>('Category');
-    return Array.from(categories).map(cat => ({
+    return Array.from(categories).map((cat) => ({
       id: cat.id,
       name: cat.name,
       description: cat.description,
@@ -628,7 +712,7 @@ export async function getActivityLogs(): Promise<ActivityLog[]> {
   }
   try {
     const logs = realm.objects<ActivityLog>('ActivityLog');
-    return Array.from(logs).map(log => ({
+    return Array.from(logs).map((log) => ({
       id: log.id,
       discussionId: log.discussionId,
       category: log.category,
@@ -649,19 +733,22 @@ export async function getActivityLogs(): Promise<ActivityLog[]> {
   }
 }
 
-export async function getDiscussions(lastX?: number, discussionId?: string): Promise<Discussion[]> {
+export async function getDiscussions(
+  lastX?: number,
+  discussionId?: string
+): Promise<Discussion[]> {
   if (!realm) {
     console.error('Failed to open Realm instance');
     throw new Error('Failed to open Realm instance');
   }
   try {
     let discussions = realm.objects<Discussion>('Discussion');
-    
+
     if (discussionId) {
       discussions = discussions.filtered('discussionId == $0', discussionId);
     }
-    
-    let results = Array.from(discussions).map(disc => ({
+
+    let results = Array.from(discussions).map((disc) => ({
       id: disc.id,
       discussionId: disc.discussionId,
       description: disc.description,
@@ -670,11 +757,11 @@ export async function getDiscussions(lastX?: number, discussionId?: string): Pro
       cleared: disc.cleared,
       uid: disc.uid,
     }));
-    
+
     if (lastX) {
       results = results.slice(-lastX);
     }
-    
+
     return results;
   } catch (error) {
     console.error('Error getting discussions:', error);
@@ -695,7 +782,10 @@ export async function addOrUpdateDiscussion(
     let discussionId = id;
     realm.write(() => {
       if (id) {
-        const existing = realm?.objectForPrimaryKey<Discussion>('Discussion', id);
+        const existing = realm?.objectForPrimaryKey<Discussion>(
+          'Discussion',
+          id
+        );
         if (existing) {
           existing.description = description;
           existing.typeSay = typeSay;
@@ -739,13 +829,30 @@ export async function deleteDiscussion(id: string): Promise<void> {
   }
 }
 
-export async function createActivityLog(activityLog: Omit<ActivityLog, 'id'>): Promise<string> {
+export async function createActivityLog(
+  activityLog: Omit<ActivityLog, 'id'>
+): Promise<string> {
   if (!realm) {
     console.error('Failed to open Realm instance');
     throw new Error('Failed to open Realm instance');
   }
+  
   try {
-    const id = Date.now().toString();
+    // Check for existing duplicate before creating
+    const existingLog = findDuplicateActivityLog(
+      activityLog.discussionId,
+      activityLog.category,
+      activityLog.description
+    );
+    
+    if (existingLog) {
+      console.log(`Duplicate ActivityLog found, returning existing ID: ${existingLog.id}`);
+      return existingLog.id;
+    }
+
+    // Generate a more unique ID to prevent collisions
+    const id = `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    
     realm.write(() => {
       realm?.create('ActivityLog', {
         id,
@@ -753,6 +860,8 @@ export async function createActivityLog(activityLog: Omit<ActivityLog, 'id'>): P
         synced: false,
       });
     });
+    
+    console.log(`Created new ActivityLog with ID: ${id}`);
     return id;
   } catch (error) {
     console.error('Error creating activity log:', error);
@@ -799,7 +908,9 @@ export async function updateActivityLogCategory(
   }
 }
 
-export async function markDiscussionAsCleared(discussionId: string): Promise<void> {
+export async function markDiscussionAsCleared(
+  discussionId: string
+): Promise<void> {
   if (!realm) {
     console.error('Failed to open Realm instance');
     throw new Error('Failed to open Realm instance');
@@ -822,7 +933,9 @@ export async function fetchInitialDiscussion(): Promise<any | null> {
   return null;
 }
 
-export async function getNextOpenDiscussion(lastVisibleId?: string): Promise<any> {
+export async function getNextOpenDiscussion(
+  lastVisibleId?: string
+): Promise<any> {
   return { snapshot: [], hasMore: false, lastVisibleDoc: null };
 }
 
@@ -830,7 +943,10 @@ export async function processPendingTells(): Promise<void> {
   // Placeholder
 }
 
-export async function addQuestionDiscussion(question: string, discussionId: string): Promise<void> {
+export async function addQuestionDiscussion(
+  question: string,
+  discussionId: string
+): Promise<void> {
   // Placeholder
 }
 
@@ -855,7 +971,10 @@ export async function getLastOpenDiscussion(): Promise<any> {
   return { id: '', description: '' };
 }
 
-export async function disperseQuestion(discussionId: string, gptResponseId: string): Promise<string[] | undefined> {
+export async function disperseQuestion(
+  discussionId: string,
+  gptResponseId: string
+): Promise<string[] | undefined> {
   return undefined;
 }
 
@@ -872,7 +991,9 @@ export async function getGPTResponses(discussionId: string): Promise<any[]> {
   return [];
 }
 
-export async function getParsedGPTResponses(discussionId: string): Promise<string[]> {
+export async function getParsedGPTResponses(
+  discussionId: string
+): Promise<string[]> {
   return [];
 }
 
@@ -880,7 +1001,11 @@ export async function getAIResponse(question: string): Promise<string> {
   return '';
 }
 
-export async function syncToCloud(tableName: string, payload?: any, method?: string): Promise<void> {
+export async function syncToCloud(
+  tableName: string,
+  payload?: any,
+  method?: string
+): Promise<void> {
   // Placeholder
 }
 
@@ -900,7 +1025,9 @@ export async function getURLofGPT(gpt_name: string): Promise<any | null> {
   return null;
 }
 
-export async function expandFromAbbreviation(discussion: string): Promise<string> {
+export async function expandFromAbbreviation(
+  discussion: string
+): Promise<string> {
   return discussion;
 }
 
@@ -920,7 +1047,9 @@ export async function getParameters(): Promise<any[]> {
   return [];
 }
 
-export async function getDescriptionsWithTimestamps(categories: string[]): Promise<string> {
+export async function getDescriptionsWithTimestamps(
+  categories: string[]
+): Promise<string> {
   return '[]';
 }
 
@@ -932,11 +1061,18 @@ export async function readChangeLog(filter: any): Promise<any[]> {
   return [];
 }
 
-export async function syncTableFromRemote(tableName: string, newRows: any[]): Promise<void> {
+export async function syncTableFromRemote(
+  tableName: string,
+  newRows: any[]
+): Promise<void> {
   // Placeholder
 }
 
-export async function logChange(tableName: string, rowId: string, operation: string): Promise<void> {
+export async function logChange(
+  tableName: string,
+  rowId: string,
+  operation: string
+): Promise<void> {
   // Placeholder
 }
 
@@ -973,7 +1109,9 @@ export async function addChangeLogEntry(
   }
 }
 
-export async function importLegacyDiscussions(discussions: any[]): Promise<number> {
+export async function importLegacyDiscussions(
+  discussions: any[]
+): Promise<number> {
   if (!realm) {
     console.error('Failed to open Realm instance');
     throw new Error('Failed to open Realm instance');
@@ -1002,7 +1140,9 @@ export async function importLegacyDiscussions(discussions: any[]): Promise<numbe
   return count;
 }
 
-export async function importLegacyActivityLogs(activityLogs: any[]): Promise<number> {
+export async function importLegacyActivityLogs(
+  activityLogs: any[]
+): Promise<number> {
   if (!realm) {
     console.error('Failed to open Realm instance');
     throw new Error('Failed to open Realm instance');
@@ -1067,7 +1207,7 @@ export async function populateCategoryId(): Promise<void> {
       const activityLogs = realm?.objects('ActivityLog');
       const categories = realm?.objects('Category');
       const categoryMap = new Map();
-      
+
       if (categories) {
         categories.forEach((c: any) => {
           categoryMap.set(c.name, c.id);
@@ -1152,10 +1292,17 @@ export async function printAllRealmDataToTerminal(): Promise<void> {
   }
   try {
     console.log('=== REALM DATA DUMP ===');
-    
+
     // Print all tables
-    const schemaNames = ['Discussion', 'ActivityLog', 'Category', 'GPTResponse', 'Alert', 'User'];
-    
+    const schemaNames = [
+      'Discussion',
+      'ActivityLog',
+      'Category',
+      'GPTResponse',
+      'Alert',
+      'User',
+    ];
+
     for (const tableName of schemaNames) {
       try {
         const objects = realm.objects(tableName);
@@ -1167,7 +1314,7 @@ export async function printAllRealmDataToTerminal(): Promise<void> {
         console.warn(`Could not read ${tableName}:`, error);
       }
     }
-    
+
     console.log('\n=== END REALM DATA DUMP ===');
   } catch (error) {
     console.error('Error printing realm data:', error);
@@ -1219,5 +1366,59 @@ export async function debugPrintAllDiscussions(): Promise<void> {
     console.log('=== END DISCUSSIONS ===');
   } catch (error) {
     console.error('Error printing discussions:', error);
+  }
+}
+
+export async function removeDuplicateActivityLogs(): Promise<{
+  duplicatesFound: number;
+  duplicatesRemoved: number;
+}> {
+  if (!realm) {
+    console.error('Failed to open Realm instance');
+    throw new Error('Failed to open Realm instance');
+  }
+  
+  let duplicatesFound = 0;
+  let duplicatesRemoved = 0;
+  
+  try {
+    const allLogs = realm.objects<ActivityLog>('ActivityLog');
+    const seenCombinations = new Map<string, string>(); // key -> first log ID
+    const duplicateIds = new Set<string>();
+    
+    // Group logs by discussionId + category + description
+    Array.from(allLogs).forEach((log: any) => {
+      const key = `${log.discussionId}_${log.category}_${log.description}`;
+      
+      if (seenCombinations.has(key)) {
+        // This is a duplicate
+        duplicatesFound++;
+        duplicateIds.add(log.id);
+        console.log(`Found duplicate ActivityLog: ${log.id} (original: ${seenCombinations.get(key)})`);
+      } else {
+        // First occurrence
+        seenCombinations.set(key, log.id);
+      }
+    });
+    
+    // Remove duplicates
+    if (duplicateIds.size > 0) {
+      realm.write(() => {
+        duplicateIds.forEach(duplicateId => {
+          const log = realm?.objectForPrimaryKey('ActivityLog', duplicateId);
+          if (log) {
+            realm?.delete(log);
+            duplicatesRemoved++;
+            console.log(`Removed duplicate ActivityLog: ${duplicateId}`);
+          }
+        });
+      });
+    }
+    
+    console.log(`Duplicate removal complete. Found: ${duplicatesFound}, Removed: ${duplicatesRemoved}`);
+    return { duplicatesFound, duplicatesRemoved };
+  } catch (error) {
+    console.error('Error removing duplicate activity logs:', error);
+    throw error;
   }
 }

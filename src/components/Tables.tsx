@@ -369,8 +369,7 @@ const MainComponent: React.FC = () => {
           })
         )
       ).sort(
-        (a: any, b: any) =>
-          b.rawTimestamp.getTime() - a.rawTimestamp.getTime()
+        (a: any, b: any) => b.rawTimestamp.getTime() - a.rawTimestamp.getTime()
       );
 
       const discussionRaw = await getDiscussions();

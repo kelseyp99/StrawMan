@@ -673,25 +673,21 @@ export async function synchronizeDiscussions(
   }
 }
 
-export async function synchronizeCategories(
-  appVersion: string
-): Promise<void> {
+export async function synchronizeCategories(appVersion: string): Promise<void> {
   const uid = await getUID();
   if (!uid) {
     throw new Error('No UID available for category synchronization');
   }
 
   console.log(`Synchronizing Categories for UID: ${uid}`);
-  
+
   try {
     // Get all unique categories from ActivityLog entries in Firestore
-    const activityLogsQuery = query(
-      collection(db, `Users/${uid}/ActivityLog`)
-    );
+    const activityLogsQuery = query(collection(db, `Users/${uid}/ActivityLog`));
     const activityLogsSnap = await getDocs(activityLogsQuery);
-    
+
     const categories = new Set<string>();
-    activityLogsSnap.docs.forEach(doc => {
+    activityLogsSnap.docs.forEach((doc) => {
       const data = doc.data();
       if (data.category && data.category !== 'uncategorized') {
         categories.add(data.category);
@@ -700,14 +696,14 @@ export async function synchronizeCategories(
 
     // Sync categories to the Category collection
     const batch = writeBatch(db);
-    
+
     for (const categoryName of categories) {
       const categoryQuery = query(
         collection(db, `Users/${uid}/Category`),
         where('name', '==', categoryName)
       );
       const existingCategorySnap = await getDocs(categoryQuery);
-      
+
       if (existingCategorySnap.empty) {
         // Create new category
         const categoryId = Date.now().toString() + '_' + categoryName;
@@ -719,7 +715,7 @@ export async function synchronizeCategories(
           createdAt: Timestamp.now(),
           updatedAt: Timestamp.now(),
           synced: true,
-          uid
+          uid,
         });
         console.log(`Queued creation of category: ${categoryName}`);
       } else {
@@ -727,12 +723,12 @@ export async function synchronizeCategories(
         const existingCategory = existingCategorySnap.docs[0];
         batch.update(existingCategory.ref, {
           updatedAt: Timestamp.now(),
-          synced: true
+          synced: true,
         });
         console.log(`Queued update of category: ${categoryName}`);
       }
     }
-    
+
     await batch.commit();
     console.log('Category synchronization completed.');
   } catch (error) {
@@ -746,10 +742,10 @@ export async function getCategories(): Promise<Category[]> {
   if (!uid) {
     throw new Error('No UID available for get categories operation');
   }
-  
+
   try {
     const snapshot = await getDocs(collection(db, `Users/${uid}/Category`));
-    return snapshot.docs.map(doc => {
+    return snapshot.docs.map((doc) => {
       const data = doc.data();
       return {
         id: data.id,
@@ -759,7 +755,7 @@ export async function getCategories(): Promise<Category[]> {
         updatedAt: data.updatedAt,
         synced: data.synced,
         syncTimestamp: data.syncTimestamp,
-        uid: data.uid
+        uid: data.uid,
       } as Category;
     });
   } catch (error) {
@@ -781,14 +777,14 @@ export async function addOrUpdateCategory(
   try {
     const categoryId = id || Date.now().toString() + '_' + name;
     const categoryRef = doc(db, `Users/${uid}/Category`, categoryId);
-    
+
     const categoryData = {
       id: categoryId,
       name,
       description: description || `Category: ${name}`,
       updatedAt: Timestamp.now(),
       synced: true,
-      uid
+      uid,
     };
 
     const existingCategory = await getDoc(categoryRef);
@@ -797,7 +793,7 @@ export async function addOrUpdateCategory(
     } else {
       await setDoc(categoryRef, {
         ...categoryData,
-        createdAt: Timestamp.now()
+        createdAt: Timestamp.now(),
       });
     }
 
@@ -814,18 +810,20 @@ export async function deleteCategory(id: string): Promise<void> {
   if (!uid) {
     throw new Error('No UID available for delete category operation');
   }
-  
+
   try {
     const categoryRef = doc(db, `Users/${uid}/Category`, id);
     const categorySnap = await getDoc(categoryRef);
-    
+
     if (categorySnap.exists()) {
       const categoryData = categorySnap.data();
       if (categoryData.uid === uid) {
         await deleteDoc(categoryRef);
         console.log(`Category with ID ${id} deleted.`);
       } else {
-        console.error(`You cannot delete a category that doesn't belong to you.`);
+        console.error(
+          `You cannot delete a category that doesn't belong to you.`
+        );
       }
     } else {
       console.error(`Category with ID ${id} does not exist.`);
@@ -915,16 +913,22 @@ export async function deleteDiscussion(id: string): Promise<void> {
           where('discussionId', '==', id)
         );
         const activityLogsSnap = await getDocs(activityLogsQuery);
-        
-        console.log(`Deleting ${activityLogsSnap.size} related activity logs for discussion ${id}`);
-        
+
+        console.log(
+          `Deleting ${activityLogsSnap.size} related activity logs for discussion ${id}`
+        );
+
         // Delete all related activity logs
-        const deletePromises = activityLogsSnap.docs.map(doc => deleteDoc(doc.ref));
+        const deletePromises = activityLogsSnap.docs.map((doc) =>
+          deleteDoc(doc.ref)
+        );
         await Promise.all(deletePromises);
-        
+
         // Then delete the discussion itself
         await deleteDoc(discussionRef);
-        console.log(`Discussion with ID ${id} deleted along with its related activity logs.`);
+        console.log(
+          `Discussion with ID ${id} deleted along with its related activity logs.`
+        );
       } else {
         console.error(
           `You cannot delete a discussion that doesn't belong to you.`
@@ -1880,11 +1884,11 @@ export async function syncRealmRowsToFirestore(
   for (const row of realmRows) {
     try {
       const docId = row.id?.toString() || new Date().getTime().toString();
-      
+
       // Clean the row data to remove Realm-specific fields that Firestore can't handle
       const cleanRow = { ...row };
       delete cleanRow.activityLogs; // Remove Realm List object
-      
+
       await setDoc(
         doc(db, `Users/${uid}/${tableName}`, docId),
         { ...cleanRow, uid, synced: true, syncTimestamp: new Date() },
@@ -2080,33 +2084,38 @@ export async function restoreLostData(): Promise<void> {
 export async function deleteActivityLog(activityLogId: string): Promise<void> {
   const uid = await getUID();
   if (!uid) throw new Error('No UID available for delete operation');
-  
+
   try {
     // First, get the activity log to find its discussionId
     const activityLogRef = doc(db, `Users/${uid}/ActivityLog`, activityLogId);
     const activityLogSnap = await getDoc(activityLogRef);
-    
+
     if (activityLogSnap.exists()) {
       const activityLogData = activityLogSnap.data();
       const discussionId = activityLogData.discussionId;
-      
+
       // Delete the activity log
       await deleteDoc(activityLogRef);
       console.log(`ActivityLog with ID ${activityLogId} deleted.`);
-      
+
       // Set the parent discussion's cleared status to false
       if (discussionId) {
         const discussionRef = doc(db, `Users/${uid}/Discussion`, discussionId);
         await updateDoc(discussionRef, {
-          cleared: false
+          cleared: false,
         });
-        console.log(`Discussion ${discussionId} cleared status set to false due to activity log deletion.`);
+        console.log(
+          `Discussion ${discussionId} cleared status set to false due to activity log deletion.`
+        );
       }
     } else {
       console.error(`ActivityLog with ID ${activityLogId} not found.`);
     }
   } catch (error) {
-    console.error(`Error deleting activity log with ID ${activityLogId}:`, error);
+    console.error(
+      `Error deleting activity log with ID ${activityLogId}:`,
+      error
+    );
     throw error;
   }
 }
@@ -2318,11 +2327,11 @@ export async function extractAndImportLegacyFirestoreData({
   // Helper: upsert to user-level Firestore
   async function upsertToUserFirestore(tableName: string, row: any) {
     const userDocRef = doc(db, `Users/${uid}/${tableName}`, row.id);
-    
+
     // Remove Realm-specific fields that Firestore can't handle
     const cleanRow = { ...row };
     delete cleanRow.activityLogs; // Remove Realm List object
-    
+
     await setDoc(userDocRef, { ...cleanRow, uid }, { merge: true });
   }
 
@@ -2336,7 +2345,7 @@ export async function extractAndImportLegacyFirestoreData({
       console.error(`[upsertToRealm] Error inserting ${tableName} row:`, {
         error: error?.message || String(error),
         rowId: row.id,
-        rowData: JSON.stringify(row, null, 2)
+        rowData: JSON.stringify(row, null, 2),
       });
       throw error;
     }
@@ -2390,7 +2399,9 @@ export async function extractAndImportLegacyFirestoreData({
         (row as any).description = String((row as any).description || '');
       } else if (tableName === 'ActivityLog') {
         // Ensure all required fields are strings and present
-        row.discussionId = String(row.discussionId || row.discussionID || row.id);
+        row.discussionId = String(
+          row.discussionId || row.discussionID || row.id
+        );
         row.synced = typeof row.synced === 'boolean' ? row.synced : false;
         row.cleared = typeof row.cleared === 'boolean' ? row.cleared : false;
         (row as any).responseType = String((row as any).responseType || 'tell');
@@ -2398,7 +2409,7 @@ export async function extractAndImportLegacyFirestoreData({
         (row as any).category = String((row as any).category || 'general');
         (row as any).description = String((row as any).description || '');
       }
-      
+
       // Ensure id is always a string
       row.id = String(row.id);
       // Convert Firestore Timestamp to JS Date ONLY if needed, but NEVER use current date as fallback
