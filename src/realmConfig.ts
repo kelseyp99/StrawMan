@@ -29,6 +29,10 @@ const ActivityLogSchema = {
     responseType: 'string?',
     synced: 'bool',
     syncTimestamp: 'date?',
+    uid: 'string?',
+    lockedCategory: 'bool?',
+    lockedDescription: 'bool?',
+    attachedFile: 'string?',
   },
 };
 
@@ -45,6 +49,7 @@ const DiscussionSchema = {
     activityLogs: 'ActivityLog[]', // Added from second config
     synced: 'bool',
     syncTimestamp: 'date?',
+    uid: 'string?',
   },
 };
 
@@ -173,7 +178,7 @@ const CategorySchema = {
   primaryKey: 'id',
   properties: {
     id: 'string',
-    name: { type: 'string', indexed: true },
+    name: 'string',
     description: 'string?',
     createdAt: 'date',
     updatedAt: 'date',
@@ -181,7 +186,7 @@ const CategorySchema = {
     syncTimestamp: 'date?',
     uid: 'string',
   },
-} as Realm.ObjectSchema;
+};
 
 const config: Configuration = {
   path: 'lifelog.realm', // Kept from first config
@@ -199,14 +204,14 @@ const config: Configuration = {
     SyncEntrySchema,
     DiscussionCountSchema,
     ChangeLogSchema,
-    CategorySchema,
-  ],
-  schemaVersion: 13, // Bumped from 12 to 13 to include categoryID in activity log schema
+    CategorySchema,  ],
+  schemaVersion: 14, // Bumped from 13 to 14 to add uid, lockedCategory, lockedDescription, attachedFile fields
   onMigration: (oldRealm: Realm, newRealm: Realm) => {
     console.log(
       'Migrating Realm schema from version',
       oldRealm.schemaVersion,
-      'to 9'
+      'to',
+      newRealm.schemaVersion
     );
     if (oldRealm.schemaVersion < 7) {
       // Existing migration logic
@@ -228,6 +233,19 @@ const config: Configuration = {
         '[Migration] Adding ChangeLogSchema and DiscussionCountSchema, removing uid fields'
       );
       // No data migration needed for new schemas or uid removal
+    }
+    if (oldRealm.schemaVersion < 14) {
+      console.log('[Migration] Adding uid, lockedCategory, lockedDescription, attachedFile fields');
+      // Set default values for new fields
+      newRealm.objects('ActivityLog').forEach((log: any) => {
+        if (log.uid === undefined) log.uid = 'local-user';
+        if (log.lockedCategory === undefined) log.lockedCategory = false;
+        if (log.lockedDescription === undefined) log.lockedDescription = false;
+        if (log.attachedFile === undefined) log.attachedFile = null;
+      });
+      newRealm.objects('Discussion').forEach((discussion: any) => {
+        if (discussion.uid === undefined) discussion.uid = 'local-user';
+      });
     }
   },
 };
