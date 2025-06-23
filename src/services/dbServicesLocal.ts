@@ -966,7 +966,86 @@ export async function getNextOpenDiscussion(
 }
 
 export async function processPendingTells(): Promise<void> {
-  // Placeholder
+  if (!realm) {
+    console.error('Realm instance not available');
+    return;
+  }
+
+  try {
+    console.log('Processing pending tell statements...');
+    
+    // Get all uncleared "tell" discussions
+    const discussions = realm.objects<Discussion>('Discussion');
+    const pendingTells = discussions.filtered('typeSay == "tell" AND cleared == false');
+    
+    if (pendingTells.length === 0) {
+      console.log('No pending tell statements to process.');
+      return;
+    }
+
+    console.log(`Found ${pendingTells.length} pending tell statements`);
+
+    // Get available categories for rule processing
+    const categories = await getCategoryNames();
+    
+    for (const discussion of pendingTells) {
+      console.log('Processing tell:', discussion.description);
+
+      // Check if ActivityLog already exists for this discussion
+      const existingActivityLog = realm.objects<ActivityLog>('ActivityLog')
+        .filtered('discussionId == $0', discussion.id);
+      
+      if (existingActivityLog.length > 0) {
+        console.log('ActivityLog already exists for discussion:', discussion.id);
+        // Mark discussion as cleared
+        realm.write(() => {
+          discussion.cleared = true;
+        });
+        continue;
+      }
+
+      // Import processPhrase to apply rules and get category
+      const { processPhrase } = require('./phraseProcessor');
+      
+      try {
+        // Use processPhrase to determine category and description
+        const result = await processPhrase(
+          discussion.description,
+          categories,
+          [], // discussionCounts - empty for this use case
+          () => {}, // setDiscussionCounts - noop function
+          discussion.id,
+          discussion.uid || 'local-user'
+        );
+
+        // Create ActivityLog entry
+        await createActivityLog({
+          discussionId: discussion.id,
+          description: result.parsedDescription || discussion.description,
+          category: result.category || 'general',
+          uid: discussion.uid || 'local-user',
+          timestamp: discussion.timestamp || new Date(),
+          cleared: false,
+          lockedCategory: false,
+          lockedDescription: false,
+        });
+
+        console.log(`Created ActivityLog for discussion ${discussion.id} with category: ${result.category}`);
+
+        // Mark discussion as cleared
+        realm.write(() => {
+          discussion.cleared = true;
+        });
+
+      } catch (error) {
+        console.error('Error processing tell statement:', discussion.description, error);
+      }
+    }
+
+    console.log('Finished processing pending tell statements');
+  } catch (error) {
+    console.error('Error in processPendingTells:', error);
+  }
 }
 
 export async function addQuestionDiscussion(
@@ -1464,23 +1543,25 @@ export async function checkCategoryReferences(categoryId: string): Promise<{
     console.error('Failed to open Realm instance');
     throw new Error('Failed to open Realm instance');
   }
-  
+
   try {
     // Check ActivityLog references
-    const activityLogRefs = realm.objects('ActivityLog').filtered('categoryId == $0', categoryId);
+    const activityLogRefs = realm
+      .objects('ActivityLog')
+      .filtered('categoryId == $0', categoryId);
     const activityLogCount = activityLogRefs.length;
-    
+
     const references = [];
     if (activityLogCount > 0) {
       references.push({ tableName: 'ActivityLog', count: activityLogCount });
     }
-    
+
     const totalCount = activityLogCount;
-    
+
     return {
       hasReferences: totalCount > 0,
       referenceCount: totalCount,
-      references
+      references,
     };
   } catch (error) {
     console.error('Error checking category references:', error);
@@ -1488,14 +1569,18 @@ export async function checkCategoryReferences(categoryId: string): Promise<{
   }
 }
 
-export async function findCategoryByName(name: string): Promise<Category | null> {
+export async function findCategoryByName(
+  name: string
+): Promise<Category | null> {
   if (!realm) {
     console.error('Failed to open Realm instance');
     throw new Error('Failed to open Realm instance');
   }
-  
+
   try {
-    const categories = realm.objects<Category>('Category').filtered('name == $0', name);
+    const categories = realm
+      .objects<Category>('Category')
+      .filtered('name == $0', name);
     if (categories.length > 0) {
       const cat = categories[0];
       return {
@@ -1516,16 +1601,21 @@ export async function findCategoryByName(name: string): Promise<Category | null>
   }
 }
 
-export async function mergeCategoryReferences(fromCategoryId: string, toCategoryId: string): Promise<void> {
+export async function mergeCategoryReferences(
+  fromCategoryId: string,
+  toCategoryId: string
+): Promise<void> {
   if (!realm) {
     console.error('Failed to open Realm instance');
     throw new Error('Failed to open Realm instance');
   }
-  
+
   try {
     realm.write(() => {
       // Update all ActivityLog references from old category to new category
-      const activityLogs = realm?.objects('ActivityLog').filtered('categoryId == $0', fromCategoryId);
+      const activityLogs = realm
+        ?.objects('ActivityLog')
+        .filtered('categoryId == $0', fromCategoryId);
       if (activityLogs) {
         for (const log of activityLogs) {
           (log as any).categoryId = toCategoryId;
@@ -1533,7 +1623,7 @@ export async function mergeCategoryReferences(fromCategoryId: string, toCategory
         }
       }
     });
-    
+
     console.log(`Merged ${fromCategoryId} references to ${toCategoryId}`);
   } catch (error) {
     console.error('Error merging category references:', error);

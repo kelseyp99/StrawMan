@@ -2,6 +2,7 @@ import axios from 'axios';
 import { ActivityInput, analyzeActivity, ParsedActivity } from './openaiAPI';
 import { getRules } from './dbServices';
 import { ActivityLog } from './types';
+import { findDuplicateActivityLog as localFindDuplicate } from './dbServicesLocal';
 
 const useOpenAI = true;
 
@@ -73,16 +74,21 @@ export const processPhrase = async (
   return activityAnalysis;
 };
 
-// Simplified version that doesn't use Firebase
+// Use local implementation for finding duplicate ActivityLog
 export async function findDuplicateActivityLog(
   discussionId: string,
   category: string,
   description: string,
   uid: string
 ): Promise<ActivityLog | null> {
-  // Firebase operations commented out for offline-first approach
-  // TODO: Implement with local Realm database
-  return null;
+  try {
+    // Call the local implementation (note: it's synchronous)
+    const result = localFindDuplicate(discussionId, category, description);
+    return result;
+  } catch (error) {
+    console.error('Error finding duplicate ActivityLog:', error);
+    return null;
+  }
 }
 
 export async function applyRules(
