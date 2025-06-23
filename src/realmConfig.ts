@@ -173,7 +173,7 @@ const CategorySchema = {
   primaryKey: 'id',
   properties: {
     id: 'string',
-    name: 'string',
+    name: { type: 'string', indexed: true },
     description: 'string?',
     createdAt: 'date',
     updatedAt: 'date',
@@ -181,7 +181,7 @@ const CategorySchema = {
     syncTimestamp: 'date?',
     uid: 'string',
   },
-};
+} as Realm.ObjectSchema;
 
 const config: Configuration = {
   path: 'lifelog.realm', // Kept from first config

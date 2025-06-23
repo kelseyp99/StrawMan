@@ -838,6 +838,21 @@ export async function getCategoryById(id: string): Promise<Category | null> {
   }
 }
 
+export async function getCategoryByName(name: string): Promise<Category | null> {
+  console.log('getCategoryByName called with:', name);
+  try {
+    if (await shouldUseRemoteForCategories()) {
+      // For now, use local even if remote is enabled since remote doesn't have this function yet
+      return await local.getCategoryByName(name);
+    } else {
+      return await local.getCategoryByName(name);
+    }
+  } catch (error) {
+    console.error('Error in getCategoryByName:', error);
+    throw error;
+  }
+}
+
 export async function insertJsonFile(jsonData: any): Promise<void> {
   // console.log('insertJsonFile called with:', jsonData);
   try {

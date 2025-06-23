@@ -624,6 +624,33 @@ export async function getCategoryById(id: string): Promise<Category | null> {
   }
 }
 
+export async function getCategoryByName(name: string): Promise<Category | null> {
+  if (!realm) {
+    console.error('Failed to open Realm instance');
+    throw new Error('Failed to open Realm instance');
+  }
+  try {
+    const categories = realm.objects<Category>('Category').filtered('name = $0', name.trim());
+    if (categories.length > 0) {
+      const cat = categories[0];
+      return {
+        id: cat.id,
+        name: cat.name,
+        description: cat.description,
+        createdAt: cat.createdAt,
+        updatedAt: cat.updatedAt,
+        synced: cat.synced,
+        syncTimestamp: cat.syncTimestamp,
+        uid: cat.uid,
+      };
+    }
+    return null;
+  } catch (error) {
+    console.error(`Error getting category by name ${name}:`, error);
+    return null;
+  }
+}
+
 export async function getCategories(): Promise<Category[]> {
   if (!realm) {
     console.error('Failed to open Realm instance');
@@ -670,23 +697,41 @@ export async function addOrUpdateCategory(
     console.error('Failed to open Realm instance');
     throw new Error('Failed to open Realm instance');
   }
+  
+  if (!name || !name.trim()) {
+    throw new Error('Category name is required');
+  }
+  
+  const trimmedName = name.trim();
+  
   try {
+    // Check for duplicate name (but allow same name for updates)
+    const existingByName = realm.objects<Category>('Category').filtered('name = $0', trimmedName);
+    if (existingByName.length > 0) {
+      const existingCategory = existingByName[0];
+      if (!id || existingCategory.id !== id) {
+        throw new Error(`Category with name "${trimmedName}" already exists`);
+      }
+    }
+
     let categoryId = id;
     realm.write(() => {
       if (id) {
         const existing = realm?.objectForPrimaryKey<Category>('Category', id);
         if (existing) {
-          existing.name = name;
-          existing.description = description;
+          existing.name = trimmedName;
+          existing.description = description?.trim() || '';
           existing.updatedAt = new Date();
           existing.synced = false;
+        } else {
+          throw new Error(`Category with id "${id}" not found`);
         }
       } else {
-        categoryId = Date.now().toString() + '_' + name;
+        categoryId = Date.now().toString() + '_' + trimmedName.replace(/\s+/g, '_');
         realm?.create('Category', {
           id: categoryId,
-          name,
-          description: description || '',
+          name: trimmedName,
+          description: description?.trim() || '',
           createdAt: new Date(),
           updatedAt: new Date(),
           synced: false,
