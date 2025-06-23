@@ -32,10 +32,7 @@ import { format } from 'date-fns';
 import { sendQuestionForParsing, sendQuestion } from './openaiAPI';
 import { ActivityLog } from './types';
 import { addChangeLogEntry } from './dbServices';
-
-// Constants to match dbServicesLocal.ts
-const ENABLE_ACTIVITYLOG_SYNC = false;
-const ENABLE_DISCUSSION_SYNC = false;
+import { ENABLE_DISCUSSION_SYNC, ENABLE_ACTIVITYLOG_SYNC, ENABLE_CATEGORY_SYNC } from './syncConfig';
 
 // Interfaces (same as dbServicesLocal.ts)
 interface Discussion {

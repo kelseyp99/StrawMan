@@ -92,4 +92,4 @@ if (ENABLE_FIREBASE) {
   };
 }
 
-export { auth, db };
+export { auth, db, ENABLE_FIRESTORE, ENABLE_FIREBASE };

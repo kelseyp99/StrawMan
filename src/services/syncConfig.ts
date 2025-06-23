@@ -3,3 +3,4 @@
 
 export const ENABLE_DISCUSSION_SYNC = true;
 export const ENABLE_ACTIVITYLOG_SYNC = true;
+export const ENABLE_CATEGORY_SYNC = true;

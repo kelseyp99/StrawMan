@@ -4,22 +4,36 @@ import * as local from './dbServicesLocal';
 import { getUID } from '../utils/uidManager';
 import { ActivityLog } from './types';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { ENABLE_CATEGORY_SYNC } from './syncConfig';
+import { ENABLE_FIRESTORE } from '../firebaseConfig';
 
 // Helper function to check if remote sync should be used
 async function shouldUseRemote(): Promise<boolean> {
-  // Temporarily force local-only mode due to Firebase configuration issues
-  return false;
+  try {
+    // First check if Firestore is enabled
+    if (!ENABLE_FIRESTORE) {
+      return false;
+    }
+    
+    const paid = await isPaidUser();
+    const syncWithCloud =
+      (await AsyncStorage.getItem('syncWithCloud')) === 'true';
+    return paid && syncWithCloud;
+  } catch (e) {
+    console.warn('Could not check remote sync settings:', e);
+    return false;
+  }
+}
 
-  // TODO: Re-enable this once Firebase is properly configured
-  // try {
-  //   const paid = await isPaidUser();
-  //   const syncWithCloud =
-  //     (await AsyncStorage.getItem('syncWithCloud')) === 'true';
-  //   return paid && syncWithCloud;
-  // } catch (e) {
-  //   console.warn('Could not check remote sync settings:', e);
-  //   return false;
-  // }
+// Helper function specifically for category operations
+async function shouldUseRemoteForCategories(): Promise<boolean> {
+  try {
+    const baseSync = await shouldUseRemote();
+    return baseSync && ENABLE_CATEGORY_SYNC;
+  } catch (e) {
+    console.warn('Could not check category sync settings:', e);
+    return false;
+  }
 }
 
 interface Discussion {
@@ -814,7 +828,7 @@ export async function getDistinctCategories(): Promise<string[]> {
 export async function getCategoryById(id: string): Promise<Category | null> {
   //  console.log('getCategory called with:', id);
   try {
-    const result = (await shouldUseRemote())
+    const result = (await shouldUseRemoteForCategories())
       ? null // Remote doesn't support getCategoryById with id parameter yet
       : await local.getCategoryById(id);
     return result;
@@ -903,7 +917,7 @@ export async function synchronizeDiscussions(
 export async function synchronizeCategories(appVersion: string): Promise<void> {
   console.log('synchronizeCategories called with appVersion:', appVersion);
   try {
-    if (await shouldUseRemote()) {
+    if (await shouldUseRemoteForCategories()) {
       await remote.synchronizeCategories(appVersion);
     }
     await local.synchronizeCategories(appVersion);
@@ -924,7 +938,7 @@ export async function synchronizeCategories(appVersion: string): Promise<void> {
 export async function getCategories(): Promise<Category[]> {
   console.log('getCategories called');
   try {
-    if (await shouldUseRemote()) {
+    if (await shouldUseRemoteForCategories()) {
       return await remote.getCategories();
     } else {
       return await local.getCategories();
@@ -943,7 +957,7 @@ export async function addOrUpdateCategory(
   console.log('addOrUpdateCategory called with:', { name, description, id });
   try {
     let categoryId: string;
-    if (await shouldUseRemote()) {
+    if (await shouldUseRemoteForCategories()) {
       categoryId = await remote.addOrUpdateCategory(name, description, id);
     } else {
       categoryId = await local.addOrUpdateCategory(name, description, id);
@@ -966,7 +980,7 @@ export async function addOrUpdateCategory(
 export async function deleteCategory(id: string): Promise<void> {
   console.log('deleteCategory called with:', id);
   try {
-    if (await shouldUseRemote()) {
+    if (await shouldUseRemoteForCategories()) {
       await remote.deleteCategory(id);
     }
     await local.deleteCategory(id);
@@ -1397,5 +1411,35 @@ export async function removeDuplicateActivityLogs(): Promise<{
   } catch (error) {
     console.error('Error in removeDuplicateActivityLogs:', error);
     throw error;
+  }
+}
+
+// Simple debug function to test data fetching
+export async function debugTestDataFetch(): Promise<void> {
+  console.log('[DEBUG] Testing data fetch functions...');
+
+  try {
+    console.log('[DEBUG] Testing getActivityLogs...');
+    const activityLogs = await local.getActivityLogs();
+    console.log('[DEBUG] Local getActivityLogs returned:', activityLogs.length, 'items');
+
+    console.log('[DEBUG] Testing getDiscussions...');
+    const discussions = await local.getDiscussions();
+    console.log('[DEBUG] Local getDiscussions returned:', discussions.length, 'items');
+
+    console.log('[DEBUG] Testing getCategories...');
+    const categories = await local.getCategories();
+    console.log('[DEBUG] Local getCategories returned:', categories.length, 'items');
+
+    console.log('[DEBUG] Testing shouldUseRemote...');
+    const useRemote = await shouldUseRemote();
+    console.log('[DEBUG] shouldUseRemote returned:', useRemote);
+
+    console.log('[DEBUG] Testing shouldUseRemoteForCategories...');
+    const useRemoteCategories = await shouldUseRemoteForCategories();
+    console.log('[DEBUG] shouldUseRemoteForCategories returned:', useRemoteCategories);
+
+  } catch (error) {
+    console.error('[DEBUG] Error in debugTestDataFetch:', error);
   }
 }

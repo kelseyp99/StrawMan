@@ -7,6 +7,8 @@ import {
   getActivityLogs,
   createCategoriesFromActivityLogs,
   populateCategoryId,
+  synchronizeCategories,
+  debugTestDataFetch,
 } from '../../src/services/dbServices';
 
 export default function ToolsScreen() {
@@ -149,6 +151,40 @@ export default function ToolsScreen() {
     }
   };
 
+  const handleSyncCategories = async () => {
+    setDebugLoading(true);
+    try {
+      console.log('[DEBUG] Synchronizing categories...');
+      await synchronizeCategories('1.1.0');
+      Alert.alert('Success', 'Categories synchronized with Firebase.');
+    } catch (error: any) {
+      console.error('[DEBUG] Error synchronizing categories:', error);
+      Alert.alert(
+        'Error',
+        'Failed to synchronize categories: ' + (error?.message || String(error))
+      );
+    } finally {
+      setDebugLoading(false);
+    }
+  };
+
+  const handleDebugTestDataFetch = async () => {
+    setDebugLoading(true);
+    try {
+      console.log('[DEBUG] Testing data fetch functions...');
+      await debugTestDataFetch();
+      Alert.alert('Debug Complete', 'Check console for data fetch test results.');
+    } catch (error: any) {
+      console.error('[DEBUG] Error testing data fetch:', error);
+      Alert.alert(
+        'Error',
+        'Failed to test data fetch: ' + (error?.message || String(error))
+      );
+    } finally {
+      setDebugLoading(false);
+    }
+  };
+
   if (!isLogged && isPaid) {
     // Not logged in, but paid: show login
     return null;
@@ -167,6 +203,8 @@ export default function ToolsScreen() {
           handleCreateCategoriesFromActivityLogs
         }
         handlePopulateCategoryId={handlePopulateCategoryId}
+        handleSyncCategories={handleSyncCategories}
+        handleDebugTestDataFetch={handleDebugTestDataFetch}
       />
     </View>
   );
