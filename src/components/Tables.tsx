@@ -33,10 +33,12 @@ import {
   addOrUpdateActivityLog,
   getCategories,
   addOrUpdateCategory,
-  deleteCategory,
-  createCategoriesFromActivityLogs,
+  deleteCategory,  createCategoriesFromActivityLogs,
   getCategoryById,
   getCategoryNames,
+  checkCategoryReferences,
+  findCategoryByName,
+  mergeCategoryReferences,
 } from '../services/dbServices';
 import { extractAndImportLegacyFirestoreData } from '../services/dbServicesRemote';
 import { findDuplicateActivityLog } from '../services/phraseProcessor';
@@ -308,6 +310,15 @@ const MainComponent: React.FC = () => {
   const [editCategoryDescription, setEditCategoryDescription] = useState('');
   const [categoryEditModalTitle, setCategoryEditModalTitle] =
     useState('Edit Category');
+
+  // State for category delete/merge functionality
+  const [deleteModalVisible, setDeleteModalVisible] = useState(false);
+  const [categoryToDelete, setCategoryToDelete] = useState<{id: string, name: string} | null>(null);
+  const [hasReferences, setHasReferences] = useState(false);
+  const [referenceCount, setReferenceCount] = useState(0);
+  const [mergeTargetName, setMergeTargetName] = useState('');
+  const [showMergeOption, setShowMergeOption] = useState(false);
+  const [existingCategories, setExistingCategories] = useState<string[]>([]);
 
   // Fetch UID once on mount
   useEffect(() => {
@@ -1053,13 +1064,72 @@ const MainComponent: React.FC = () => {
     }
   }, []);
 
-  // Load categories when component mounts or when uid changes
-  useEffect(() => {
-    if (uid) {
-      loadCategories();
+  // Handler for deleting categories with FK checks
+  const handleDeleteCategory = useCallback(async (categoryId: string, categoryName: string) => {
+    try {
+      // Check if category has references
+      const refCheck = await checkCategoryReferences(categoryId);
+      
+      setCategoryToDelete({id: categoryId, name: categoryName});
+      setHasReferences(refCheck.hasReferences);
+      setReferenceCount(refCheck.referenceCount);
+      setMergeTargetName('');
+      setShowMergeOption(false);
+      
+      if (refCheck.hasReferences) {
+        // Load existing categories for merge dropdown
+        const categories = await getCategoryNames();
+        setExistingCategories(categories.filter(cat => cat !== categoryName));
+      }
+      
+      setDeleteModalVisible(true);
+    } catch (error) {
+      console.error('Error checking category references:', error);
+      Alert.alert('Error', 'Failed to check category references.');
     }
-  }, [uid, loadCategories]);
+  }, []);
 
+  // Handler for confirming category deletion
+  const confirmDeleteCategory = useCallback(async () => {
+    if (!categoryToDelete) return;
+
+    try {
+      if (hasReferences && mergeTargetName) {
+        // Merge scenario
+        const targetCategory = await findCategoryByName(mergeTargetName);
+        if (targetCategory) {
+          // Merge references to existing category
+          await mergeCategoryReferences(categoryToDelete.id, targetCategory.id);
+          await deleteCategory(categoryToDelete.id);
+          Alert.alert('Success', `Category "${categoryToDelete.name}" merged into "${mergeTargetName}" and deleted.`);
+        } else {
+          Alert.alert('Error', 'Target category not found.');
+          return;
+        }
+      } else if (!hasReferences) {
+        // Simple delete
+        await deleteCategory(categoryToDelete.id);
+        Alert.alert('Success', `Category "${categoryToDelete.name}" deleted successfully.`);
+      } else {
+        Alert.alert('Error', 'Cannot delete category with references without specifying merge target.');
+        return;
+      }
+
+      // Refresh data and close modal
+      await fetchData();
+      setDeleteModalVisible(false);
+      setCategoryToDelete(null);
+    } catch (error) {
+      console.error('Error deleting/merging category:', error);
+      Alert.alert('Error', 'Failed to delete category.');
+    }
+  }, [categoryToDelete, hasReferences, mergeTargetName, fetchData]);
+
+  // Save function for general edits
+  const saveEdit = useCallback(async () => {
+    // Implementation for saving edits
+    console.log('Save edit called - implementation needed');
+  }, []);
   // Create category handler
   const handleCreateCategory = () => {
     setEditCategoryId(null);
@@ -1068,62 +1138,6 @@ const MainComponent: React.FC = () => {
     setCategoryEditModalTitle('Create Category');
     setCategoryEditModalVisible(true);
   };
-
-  // Render right swipe actions (delete)
-  const renderRightActions = useCallback(
-    (tableName: string, itemId: string) => (
-      <TouchableOpacity
-        style={styles.deleteButton}
-        onPress={() => handleDelete(tableName, itemId)}
-      >
-        <Text style={styles.deleteButtonText}>Delete</Text>
-      </TouchableOpacity>
-    ),
-    [handleDelete]
-  );
-
-  // Render left swipe actions (edit)
-  const renderLeftActions = useCallback(
-    (
-      tableName: string,
-      itemId: string,
-      currentDesc: string,
-      currentCleared: string,
-      currentTypeSay: string
-    ) => (
-      <TouchableOpacity
-        style={styles.editButton}
-        onPress={() =>
-          handleEdit(
-            tableName,
-            itemId,
-            currentDesc,
-            currentCleared,
-            currentTypeSay
-          )
-        }
-      >
-        <Text style={styles.editButtonText}>Edit</Text>
-      </TouchableOpacity>
-    ),
-    [handleEdit]
-  );
-
-  // Get item layout for FlatList optimization
-  const getItemLayout = useCallback(
-    (data: any, index: number) => ({
-      length: 48,
-      offset: 48 * index,
-      index,
-    }),
-    []
-  );
-
-  // Save function for general edits
-  const saveEdit = useCallback(async () => {
-    // Implementation for saving edits
-    console.log('Save edit called - implementation needed');
-  }, []);
 
   // Save function specifically for Categories
   const saveCategoryEdit = useCallback(async () => {
@@ -1194,6 +1208,62 @@ const MainComponent: React.FC = () => {
       Alert.alert('Error', 'Failed to create test rows.');
     }
   }, []);
+
+  // Render right swipe actions (delete)
+  const renderRightActions = useCallback(
+    (tableName: string, itemId: string, itemData?: any) => (
+      <TouchableOpacity
+        style={styles.deleteButton}
+        onPress={() => {
+          if (tableName === 'Categories' && itemData) {
+            handleDeleteCategory(itemId, itemData.name);
+          } else {
+            handleDelete(tableName, itemId);
+          }
+        }}
+      >
+        <Text style={styles.deleteButtonText}>Delete</Text>
+      </TouchableOpacity>
+    ),
+    [handleDelete, handleDeleteCategory]
+  );
+
+  // Render left swipe actions (edit)
+  const renderLeftActions = useCallback(
+    (
+      tableName: string,
+      itemId: string,
+      currentDesc: string,
+      currentCleared: string,
+      currentTypeSay: string
+    ) => (
+      <TouchableOpacity
+        style={styles.editButton}
+        onPress={() =>
+          handleEdit(
+            tableName,
+            itemId,
+            currentDesc,
+            currentCleared,
+            currentTypeSay
+          )
+        }
+      >
+        <Text style={styles.editButtonText}>Edit</Text>
+      </TouchableOpacity>
+    ),
+    [handleEdit]
+  );
+
+  // Get item layout for FlatList optimization
+  const getItemLayout = useCallback(
+    (data: any, index: number) => ({
+      length: 48,
+      offset: 48 * index,
+      index,
+    }),
+    []
+  );
 
   if (loading) {
     return (
@@ -1586,6 +1656,115 @@ const MainComponent: React.FC = () => {
                     <Text style={styles.modalButtonText}>Save</Text>
                   </TouchableOpacity>
                 </View>
+              </View>
+            </View>
+          </Modal>
+
+          {/* Delete Category Modal */}
+          <Modal
+            animationType="slide"
+            transparent={true}
+            visible={deleteModalVisible}
+            onRequestClose={() => {
+              setDeleteModalVisible(false);
+              setCategoryToDelete(null);
+              setHasReferences(false);
+              setReferenceCount(0);
+              setMergeTargetName('');
+              setShowMergeOption(false);
+            }}
+          >
+            <View style={styles.modalOverlay}>
+              <View style={styles.modalContainer}>
+                <Text style={styles.modalTitle}>Delete Category</Text>
+                {hasReferences ? (
+                  <View>
+                    <Text style={styles.modalLabel}>
+                      This category is referenced in {referenceCount} activity log
+                      {referenceCount === 1 ? '' : 's'}. You can either delete
+                      the category or merge it with another category.
+                    </Text>
+                    <Text style={styles.modalLabel}>Merge with:</Text>
+                    <TextInput
+                      style={styles.modalInput}
+                      value={mergeTargetName}
+                      onChangeText={setMergeTargetName}
+                      placeholder="Enter category name to merge"
+                    />
+                    <TouchableOpacity
+                      style={[styles.modalButton, styles.saveButton]}
+                      onPress={async () => {
+                        if (!categoryToDelete || !mergeTargetName) return;
+                        try {
+                          // Merge category references
+                          await mergeCategoryReferences(
+                            categoryToDelete.id,
+                            mergeTargetName
+                          );
+                          await deleteCategory(categoryToDelete.id);
+                          Alert.alert(
+                            'Success',
+                            `Category "${categoryToDelete.name}" merged into "${mergeTargetName}" and deleted.`
+                          );
+                          // Refresh data
+                          fetchData();
+                          // Close modal
+                          setDeleteModalVisible(false);
+                          setCategoryToDelete(null);
+                          setHasReferences(false);
+                          setReferenceCount(0);
+                          setMergeTargetName('');
+                          setShowMergeOption(false);
+                        } catch (error) {
+                          console.error('Error merging categories:', error);
+                          Alert.alert('Error', 'Failed to merge categories.');
+                        }
+                      }}
+                    >
+                      <Text style={styles.modalButtonText}>Merge</Text>
+                    </TouchableOpacity>
+                  </View>
+                ) : (
+                  <View>
+                    <Text style={styles.modalLabel}>
+                      Are you sure you want to delete this category?
+                    </Text>
+                    <TouchableOpacity
+                      style={[styles.modalButton, styles.saveButton]}
+                      onPress={async () => {
+                        if (!categoryToDelete) return;
+                        try {
+                          // Delete category
+                          await deleteCategory(categoryToDelete.id);
+                          Alert.alert('Success', 'Category deleted successfully.');
+                          // Refresh data
+                          fetchData();
+                          // Close modal
+                          setDeleteModalVisible(false);
+                          setCategoryToDelete(null);
+                        } catch (error) {
+                          console.error('Error deleting category:', error);
+                          Alert.alert('Error', 'Failed to delete category.');
+                        }
+                      }}
+                    >
+                      <Text style={styles.modalButtonText}>Delete</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+                <TouchableOpacity
+                  style={styles.modalButton}
+                  onPress={() => {
+                    setDeleteModalVisible(false);
+                    setCategoryToDelete(null);
+                    setHasReferences(false);
+                    setReferenceCount(0);
+                    setMergeTargetName('');
+                    setShowMergeOption(false);
+                  }}
+                >
+                  <Text style={styles.modalButtonText}>Cancel</Text>
+                </TouchableOpacity>
               </View>
             </View>
           </Modal>

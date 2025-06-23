@@ -992,6 +992,56 @@ export async function addOrUpdateCategory(
   }
 }
 
+export async function checkCategoryReferences(categoryId: string): Promise<{
+  hasReferences: boolean;
+  referenceCount: number;
+  references: { tableName: string; count: number }[];
+}> {
+  console.log('checkCategoryReferences called with:', categoryId);
+  try {
+    // For now, always use local since remote doesn't support this yet
+    return await local.checkCategoryReferences(categoryId);
+  } catch (error) {
+    console.error('Error in checkCategoryReferences:', error);
+    throw error;
+  }
+}
+
+export async function findCategoryByName(name: string): Promise<any> {
+  console.log('findCategoryByName called with:', name);
+  try {
+    if (await shouldUseRemoteForCategories()) {
+      // For now, use local even if remote is enabled
+      return await local.findCategoryByName(name);
+    } else {
+      return await local.findCategoryByName(name);
+    }
+  } catch (error) {
+    console.error('Error in findCategoryByName:', error);
+    throw error;
+  }
+}
+
+export async function mergeCategoryReferences(fromCategoryId: string, toCategoryId: string): Promise<void> {
+  console.log('mergeCategoryReferences called with:', { fromCategoryId, toCategoryId });
+  try {
+    // Always use local for merging, then sync if needed
+    await local.mergeCategoryReferences(fromCategoryId, toCategoryId);
+    
+    // Log the merge operation
+    const uid = (await getUID()) || 'unknown';    await logSyncEntry({
+      id: `merge_${fromCategoryId}_to_${toCategoryId}`,
+      tableName: 'Category',
+      operation: 'update',
+      timestamp: new Date(),
+      uid,
+    });
+  } catch (error) {
+    console.error('Error in mergeCategoryReferences:', error);
+    throw error;
+  }
+}
+
 export async function deleteCategory(id: string): Promise<void> {
   console.log('deleteCategory called with:', id);
   try {

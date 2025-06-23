@@ -1454,3 +1454,107 @@ export async function removeDuplicateActivityLogs(): Promise<{
     throw error;
   }
 }
+
+export async function checkCategoryReferences(categoryId: string): Promise<{
+  hasReferences: boolean;
+  referenceCount: number;
+  references: { tableName: string; count: number }[];
+}> {
+  if (!realm) {
+    console.error('Failed to open Realm instance');
+    throw new Error('Failed to open Realm instance');
+  }
+  
+  try {
+    // Check ActivityLog references
+    const activityLogRefs = realm.objects('ActivityLog').filtered('categoryId == $0', categoryId);
+    const activityLogCount = activityLogRefs.length;
+    
+    const references = [];
+    if (activityLogCount > 0) {
+      references.push({ tableName: 'ActivityLog', count: activityLogCount });
+    }
+    
+    const totalCount = activityLogCount;
+    
+    return {
+      hasReferences: totalCount > 0,
+      referenceCount: totalCount,
+      references
+    };
+  } catch (error) {
+    console.error('Error checking category references:', error);
+    throw error;
+  }
+}
+
+export async function findCategoryByName(name: string): Promise<Category | null> {
+  if (!realm) {
+    console.error('Failed to open Realm instance');
+    throw new Error('Failed to open Realm instance');
+  }
+  
+  try {
+    const categories = realm.objects<Category>('Category').filtered('name == $0', name);
+    if (categories.length > 0) {
+      const cat = categories[0];
+      return {
+        id: cat.id,
+        name: cat.name,
+        description: cat.description,
+        createdAt: cat.createdAt,
+        updatedAt: cat.updatedAt,
+        synced: cat.synced,
+        syncTimestamp: cat.syncTimestamp,
+        uid: cat.uid,
+      };
+    }
+    return null;
+  } catch (error) {
+    console.error('Error finding category by name:', error);
+    return null;
+  }
+}
+
+export async function mergeCategoryReferences(fromCategoryId: string, toCategoryId: string): Promise<void> {
+  if (!realm) {
+    console.error('Failed to open Realm instance');
+    throw new Error('Failed to open Realm instance');
+  }
+  
+  try {
+    realm.write(() => {
+      // Update all ActivityLog references from old category to new category
+      const activityLogs = realm?.objects('ActivityLog').filtered('categoryId == $0', fromCategoryId);
+      if (activityLogs) {
+        for (const log of activityLogs) {
+          (log as any).categoryId = toCategoryId;
+          (log as any).synced = false;
+        }
+      }
+    });
+    
+    console.log(`Merged ${fromCategoryId} references to ${toCategoryId}`);
+  } catch (error) {
+    console.error('Error merging category references:', error);
+    throw error;
+  }
+}
+
+export async function deleteCategoryLocal(id: string): Promise<void> {
+  if (!realm) {
+    console.error('Failed to open Realm instance');
+    throw new Error('Failed to open Realm instance');
+  }
+  try {
+    realm.write(() => {
+      const category = realm?.objectForPrimaryKey('Category', id);
+      if (category) {
+        realm?.delete(category);
+      }
+    });
+  } catch (error) {
+    console.error('Error deleting category:', error);
+    throw error;
+  }
+}
