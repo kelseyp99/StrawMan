@@ -870,15 +870,14 @@ export async function synchronizeDiscussions(
       operation: 'update',
       timestamp: new Date(),
       uid,
-    });  } catch (error) {
+    });
+  } catch (error) {
     console.error('Error in synchronizeDiscussions:', error);
     throw error;
   }
 }
 
-export async function synchronizeCategories(
-  appVersion: string
-): Promise<void> {
+export async function synchronizeCategories(appVersion: string): Promise<void> {
   console.log('synchronizeCategories called with appVersion:', appVersion);
   try {
     if (await shouldUseRemote()) {
@@ -1168,9 +1167,12 @@ export async function insertTestRowsAndExit() {
  */
 export async function createSampleCategories() {
   console.log('[UTIL] Creating sample categories...');
-  
+
   const sampleCategories = [
-    { name: 'Health', description: 'Health-related activities and discussions' },
+    {
+      name: 'Health',
+      description: 'Health-related activities and discussions',
+    },
     { name: 'Work', description: 'Work and productivity matters' },
     { name: 'Learning', description: 'Educational and learning activities' },
     { name: 'Family', description: 'Family time and relationships' },
@@ -1185,70 +1187,83 @@ export async function createSampleCategories() {
       console.warn(`[UTIL] Failed to create category ${category.name}:`, error);
     }
   }
-  
+
   console.log('[UTIL] Sample categories creation complete.');
 }
 
 export async function createCategoriesFromActivityLogs() {
   console.log('[UTIL] Creating categories from existing ActivityLog data...');
-  
+
   try {
     // Get all activity logs to extract distinct categories
     const activityLogs = await getActivityLogs();
     console.log(`[UTIL] Found ${activityLogs.length} activity logs`);
-    
+
     // Extract distinct categories (excluding empty, null, undefined, and 'uncategorized')
     const distinctCategories = new Set<string>();
-    
+
     activityLogs.forEach((log: any) => {
       const category = log.category?.trim();
-      if (category && 
-          category !== 'uncategorized' && 
-          category !== 'undefined' && 
-          category !== 'null' && 
-          category.length > 0) {
+      if (
+        category &&
+        category !== 'uncategorized' &&
+        category !== 'undefined' &&
+        category !== 'null' &&
+        category.length > 0
+      ) {
         distinctCategories.add(category);
       }
     });
-    
-    console.log(`[UTIL] Found ${distinctCategories.size} distinct categories:`, Array.from(distinctCategories));
-    
+
+    console.log(
+      `[UTIL] Found ${distinctCategories.size} distinct categories:`,
+      Array.from(distinctCategories)
+    );
+
     // Check existing categories to avoid duplicates
     const existingCategories = await getCategories();
-    const existingCategoryNames = new Set(existingCategories.map(cat => cat.name.toLowerCase()));
-    
+    const existingCategoryNames = new Set(
+      existingCategories.map((cat) => cat.name.toLowerCase())
+    );
+
     let createdCount = 0;
     let skippedCount = 0;
-    
+
     // Create categories that don't already exist
     for (const categoryName of distinctCategories) {
       const lowerCaseName = categoryName.toLowerCase();
-      
+
       if (existingCategoryNames.has(lowerCaseName)) {
-        console.log(`[UTIL] Category '${categoryName}' already exists, skipping`);
+        console.log(
+          `[UTIL] Category '${categoryName}' already exists, skipping`
+        );
         skippedCount++;
       } else {
         try {
           await addOrUpdateCategory(
-            categoryName, 
+            categoryName,
             `Auto-created from ActivityLog data`
           );
           console.log(`[UTIL] Created category: ${categoryName}`);
           createdCount++;
         } catch (error) {
-          console.warn(`[UTIL] Failed to create category '${categoryName}':`, error);
+          console.warn(
+            `[UTIL] Failed to create category '${categoryName}':`,
+            error
+          );
         }
       }
     }
-    
-    console.log(`[UTIL] Categories creation complete. Created: ${createdCount}, Skipped: ${skippedCount}`);
+
+    console.log(
+      `[UTIL] Categories creation complete. Created: ${createdCount}, Skipped: ${skippedCount}`
+    );
     return {
       total: distinctCategories.size,
       created: createdCount,
       skipped: skippedCount,
-      categories: Array.from(distinctCategories)
+      categories: Array.from(distinctCategories),
     };
-    
   } catch (error) {
     console.error('[UTIL] Error creating categories from ActivityLog:', error);
     throw error;

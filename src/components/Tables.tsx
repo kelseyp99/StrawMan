@@ -300,10 +300,13 @@ const MainComponent: React.FC = () => {
   const [debugLoading, setDebugLoading] = useState(false);
 
   // State for separate Categories edit modal
-  const [categoryEditModalVisible, setCategoryEditModalVisible] = useState(false);
+  const [categoryEditModalVisible, setCategoryEditModalVisible] =
+    useState(false);
   const [editCategoryId, setEditCategoryId] = useState<string | null>(null);
   const [editCategoryName, setEditCategoryName] = useState('');
   const [editCategoryDescription, setEditCategoryDescription] = useState('');
+  const [categoryEditModalTitle, setCategoryEditModalTitle] =
+    useState('Edit Category');
 
   // Fetch UID once on mount
   useEffect(() => {
@@ -768,6 +771,7 @@ const MainComponent: React.FC = () => {
           setEditCategoryId(itemId);
           setEditCategoryName(categoryItem.name || '');
           setEditCategoryDescription(categoryItem.description || '');
+          setCategoryEditModalTitle('Edit Category');
           setCategoryEditModalVisible(true);
         }
         return;
@@ -1159,14 +1163,14 @@ const MainComponent: React.FC = () => {
       Alert.alert('Error', 'Category name cannot be empty.');
       return;
     }
-    if (!editCategoryId) {
-      Alert.alert('Error', 'Category ID not found. Please try again.');
-      return;
-    }
 
     try {
-      await addOrUpdateCategory(editCategoryName, editCategoryDescription, editCategoryId);
-      
+      await addOrUpdateCategory(
+        editCategoryName,
+        editCategoryDescription,
+        editCategoryId || undefined // Handle null for new categories
+      );
+
       // Update the table data immediately
       setTables((prevTables) =>
         prevTables.map((table) =>
@@ -1192,9 +1196,12 @@ const MainComponent: React.FC = () => {
       setEditCategoryId(null);
       setEditCategoryName('');
       setEditCategoryDescription('');
-      
-      Alert.alert('Success', 'Category updated successfully.');
-      
+
+      Alert.alert(
+        'Success',
+        `Category ${editCategoryId ? 'updated' : 'created'} successfully.`
+      );
+
       // Refresh data to ensure consistency
       fetchData();
     } catch (error) {
@@ -1267,6 +1274,14 @@ const MainComponent: React.FC = () => {
     } finally {
       setDebugLoading(false);
     }
+  };
+
+  const handleCreateCategory = () => {
+    setEditCategoryId(null);
+    setEditCategoryName('');
+    setEditCategoryDescription('');
+    setCategoryEditModalTitle('Create Category');
+    setCategoryEditModalVisible(true);
   };
 
   // Cast 'e' to Error type
@@ -1402,6 +1417,15 @@ const MainComponent: React.FC = () => {
           <Text style={styles.tableHeader}>
             {tables[currentTableIndex]?.name || 'Loading...'}
           </Text>
+
+          {tables[currentTableIndex]?.name === 'Categories' && (
+            <TouchableOpacity
+              style={styles.createButton}
+              onPress={handleCreateCategory}
+            >
+              <Text style={styles.createButtonText}>Create Category</Text>
+            </TouchableOpacity>
+          )}
 
           <View style={styles.filterRow}>
             {tables[currentTableIndex]?.columns.map((col) =>
@@ -1679,7 +1703,8 @@ const MainComponent: React.FC = () => {
                   </TouchableOpacity>
                 </View>
               </View>
-            </View>          </Modal>
+            </View>{' '}
+          </Modal>
 
           {/* Categories Edit Modal */}
           <Modal
@@ -1695,8 +1720,8 @@ const MainComponent: React.FC = () => {
           >
             <View style={styles.modalOverlay}>
               <View style={styles.modalContainer}>
-                <Text style={styles.modalTitle}>Edit Category</Text>
-                
+                <Text style={styles.modalTitle}>{categoryEditModalTitle}</Text>
+
                 <Text style={styles.modalLabel}>Category Name:</Text>
                 <TextInput
                   style={styles.modalInput}
@@ -1704,7 +1729,7 @@ const MainComponent: React.FC = () => {
                   onChangeText={setEditCategoryName}
                   placeholder="Enter category name"
                 />
-                
+
                 <Text style={styles.modalLabel}>Category Description:</Text>
                 <TextInput
                   style={styles.modalInput}
@@ -1986,6 +2011,20 @@ const styles = StyleSheet.create({
   retryButtonText: {
     color: '#fff',
     fontWeight: 'bold',
+  },
+  createButton: {
+    backgroundColor: '#28a745', // A green color for creation
+    paddingVertical: 8,
+    paddingHorizontal: 15,
+    borderRadius: 5,
+    alignSelf: 'center',
+    marginBottom: 10,
+    marginTop: 5,
+  },
+  createButtonText: {
+    color: '#fff',
+    fontWeight: 'bold',
+    fontSize: 14,
   },
 });
 
