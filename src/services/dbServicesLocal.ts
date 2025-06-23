@@ -154,7 +154,10 @@ export const findDuplicateActivityLog = (
 ): ActivityLog | null => {
   if (!realm) throw new Error('Realm not initialized');
   console.log(
-    `Checking for duplicate ActivityLog: ${discussionId}, ${category}, ${description.substring(0, 50)}...`
+    `Checking for duplicate ActivityLog: ${discussionId}, ${category}, ${description.substring(
+      0,
+      50
+    )}...`
   );
 
   try {
@@ -202,9 +205,16 @@ export const findDuplicateActivityLog = (
     if (logs && logs.length > 0) {
       // Check if any recent logs have very similar descriptions (> 80% similar)
       for (const log of Array.from(logs)) {
-        const similarity = calculateStringSimilarity(log.description, description);
+        const similarity = calculateStringSimilarity(
+          log.description,
+          description
+        );
         if (similarity > 0.8) {
-          console.log(`Found similar recent ActivityLog (${Math.round(similarity * 100)}% similar): ${log.id}`);
+          console.log(
+            `Found similar recent ActivityLog (${Math.round(
+              similarity * 100
+            )}% similar): ${log.id}`
+          );
           return {
             id: log.id,
             discussionId: log.discussionId,
@@ -236,12 +246,12 @@ export const findDuplicateActivityLog = (
 function calculateStringSimilarity(str1: string, str2: string): number {
   if (str1 === str2) return 1;
   if (str1.length === 0 || str2.length === 0) return 0;
-  
+
   const longer = str1.length > str2.length ? str1 : str2;
   const shorter = str1.length > str2.length ? str2 : str1;
-  
+
   if (longer.length === 0) return 1;
-  
+
   const editDistance = levenshteinDistance(longer, shorter);
   return (longer.length - editDistance) / longer.length;
 }
@@ -249,15 +259,15 @@ function calculateStringSimilarity(str1: string, str2: string): number {
 // Levenshtein distance calculation
 function levenshteinDistance(str1: string, str2: string): number {
   const matrix = [];
-  
+
   for (let i = 0; i <= str2.length; i++) {
     matrix[i] = [i];
   }
-  
+
   for (let j = 0; j <= str1.length; j++) {
     matrix[0][j] = j;
   }
-  
+
   for (let i = 1; i <= str2.length; i++) {
     for (let j = 1; j <= str1.length; j++) {
       if (str2.charAt(i - 1) === str1.charAt(j - 1)) {
@@ -271,7 +281,7 @@ function levenshteinDistance(str1: string, str2: string): number {
       }
     }
   }
-  
+
   return matrix[str2.length][str1.length];
 }
 
@@ -624,33 +634,6 @@ export async function getCategoryById(id: string): Promise<Category | null> {
   }
 }
 
-export async function getCategoryByName(name: string): Promise<Category | null> {
-  if (!realm) {
-    console.error('Failed to open Realm instance');
-    throw new Error('Failed to open Realm instance');
-  }
-  try {
-    const categories = realm.objects<Category>('Category').filtered('name = $0', name.trim());
-    if (categories.length > 0) {
-      const cat = categories[0];
-      return {
-        id: cat.id,
-        name: cat.name,
-        description: cat.description,
-        createdAt: cat.createdAt,
-        updatedAt: cat.updatedAt,
-        synced: cat.synced,
-        syncTimestamp: cat.syncTimestamp,
-        uid: cat.uid,
-      };
-    }
-    return null;
-  } catch (error) {
-    console.error(`Error getting category by name ${name}:`, error);
-    return null;
-  }
-}
-
 export async function getCategories(): Promise<Category[]> {
   if (!realm) {
     console.error('Failed to open Realm instance');
@@ -697,41 +680,23 @@ export async function addOrUpdateCategory(
     console.error('Failed to open Realm instance');
     throw new Error('Failed to open Realm instance');
   }
-  
-  if (!name || !name.trim()) {
-    throw new Error('Category name is required');
-  }
-  
-  const trimmedName = name.trim();
-  
   try {
-    // Check for duplicate name (but allow same name for updates)
-    const existingByName = realm.objects<Category>('Category').filtered('name = $0', trimmedName);
-    if (existingByName.length > 0) {
-      const existingCategory = existingByName[0];
-      if (!id || existingCategory.id !== id) {
-        throw new Error(`Category with name "${trimmedName}" already exists`);
-      }
-    }
-
     let categoryId = id;
     realm.write(() => {
       if (id) {
         const existing = realm?.objectForPrimaryKey<Category>('Category', id);
         if (existing) {
-          existing.name = trimmedName;
-          existing.description = description?.trim() || '';
+          existing.name = name;
+          existing.description = description;
           existing.updatedAt = new Date();
           existing.synced = false;
-        } else {
-          throw new Error(`Category with id "${id}" not found`);
         }
       } else {
-        categoryId = Date.now().toString() + '_' + trimmedName.replace(/\s+/g, '_');
+        categoryId = Date.now().toString() + '_' + name;
         realm?.create('Category', {
           id: categoryId,
-          name: trimmedName,
-          description: description?.trim() || '',
+          name,
+          description: description || '',
           createdAt: new Date(),
           updatedAt: new Date(),
           synced: false,
@@ -895,7 +860,7 @@ export async function createActivityLog(
     console.error('Failed to open Realm instance');
     throw new Error('Failed to open Realm instance');
   }
-  
+
   try {
     // Check for existing duplicate before creating
     const existingLog = findDuplicateActivityLog(
@@ -903,15 +868,17 @@ export async function createActivityLog(
       activityLog.category,
       activityLog.description
     );
-    
+
     if (existingLog) {
-      console.log(`Duplicate ActivityLog found, returning existing ID: ${existingLog.id}`);
+      console.log(
+        `Duplicate ActivityLog found, returning existing ID: ${existingLog.id}`
+      );
       return existingLog.id;
     }
 
     // Generate a more unique ID to prevent collisions
     const id = `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-    
+
     realm.write(() => {
       realm?.create('ActivityLog', {
         id,
@@ -919,7 +886,7 @@ export async function createActivityLog(
         synced: false,
       });
     });
-    
+
     console.log(`Created new ActivityLog with ID: ${id}`);
     return id;
   } catch (error) {
@@ -1436,34 +1403,38 @@ export async function removeDuplicateActivityLogs(): Promise<{
     console.error('Failed to open Realm instance');
     throw new Error('Failed to open Realm instance');
   }
-  
+
   let duplicatesFound = 0;
   let duplicatesRemoved = 0;
-  
+
   try {
     const allLogs = realm.objects<ActivityLog>('ActivityLog');
     const seenCombinations = new Map<string, string>(); // key -> first log ID
     const duplicateIds = new Set<string>();
-    
+
     // Group logs by discussionId + category + description
     Array.from(allLogs).forEach((log: any) => {
       const key = `${log.discussionId}_${log.category}_${log.description}`;
-      
+
       if (seenCombinations.has(key)) {
         // This is a duplicate
         duplicatesFound++;
         duplicateIds.add(log.id);
-        console.log(`Found duplicate ActivityLog: ${log.id} (original: ${seenCombinations.get(key)})`);
+        console.log(
+          `Found duplicate ActivityLog: ${
+            log.id
+          } (original: ${seenCombinations.get(key)})`
+        );
       } else {
         // First occurrence
         seenCombinations.set(key, log.id);
       }
     });
-    
+
     // Remove duplicates
     if (duplicateIds.size > 0) {
       realm.write(() => {
-        duplicateIds.forEach(duplicateId => {
+        duplicateIds.forEach((duplicateId) => {
           const log = realm?.objectForPrimaryKey('ActivityLog', duplicateId);
           if (log) {
             realm?.delete(log);
@@ -1473,8 +1444,10 @@ export async function removeDuplicateActivityLogs(): Promise<{
         });
       });
     }
-    
-    console.log(`Duplicate removal complete. Found: ${duplicatesFound}, Removed: ${duplicatesRemoved}`);
+
+    console.log(
+      `Duplicate removal complete. Found: ${duplicatesFound}, Removed: ${duplicatesRemoved}`
+    );
     return { duplicatesFound, duplicatesRemoved };
   } catch (error) {
     console.error('Error removing duplicate activity logs:', error);

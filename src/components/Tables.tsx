@@ -27,7 +27,8 @@ import {
   deleteDiscussion,
   addOrUpdateDiscussion,
   deleteAllLocalAndRemoteRows,
-  insertTestRowsAndExit,  runAllSyncFunctions,
+  insertTestRowsAndExit,
+  runAllSyncFunctions,
   addOrUpdateGPTResponse,
   addOrUpdateActivityLog,
   getCategories,
@@ -431,7 +432,8 @@ const MainComponent: React.FC = () => {
       // const categories = await getDistinctCategories();
       // setAllCategories((prev) => [...new Set([...prev, ...categories])]);
 
-      setTables([        {
+      setTables([
+        {
           name: 'Activities',
           columns: [
             { Header: 'ID', accessor: 'id', hidden: true },
@@ -967,24 +969,27 @@ const MainComponent: React.FC = () => {
   }, []);
 
   // Handler for category selection in the modal
-  const handleCategorySelect = useCallback(async (categoryName: string) => {
-    if (selectedActivityLogId) {
-      try {
-        // Update the category for the selected ActivityLog
-        setActivityLogCategories((prev) => ({
-          ...prev,
-          [selectedActivityLogId]: categoryName,
-        }));
-        
-        // Close the modal
-        setCategoryModalVisible(false);
-        setSelectedActivityLogId(null);
-      } catch (error) {
-        console.error('Error updating category:', error);
-        Alert.alert('Error', 'Failed to update category.');
+  const handleCategorySelect = useCallback(
+    async (categoryName: string) => {
+      if (selectedActivityLogId) {
+        try {
+          // Update the category for the selected ActivityLog
+          setActivityLogCategories((prev) => ({
+            ...prev,
+            [selectedActivityLogId]: categoryName,
+          }));
+
+          // Close the modal
+          setCategoryModalVisible(false);
+          setSelectedActivityLogId(null);
+        } catch (error) {
+          console.error('Error updating category:', error);
+          Alert.alert('Error', 'Failed to update category.');
+        }
       }
-    }
-  }, [selectedActivityLogId]);
+    },
+    [selectedActivityLogId]
+  );
 
   // Handler for adding new category from the modal
   const handleAddNewCategory = useCallback(async () => {
@@ -996,10 +1001,10 @@ const MainComponent: React.FC = () => {
     try {
       // Create the new category
       await addOrUpdateCategory(newCategory.trim());
-      
+
       // Refresh the categories list
       await loadCategories();
-      
+
       // Select the new category for the activity log
       if (selectedActivityLogId) {
         setActivityLogCategories((prev) => ({
@@ -1007,12 +1012,12 @@ const MainComponent: React.FC = () => {
           [selectedActivityLogId]: newCategory.trim(),
         }));
       }
-      
+
       // Close modal and reset
       setCategoryModalVisible(false);
       setSelectedActivityLogId(null);
       setNewCategory('');
-      
+
       Alert.alert('Success', 'Category created and assigned successfully.');
     } catch (error) {
       console.error('Error creating category:', error);
@@ -1024,23 +1029,23 @@ const MainComponent: React.FC = () => {
   const handleDeleteActivityLog = useCallback(async (id: string) => {
     try {
       await deleteActivityLog(id);
-      
+
       // Remove from related activity logs
       setRelatedActivityLogs((prev) => prev.filter((log) => log.id !== id));
-      
+
       // Remove from descriptions and categories
       setActivityLogDescriptions((prev) => {
         const newDesc = { ...prev };
         delete newDesc[id];
         return newDesc;
       });
-      
+
       setActivityLogCategories((prev) => {
         const newCat = { ...prev };
         delete newCat[id];
         return newCat;
       });
-      
+
       Alert.alert('Success', 'Activity log deleted successfully.');
     } catch (error) {
       console.error('Error deleting activity log:', error);
@@ -1088,7 +1093,15 @@ const MainComponent: React.FC = () => {
     ) => (
       <TouchableOpacity
         style={styles.editButton}
-        onPress={() => handleEdit(tableName, itemId, currentDesc, currentCleared, currentTypeSay)}
+        onPress={() =>
+          handleEdit(
+            tableName,
+            itemId,
+            currentDesc,
+            currentCleared,
+            currentTypeSay
+          )
+        }
       >
         <Text style={styles.editButtonText}>Edit</Text>
       </TouchableOpacity>
@@ -1121,7 +1134,7 @@ const MainComponent: React.FC = () => {
         id: editCategoryId,
         name: editCategoryName.trim(),
         description: editCategoryDescription.trim(),
-      };      // Update or create category
+      }; // Update or create category
       await addOrUpdateCategory(
         editCategoryName.trim(),
         editCategoryDescription.trim(),
@@ -1803,7 +1816,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#eee',
     borderRadius: 5,
-  },  categoryText: {
+  },
+  categoryText: {
     fontSize: 12,
   },
   categorySelectButton: {
@@ -1843,7 +1857,8 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontWeight: 'bold',
     fontSize: 14,
-  },  categoryItem: {
+  },
+  categoryItem: {
     padding: 12,
     borderBottomWidth: 1,
     borderBottomColor: '#eee',

@@ -19,7 +19,7 @@ import {
   disperseQuestion,
   addQuestionDiscussion,
   addOrUpdateDiscussion,
-  getDistinctCategories,
+  getCategoryNames,
   getNextOpenDiscussion,
   fetchInitialDiscussion,
   synchronizeDiscussions,
@@ -217,7 +217,7 @@ export default function AskJanet() {
     if (dialogVisible) {
       const fetchCategories = async () => {
         try {
-          const categories = await getDistinctCategories();
+          const categories = await getCategoryNames();
           console.log('Modal opened, fetched categories:', categories);
           setDistinctCategories(
             categories.length > 0

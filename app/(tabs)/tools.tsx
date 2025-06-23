@@ -173,7 +173,10 @@ export default function ToolsScreen() {
     try {
       console.log('[DEBUG] Testing data fetch functions...');
       await debugTestDataFetch();
-      Alert.alert('Debug Complete', 'Check console for data fetch test results.');
+      Alert.alert(
+        'Debug Complete',
+        'Check console for data fetch test results.'
+      );
     } catch (error: any) {
       console.error('[DEBUG] Error testing data fetch:', error);
       Alert.alert(

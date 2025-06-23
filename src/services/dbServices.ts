@@ -14,7 +14,7 @@ async function shouldUseRemote(): Promise<boolean> {
     if (!ENABLE_FIRESTORE) {
       return false;
     }
-    
+
     const paid = await isPaidUser();
     const syncWithCloud =
       (await AsyncStorage.getItem('syncWithCloud')) === 'true';
@@ -838,21 +838,6 @@ export async function getCategoryById(id: string): Promise<Category | null> {
   }
 }
 
-export async function getCategoryByName(name: string): Promise<Category | null> {
-  console.log('getCategoryByName called with:', name);
-  try {
-    if (await shouldUseRemoteForCategories()) {
-      // For now, use local even if remote is enabled since remote doesn't have this function yet
-      return await local.getCategoryByName(name);
-    } else {
-      return await local.getCategoryByName(name);
-    }
-  } catch (error) {
-    console.error('Error in getCategoryByName:', error);
-    throw error;
-  }
-}
-
 export async function insertJsonFile(jsonData: any): Promise<void> {
   // console.log('insertJsonFile called with:', jsonData);
   try {
@@ -1451,15 +1436,27 @@ export async function debugTestDataFetch(): Promise<void> {
   try {
     console.log('[DEBUG] Testing getActivityLogs...');
     const activityLogs = await local.getActivityLogs();
-    console.log('[DEBUG] Local getActivityLogs returned:', activityLogs.length, 'items');
+    console.log(
+      '[DEBUG] Local getActivityLogs returned:',
+      activityLogs.length,
+      'items'
+    );
 
     console.log('[DEBUG] Testing getDiscussions...');
     const discussions = await local.getDiscussions();
-    console.log('[DEBUG] Local getDiscussions returned:', discussions.length, 'items');
+    console.log(
+      '[DEBUG] Local getDiscussions returned:',
+      discussions.length,
+      'items'
+    );
 
     console.log('[DEBUG] Testing getCategories...');
     const categories = await local.getCategories();
-    console.log('[DEBUG] Local getCategories returned:', categories.length, 'items');
+    console.log(
+      '[DEBUG] Local getCategories returned:',
+      categories.length,
+      'items'
+    );
 
     console.log('[DEBUG] Testing shouldUseRemote...');
     const useRemote = await shouldUseRemote();
@@ -1467,8 +1464,10 @@ export async function debugTestDataFetch(): Promise<void> {
 
     console.log('[DEBUG] Testing shouldUseRemoteForCategories...');
     const useRemoteCategories = await shouldUseRemoteForCategories();
-    console.log('[DEBUG] shouldUseRemoteForCategories returned:', useRemoteCategories);
-
+    console.log(
+      '[DEBUG] shouldUseRemoteForCategories returned:',
+      useRemoteCategories
+    );
   } catch (error) {
     console.error('[DEBUG] Error in debugTestDataFetch:', error);
   }
