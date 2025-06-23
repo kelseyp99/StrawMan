@@ -16,6 +16,7 @@ import {
 } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { parse, isToday, format } from 'date-fns';
+import { useInterstitialAd } from '../hooks/useInterstitialAd';
 import {
   getActivityLogs,
   getDiscussions,
@@ -255,6 +256,14 @@ const RowItem = memo(
 const MainComponent: React.FC = () => {
   // Add sync context to detect when sync completes
   const { lastSync } = useSync();
+
+  // Interstitial ad hook with smart timing
+  const { tryShowAd } = useInterstitialAd({
+    enabled: true,
+    showOnFocus: false, // Don't show immediately on focus to avoid jarring experience
+    showAfterAction: true, // Show after user completes actions
+    minScreenTimeBeforeAd: 10000, // Wait 10 seconds on screen before eligible
+  });
 
   const [tables, setTables] = useState<SwipeableTablePropsType[]>([]);
   const [sortBy, setSortBy] = useState<{
@@ -776,8 +785,13 @@ const MainComponent: React.FC = () => {
             (count) =>
               count.discussionID !== itemId && count.activityLogId !== itemId
           )
-        );
-        Alert.alert('Success', 'Item and related data deleted successfully.');
+        );        Alert.alert('Success', 'Item and related data deleted successfully.');
+        
+        // Show interstitial ad after successful delete action (natural completion point)
+        setTimeout(() => {
+          tryShowAd('action');
+        }, 1500); // Small delay to avoid interfering with the success alert
+        
         fetchData();
       } catch (error) {
         console.error('Error deleting item:', error);
@@ -1055,9 +1069,13 @@ const MainComponent: React.FC = () => {
         const newCat = { ...prev };
         delete newCat[id];
         return newCat;
-      });
-
-      Alert.alert('Success', 'Activity log deleted successfully.');
+      });      Alert.alert('Success', 'Activity log deleted successfully.');
+      
+      // Show interstitial ad after successful activity log deletion
+      setTimeout(() => {
+        tryShowAd('action');
+      }, 1500);
+      
     } catch (error) {
       console.error('Error deleting activity log:', error);
       Alert.alert('Error', 'Failed to delete activity log.');
@@ -1185,9 +1203,13 @@ const MainComponent: React.FC = () => {
 
       // Extract and import legacy data
       const result = await extractAndImportLegacyFirestoreData();
-      console.log('Legacy data import result:', result);
-
-      Alert.alert('Success', 'Legacy data imported successfully.');
+      console.log('Legacy data import result:', result);      Alert.alert('Success', 'Legacy data imported successfully.');
+      
+      // Show ad after successful data import (major completion action)
+      setTimeout(() => {
+        tryShowAd('action');
+      }, 2000); // Slightly longer delay for import completion
+      
       fetchData(); // Refresh data after import
     } catch (error) {
       console.error('Error importing legacy data:', error);
@@ -1701,11 +1723,16 @@ const MainComponent: React.FC = () => {
                             categoryToDelete.id,
                             mergeTargetName
                           );
-                          await deleteCategory(categoryToDelete.id);
-                          Alert.alert(
+                          await deleteCategory(categoryToDelete.id);                          Alert.alert(
                             'Success',
                             `Category "${categoryToDelete.name}" merged into "${mergeTargetName}" and deleted.`
                           );
+                          
+                          // Show ad after successful category merge (natural completion point)
+                          setTimeout(() => {
+                            tryShowAd('action');
+                          }, 1500);
+                          
                           // Refresh data
                           fetchData();
                           // Close modal
@@ -1734,9 +1761,14 @@ const MainComponent: React.FC = () => {
                       onPress={async () => {
                         if (!categoryToDelete) return;
                         try {
-                          // Delete category
-                          await deleteCategory(categoryToDelete.id);
+                          // Delete category                          await deleteCategory(categoryToDelete.id);
                           Alert.alert('Success', 'Category deleted successfully.');
+                          
+                          // Show ad after successful category deletion
+                          setTimeout(() => {
+                            tryShowAd('action');
+                          }, 1500);
+                          
                           // Refresh data
                           fetchData();
                           // Close modal
