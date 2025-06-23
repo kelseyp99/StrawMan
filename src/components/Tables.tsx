@@ -1728,11 +1728,20 @@ const styles = StyleSheet.create({
     borderRadius: 10,
   },
   categoryModalContainer: {
-    width: '80%',
-    maxHeight: '60%',
     backgroundColor: '#fff',
-    padding: 15,
+    margin: 20,
     borderRadius: 10,
+    padding: 20,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
+    maxHeight: 400,
   },
   modalTitle: {
     fontSize: 16,
@@ -1794,13 +1803,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#eee',
     borderRadius: 5,
-  },
-  categoryItem: {
-    padding: 6,
-    borderBottomWidth: 1,
-    borderBottomColor: '#ccc',
-  },
-  categoryText: {
+  },  categoryText: {
     fontSize: 12,
   },
   categorySelectButton: {
@@ -1840,6 +1843,15 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontWeight: 'bold',
     fontSize: 14,
+  },  categoryItem: {
+    padding: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
+    width: '100%',
+  },
+  categoryItemText: {
+    fontSize: 16,
+    textAlign: 'center',
   },
 });
 
