@@ -431,11 +431,11 @@ const MainComponent: React.FC = () => {
       // const categories = await getDistinctCategories();
       // setAllCategories((prev) => [...new Set([...prev, ...categories])]);
 
-      setTables([
-        {
+      setTables([        {
           name: 'Activities',
           columns: [
             { Header: 'ID', accessor: 'id', hidden: true },
+            { Header: 'categoryId', accessor: 'categoryId', hidden: true },
             { Header: 'rawTimestamp', accessor: 'rawTimestamp', hidden: true },
             { Header: 'Date', accessor: 'timestamp', flex: 1 },
             {
