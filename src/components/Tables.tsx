@@ -28,8 +28,7 @@ import {
   addOrUpdateDiscussion,
   deleteAllLocalAndRemoteRows,
   insertTestRowsAndExit,
-  runAllSyncFunctions,
-  getDistinctCategories,
+  runAllSyncFunctions,  getDistinctCategories,
   addOrUpdateGPTResponse,
   addOrUpdateActivityLog,
   getCategories,
@@ -37,6 +36,7 @@ import {
   deleteCategory,
   createCategoriesFromActivityLogs,
   getCategoryById,
+  getCategoryNames,
 } from '../services/dbServices';
 import { extractAndImportLegacyFirestoreData } from '../services/dbServicesRemote';
 import { findDuplicateActivityLog } from '../services/phraseProcessor';

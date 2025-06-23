@@ -949,6 +949,21 @@ export async function getCategories(): Promise<Category[]> {
   }
 }
 
+export async function getCategoryNames(): Promise<string[]> {
+  console.log('getCategoryNames called');
+  try {
+    if (await shouldUseRemoteForCategories()) {
+      // For now, use local even if remote is enabled since remote doesn't have this function yet
+      return await local.getCategoryNames();
+    } else {
+      return await local.getCategoryNames();
+    }
+  } catch (error) {
+    console.error('Error in getCategoryNames:', error);
+    throw error;
+  }
+}
+
 export async function addOrUpdateCategory(
   name: string,
   description?: string,

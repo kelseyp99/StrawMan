@@ -647,6 +647,20 @@ export async function getCategories(): Promise<Category[]> {
   }
 }
 
+export async function getCategoryNames(): Promise<string[]> {
+  if (!realm) {
+    console.error('Failed to open Realm instance');
+    throw new Error('Failed to open Realm instance');
+  }
+  try {
+    const categories = realm.objects<Category>('Category');
+    return Array.from(categories).map((cat) => cat.name);
+  } catch (error) {
+    console.error('Error getting category names:', error);
+    throw error;
+  }
+}
+
 export async function addOrUpdateCategory(
   name: string,
   description?: string,
