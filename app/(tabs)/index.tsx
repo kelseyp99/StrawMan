@@ -1000,13 +1000,22 @@ export default function AskJanet() {
   const toggleMenu = () => setMenuVisible(!menuVisible);
 
   useEffect(() => {
-    // Run syncToCloud in the background on app start if sync is enabled
+    // Run legacy import and sync on app start if sync is enabled
     (async () => {
       try {
         const syncWithCloud =
           (await AsyncStorage.getItem('syncWithCloud')) === 'true';
         if (syncWithCloud) {
-          // Sync all tables as a backup
+          // First: Import legacy data from root Firestore to Realm
+          try {
+            await synchronizeDiscussions('1.0.0');
+            await synchronizeActivityLog('1.0.0');
+            console.log('Legacy import completed on startup');
+          } catch (error) {
+            console.warn('Legacy import failed on startup:', error);
+          }
+          
+          // Then: Sync Realm data to user-level Firestore
           dbServices
             .syncToCloud('Discussion')
             .catch((e) => console.warn('Discussion syncToCloud failed:', e));
