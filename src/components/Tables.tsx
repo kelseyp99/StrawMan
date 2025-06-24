@@ -1596,11 +1596,11 @@ const MainComponent: React.FC = () => {
           <Modal
             animationType="slide"
             transparent={true}
-            visible={categoryModalVisible}
-            onRequestClose={() => {
+            visible={categoryModalVisible}            onRequestClose={() => {
               setCategoryModalVisible(false);
               setNewCategory('');
               setSelectedActivityLogId(null);
+              fetchData(); // Refresh table when modal is closed
             }}
           >
             <View style={styles.modalOverlay}>
@@ -1628,13 +1628,13 @@ const MainComponent: React.FC = () => {
                   onChangeText={setNewCategory}
                   placeholder="Add new category"
                 />
-                <View style={styles.modalButtons}>
-                  <TouchableOpacity
+                <View style={styles.modalButtons}>                  <TouchableOpacity
                     style={styles.modalButton}
                     onPress={() => {
                       setCategoryModalVisible(false);
                       setNewCategory('');
                       setSelectedActivityLogId(null);
+                      fetchData(); // Refresh table when Cancel is pressed
                     }}
                   >
                     <Text style={styles.modalButtonText}>Cancel</Text>
@@ -1654,12 +1654,12 @@ const MainComponent: React.FC = () => {
           <Modal
             animationType="slide"
             transparent={true}
-            visible={categoryEditModalVisible}
-            onRequestClose={() => {
+            visible={categoryEditModalVisible}            onRequestClose={() => {
               setCategoryEditModalVisible(false);
               setEditCategoryId(null);
               setEditCategoryName('');
               setEditCategoryDescription('');
+              fetchData(); // Refresh table when modal is closed
             }}
           >
             <View style={styles.modalOverlay}>
@@ -1683,14 +1683,14 @@ const MainComponent: React.FC = () => {
                   placeholder="Enter category description"
                 />
 
-                <View style={styles.modalButtons}>
-                  <TouchableOpacity
+                <View style={styles.modalButtons}>                  <TouchableOpacity
                     style={styles.modalButton}
                     onPress={() => {
                       setCategoryEditModalVisible(false);
                       setEditCategoryId(null);
                       setEditCategoryName('');
                       setEditCategoryDescription('');
+                      fetchData(); // Refresh table when Cancel is pressed
                     }}
                   >
                     <Text style={styles.modalButtonText}>Cancel</Text>
