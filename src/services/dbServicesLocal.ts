@@ -1,4 +1,4 @@
-import Realm from 'realm';
+import Realm, { UpdateMode } from 'realm';
 import { realm } from '../realmConfig';
 import {
   GPTResponsesSchema,
@@ -310,7 +310,7 @@ export async function logSyncEntry(entry: SyncEntry): Promise<void> {
         tableName: entry.tableName,
         operation: entry.operation,
         timestamp: entry.timestamp,
-      });
+      }, UpdateMode.Modified); // Use UpdateMode.Modified to update existing entries
     });
     console.log('Logged SyncEntry to Realm:', entry);
   } catch (error) {

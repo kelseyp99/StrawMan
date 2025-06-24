@@ -1466,13 +1466,11 @@ const MainComponent: React.FC = () => {
                       value={editTypeSay === 'ask'}
                       onValueChange={(value) =>
                         setEditTypeSay(value ? 'ask' : 'tell')
-                      }
-                    />{' '}
+                      }                    />
                   </View>
                 )}
                 {editTableName === 'Categories' && (
-                  <View>
-                    <Text style={styles.modalLabel}>Category Name:</Text>{' '}
+                  <View>                    <Text style={styles.modalLabel}>Category Name:</Text>
                     <TextInput
                       style={styles.modalInput}
                       value={editTypeSay}
@@ -1643,11 +1641,10 @@ const MainComponent: React.FC = () => {
                     style={[styles.modalButton, styles.saveButton]}
                     onPress={handleAddNewCategory}
                   >
-                    <Text style={styles.modalButtonText}>Add New</Text>
-                  </TouchableOpacity>
+                    <Text style={styles.modalButtonText}>Add New</Text>                  </TouchableOpacity>
                 </View>
               </View>
-            </View>{' '}
+            </View>
           </Modal>
 
           {/* Categories Edit Modal */}
