@@ -10,7 +10,7 @@ import {
   CategorySchema,
 } from '../realmConfig';
 import { sendQuestion, sendQuestionForParsing } from './openaiAPI';
-// import { getUID } from '../utils/uidManager';
+import { getUID } from '../utils/uidManager';
 import { format } from 'date-fns';
 // REMOVE: import { addOrUpdateDiscussion as addOrUpdateDiscussionRouter } from './dbServices';
 import React, { useContext } from 'react';
@@ -682,6 +682,8 @@ export async function addOrUpdateCategory(
   }
   try {
     let categoryId = id;
+    const currentUID = await getUID() || 'local_user';
+    
     realm.write(() => {
       if (id) {
         const existing = realm?.objectForPrimaryKey<Category>('Category', id);
@@ -690,6 +692,7 @@ export async function addOrUpdateCategory(
           existing.description = description;
           existing.updatedAt = new Date();
           existing.synced = false;
+          existing.uid = currentUID; // Update UID
         }
       } else {
         categoryId = Date.now().toString() + '_' + name;
@@ -700,7 +703,7 @@ export async function addOrUpdateCategory(
           createdAt: new Date(),
           updatedAt: new Date(),
           synced: false,
-          uid: 'local_user',
+          uid: currentUID,
         });
       }
     });
@@ -1111,7 +1114,55 @@ export async function syncToCloud(
   payload?: any,
   method?: string
 ): Promise<void> {
-  // Placeholder
+  console.log(`Local syncToCloud called for table: ${tableName}`);
+  
+  if (!realm) {
+    console.error('Realm not initialized for sync');
+    return;
+  }
+
+  try {
+    // Get unsynced records for the specified table
+    const unsyncedRecords = realm.objects(tableName).filtered('synced == false');
+    console.log(`Found ${unsyncedRecords.length} unsynced ${tableName} records`);
+    
+    if (unsyncedRecords.length === 0) {
+      console.log(`No unsynced ${tableName} records to sync`);
+      return;
+    }
+
+    // Convert Realm objects to plain objects for syncing
+    const recordsToSync = Array.from(unsyncedRecords).map((record: any) => ({
+      ...record,
+      // Convert dates to ISO strings for Firestore
+      createdAt: record.createdAt instanceof Date ? record.createdAt : new Date(record.createdAt || Date.now()),
+      updatedAt: record.updatedAt instanceof Date ? record.updatedAt : new Date(record.updatedAt || Date.now()),
+    }));
+
+    // Import remote services for syncing (use require for compatibility)
+    const remote = require('./dbServicesRemote');
+    
+    // Sync records to Firestore
+    const syncedIds = await remote.syncRealmRowsToFirestore(tableName, recordsToSync);
+    console.log(`Successfully synced ${syncedIds.length} ${tableName} records to Firestore`);
+
+    // Mark synced records as synced in Realm
+    if (realm) {
+      realm.write(() => {
+        for (const syncedId of syncedIds) {
+          const record = realm!.objectForPrimaryKey(tableName, syncedId);
+          if (record) {
+            (record as any).synced = true;
+          }
+        }
+      });
+    }
+
+    console.log(`Marked ${syncedIds.length} ${tableName} records as synced in Realm`);
+  } catch (error) {
+    console.error(`Error syncing ${tableName} to cloud:`, error);
+    throw error;
+  }
 }
 
 export async function getNextActiveAlert(): Promise<any | null> {

@@ -22,7 +22,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       try {
         const [loggedValue, paidValue] = await Promise.all([
           AsyncStorage.getItem('isLogged'),
-          AsyncStorage.getItem('isPaid'),
+          AsyncStorage.getItem('isPaidUser'), // Use consistent key
         ]);
         
         if (loggedValue === 'true') {
@@ -52,7 +52,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   const setIsPaid = async (paid: boolean) => {
     try {
-      await AsyncStorage.setItem('isPaid', paid.toString());
+      await AsyncStorage.setItem('isPaidUser', paid.toString()); // Use consistent key
       setIsPaidState(paid);
     } catch (error) {
       console.error('Error saving paid state:', error);

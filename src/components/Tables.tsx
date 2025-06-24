@@ -14,6 +14,7 @@ import {
   ScrollView,
   Dimensions,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { parse, isToday, format } from 'date-fns';
 import { useInterstitialAd } from '../hooks/useInterstitialAd';
@@ -34,12 +35,14 @@ import {
   addOrUpdateActivityLog,
   getCategories,
   addOrUpdateCategory,
-  deleteCategory,  createCategoriesFromActivityLogs,
+  deleteCategory,
+  createCategoriesFromActivityLogs,
   getCategoryById,
   getCategoryNames,
   checkCategoryReferences,
   findCategoryByName,
   mergeCategoryReferences,
+  syncToCloud,
 } from '../services/dbServices';
 import { extractAndImportLegacyFirestoreData } from '../services/dbServicesRemote';
 import { findDuplicateActivityLog } from '../services/phraseProcessor';
@@ -63,7 +66,7 @@ import RNFS from 'react-native-fs';
 //   Timestamp,
 //   onSnapshot,
 // } from 'firebase/firestore';
-import { getUID } from '../utils/uidManager';
+import { getUID, setUID } from '../utils/uidManager';
 import Swipeable from 'react-native-gesture-handler/Swipeable';
 import { processPhrase } from '../services/phraseProcessor';
 
@@ -138,7 +141,7 @@ function mapDiscussionRow(row: any) {
     ...row,
     timestamp: isToday(dateObj) ? 'Today' : format(dateObj, 'M/d/yy \n h:mm a'),
     rawTimestamp: dateObj,
-    cleared: row.cleared ? 'G��n+� Yes' : 'G�� No', // Ensure cleared is formatted for display
+    cleared: row.cleared ? '✔️ Yes' : '❌ No', // Ensure cleared is formatted for display
   };
 }
 
@@ -322,22 +325,37 @@ const MainComponent: React.FC = () => {
 
   // State for category delete/merge functionality
   const [deleteModalVisible, setDeleteModalVisible] = useState(false);
-  const [categoryToDelete, setCategoryToDelete] = useState<{id: string, name: string} | null>(null);
+  const [categoryToDelete, setCategoryToDelete] = useState<{
+    id: string;
+    name: string;
+  } | null>(null);
   const [hasReferences, setHasReferences] = useState(false);
   const [referenceCount, setReferenceCount] = useState(0);
   const [mergeTargetName, setMergeTargetName] = useState('');
   const [showMergeOption, setShowMergeOption] = useState(false);
-  const [existingCategories, setExistingCategories] = useState<string[]>([]);
-
-  // Fetch UID once on mount
+  const [existingCategories, setExistingCategories] = useState<string[]>([]); // Fetch UID once on mount
   useEffect(() => {
     const fetchUid = async () => {
-      const userId = await getUID();
-      setUid(userId);
+      let userId = await getUID();
+
+      // Check if user is paid customer
+      const isPaidUser = await AsyncStorage.getItem('isPaidUser');
+
       if (!userId) {
-        setError('User ID not found. Please sign in again.');
-        setLoading(false);
+        if (isPaidUser === 'true') {
+          // Paid user should have Firebase UID - redirect to login
+          setError('Please sign in to access paid features.');
+          setLoading(false);
+          return;
+        } else {
+          // Local mode - generate local UID
+          userId = 'local_user_' + Date.now();
+          await setUID(userId);
+          console.log('Generated local UID for local mode:', userId);
+        }
       }
+
+      setUid(userId);
     };
     fetchUid();
   }, []);
@@ -785,13 +803,14 @@ const MainComponent: React.FC = () => {
             (count) =>
               count.discussionID !== itemId && count.activityLogId !== itemId
           )
-        );        Alert.alert('Success', 'Item and related data deleted successfully.');
-        
+        );
+        Alert.alert('Success', 'Item and related data deleted successfully.');
+
         // Show interstitial ad after successful delete action (natural completion point)
         setTimeout(() => {
           tryShowAd('action');
         }, 1500); // Small delay to avoid interfering with the success alert
-        
+
         fetchData();
       } catch (error) {
         console.error('Error deleting item:', error);
@@ -1013,22 +1032,27 @@ const MainComponent: React.FC = () => {
         }
       }
     },
-    [selectedActivityLogId]  );
+    [selectedActivityLogId]
+  );
 
   // Handler for adding new category from the modal
-  const handleAddNewCategory = useCallback(async () => {    if (!newCategory.trim()) {
+  const handleAddNewCategory = useCallback(async () => {
+    if (!newCategory.trim()) {
       Alert.alert('Error', 'Category name cannot be empty.');
       return;
     }
 
     // Check for duplicate category name (case-insensitive)
     const trimmedName = newCategory.trim();
-    const existingCategory = allCategories.find(cat => 
-      cat.toLowerCase() === trimmedName.toLowerCase()
+    const existingCategory = allCategories.find(
+      (cat) => cat.toLowerCase() === trimmedName.toLowerCase()
     );
-    
+
     if (existingCategory) {
-      Alert.alert('Error', `Category "${trimmedName}" already exists. Please choose a different name.`);
+      Alert.alert(
+        'Error',
+        `Category "${trimmedName}" already exists. Please choose a different name.`
+      );
       return;
     }
 
@@ -1062,7 +1086,7 @@ const MainComponent: React.FC = () => {
   // Handler for deleting activity log from modal
   const handleDeleteActivityLog = useCallback(async (id: string) => {
     try {
-      await deleteActivityLog(id);      // Remove from related activity logs
+      await deleteActivityLog(id); // Remove from related activity logs
       setRelatedActivityLogs((prev) => prev.filter((log) => log.id !== id));
 
       // Remove from descriptions and categories
@@ -1071,20 +1095,19 @@ const MainComponent: React.FC = () => {
         delete newDesc[id];
         return newDesc;
       });
-      
+
       setActivityLogCategories((prev) => {
         const newCat = { ...prev };
         delete newCat[id];
         return newCat;
       });
-      
+
       Alert.alert('Success', 'Activity log deleted successfully.');
-      
+
       // Show interstitial ad after successful activity log deletion
       setTimeout(() => {
         tryShowAd('action');
       }, 1500);
-      
     } catch (error) {
       console.error('Error deleting activity log:', error);
       Alert.alert('Error', 'Failed to delete activity log.');
@@ -1092,29 +1115,34 @@ const MainComponent: React.FC = () => {
   }, []);
 
   // Handler for deleting categories with FK checks
-  const handleDeleteCategory = useCallback(async (categoryId: string, categoryName: string) => {
-    try {
-      // Check if category has references
-      const refCheck = await checkCategoryReferences(categoryId);
-      
-      setCategoryToDelete({id: categoryId, name: categoryName});
-      setHasReferences(refCheck.hasReferences);
-      setReferenceCount(refCheck.referenceCount);
-      setMergeTargetName('');
-      setShowMergeOption(false);
-      
-      if (refCheck.hasReferences) {
-        // Load existing categories for merge dropdown
-        const categories = await getCategoryNames();
-        setExistingCategories(categories.filter(cat => cat !== categoryName));
+  const handleDeleteCategory = useCallback(
+    async (categoryId: string, categoryName: string) => {
+      try {
+        // Check if category has references
+        const refCheck = await checkCategoryReferences(categoryId);
+
+        setCategoryToDelete({ id: categoryId, name: categoryName });
+        setHasReferences(refCheck.hasReferences);
+        setReferenceCount(refCheck.referenceCount);
+        setMergeTargetName('');
+        setShowMergeOption(false);
+
+        if (refCheck.hasReferences) {
+          // Load existing categories for merge dropdown
+          const categories = await getCategoryNames();
+          setExistingCategories(
+            categories.filter((cat) => cat !== categoryName)
+          );
+        }
+
+        setDeleteModalVisible(true);
+      } catch (error) {
+        console.error('Error checking category references:', error);
+        Alert.alert('Error', 'Failed to check category references.');
       }
-      
-      setDeleteModalVisible(true);
-    } catch (error) {
-      console.error('Error checking category references:', error);
-      Alert.alert('Error', 'Failed to check category references.');
-    }
-  }, []);
+    },
+    []
+  );
 
   // Handler for confirming category deletion
   const confirmDeleteCategory = useCallback(async () => {
@@ -1128,7 +1156,10 @@ const MainComponent: React.FC = () => {
           // Merge references to existing category
           await mergeCategoryReferences(categoryToDelete.id, targetCategory.id);
           await deleteCategory(categoryToDelete.id);
-          Alert.alert('Success', `Category "${categoryToDelete.name}" merged into "${mergeTargetName}" and deleted.`);
+          Alert.alert(
+            'Success',
+            `Category "${categoryToDelete.name}" merged into "${mergeTargetName}" and deleted.`
+          );
         } else {
           Alert.alert('Error', 'Target category not found.');
           return;
@@ -1136,9 +1167,15 @@ const MainComponent: React.FC = () => {
       } else if (!hasReferences) {
         // Simple delete
         await deleteCategory(categoryToDelete.id);
-        Alert.alert('Success', `Category "${categoryToDelete.name}" deleted successfully.`);
+        Alert.alert(
+          'Success',
+          `Category "${categoryToDelete.name}" deleted successfully.`
+        );
       } else {
-        Alert.alert('Error', 'Cannot delete category with references without specifying merge target.');
+        Alert.alert(
+          'Error',
+          'Cannot delete category with references without specifying merge target.'
+        );
         return;
       }
 
@@ -1156,39 +1193,44 @@ const MainComponent: React.FC = () => {
   const saveEdit = useCallback(async () => {
     // Implementation for saving edits
     console.log('Save edit called - implementation needed');
-  }, []);  // Create category handler
+  }, []); // Create category handler
   const handleCreateCategory = () => {
     setEditCategoryId(null);
     setEditCategoryName('');
     setEditCategoryDescription('');
     setCategoryEditModalTitle('Create Category');
     setCategoryEditModalVisible(true);
-  };  // Save function specifically for Categories
+  }; // Save function specifically for Categories
   const saveCategoryEdit = useCallback(async () => {
     if (!editCategoryName.trim()) {
       Alert.alert('Error', 'Category name cannot be empty.');
       return;
     }
-    
+
     // Check for duplicate category name (case-insensitive)
     const trimmedName = editCategoryName.trim();
-    const categoriesTable = tables.find(table => table.name === 'Categories');
-    const existingCategory = categoriesTable?.data.find(cat => 
-      cat.name.toLowerCase() === trimmedName.toLowerCase() && 
-      cat.id !== editCategoryId
+    const categoriesTable = tables.find((table) => table.name === 'Categories');
+    const existingCategory = categoriesTable?.data.find(
+      (cat) =>
+        cat.name.toLowerCase() === trimmedName.toLowerCase() &&
+        cat.id !== editCategoryId
     );
-    
+
     if (existingCategory) {
-      Alert.alert('Error', `Category "${trimmedName}" already exists. Please choose a different name.`);
+      Alert.alert(
+        'Error',
+        `Category "${trimmedName}" already exists. Please choose a different name.`
+      );
       return;
     }
-    
+
     try {
       // Prepare category data
       const categoryData = {
         id: editCategoryId,
         name: editCategoryName.trim(),
-        description: editCategoryDescription.trim(),      }; // Update or create category
+        description: editCategoryDescription.trim(),
+      }; // Update or create category
       await addOrUpdateCategory(
         editCategoryName.trim(),
         editCategoryDescription.trim(),
@@ -1209,7 +1251,8 @@ const MainComponent: React.FC = () => {
     } catch (error) {
       console.error('Error saving category:', error);
       Alert.alert('Error', 'Failed to save category.');
-    }  }, [
+    }
+  }, [
     editCategoryId,
     editCategoryName,
     editCategoryDescription,
@@ -1227,13 +1270,14 @@ const MainComponent: React.FC = () => {
 
       // Extract and import legacy data
       const result = await extractAndImportLegacyFirestoreData();
-      console.log('Legacy data import result:', result);      Alert.alert('Success', 'Legacy data imported successfully.');
-      
+      console.log('Legacy data import result:', result);
+      Alert.alert('Success', 'Legacy data imported successfully.');
+
       // Show ad after successful data import (major completion action)
       setTimeout(() => {
         tryShowAd('action');
       }, 2000); // Slightly longer delay for import completion
-      
+
       fetchData(); // Refresh data after import
     } catch (error) {
       console.error('Error importing legacy data:', error);
@@ -1354,8 +1398,7 @@ const MainComponent: React.FC = () => {
                 }
               >
                 <Text style={styles.navButtonText}>{table.name}</Text>
-              </TouchableOpacity>
-            ))}
+              </TouchableOpacity>            ))}
           </View>
 
           <Text style={styles.tableHeader}>
@@ -1363,14 +1406,15 @@ const MainComponent: React.FC = () => {
           </Text>
 
           {tables[currentTableIndex]?.name === 'Categories' && (
-            <TouchableOpacity
-              style={styles.createButton}
-              onPress={handleCreateCategory}
-            >
-              <Text style={styles.createButtonText}>Create Category</Text>
-            </TouchableOpacity>
+            <>
+              <TouchableOpacity
+                style={styles.createButton}
+                onPress={handleCreateCategory}
+              >
+                <Text style={styles.createButtonText}>Create Category</Text>
+              </TouchableOpacity>
+            </>
           )}
-
           <View style={styles.filterRow}>
             {tables[currentTableIndex]?.columns.map((col) =>
               !col.hidden ? (
@@ -1390,7 +1434,6 @@ const MainComponent: React.FC = () => {
               ) : null
             )}
           </View>
-
           <View style={styles.headerRow}>
             {tables[currentTableIndex]?.columns.map((col) =>
               !col.hidden ? (
@@ -1403,15 +1446,14 @@ const MainComponent: React.FC = () => {
                     {col.Header}{' '}
                     {sortBy?.column === col.accessor
                       ? sortBy.order === 'asc'
-                        ? 'G��'
-                        : 'G��'
+                        ? '▲'
+                        : '▼'
                       : ''}
                   </Text>
                 </TouchableOpacity>
               ) : null
             )}
           </View>
-
           <FlatList
             data={filteredData()}
             keyExtractor={(item) => item.id}
@@ -1429,7 +1471,6 @@ const MainComponent: React.FC = () => {
             getItemLayout={getItemLayout}
             style={styles.tableList}
           />
-
           <Modal
             animationType="slide"
             transparent={true}
@@ -1466,11 +1507,12 @@ const MainComponent: React.FC = () => {
                       value={editTypeSay === 'ask'}
                       onValueChange={(value) =>
                         setEditTypeSay(value ? 'ask' : 'tell')
-                      }                    />
+                      }
+                    />
                   </View>
-                )}
-                {editTableName === 'Categories' && (
-                  <View>                    <Text style={styles.modalLabel}>Category Name:</Text>
+                )}                {editTableName === 'Categories' && (
+                  <View>
+                    <Text style={styles.modalLabel}>Category Name:</Text>
                     <TextInput
                       style={styles.modalInput}
                       value={editTypeSay}
@@ -1594,7 +1636,8 @@ const MainComponent: React.FC = () => {
           <Modal
             animationType="slide"
             transparent={true}
-            visible={categoryModalVisible}            onRequestClose={() => {
+            visible={categoryModalVisible}
+            onRequestClose={() => {
               setCategoryModalVisible(false);
               setNewCategory('');
               setSelectedActivityLogId(null);
@@ -1623,10 +1666,10 @@ const MainComponent: React.FC = () => {
                 <TextInput
                   style={styles.modalInput}
                   value={newCategory}
-                  onChangeText={setNewCategory}
-                  placeholder="Add new category"
+                  onChangeText={setNewCategory}                  placeholder="Add new category"
                 />
-                <View style={styles.modalButtons}>                  <TouchableOpacity
+                <View style={styles.modalButtons}>
+                  <TouchableOpacity
                     style={styles.modalButton}
                     onPress={() => {
                       setCategoryModalVisible(false);
@@ -1640,18 +1683,18 @@ const MainComponent: React.FC = () => {
                   <TouchableOpacity
                     style={[styles.modalButton, styles.saveButton]}
                     onPress={handleAddNewCategory}
-                  >
-                    <Text style={styles.modalButtonText}>Add New</Text>                  </TouchableOpacity>
+                  >                    <Text style={styles.modalButtonText}>Add New</Text>
+                  </TouchableOpacity>
                 </View>
               </View>
             </View>
           </Modal>
-
           {/* Categories Edit Modal */}
           <Modal
             animationType="slide"
             transparent={true}
-            visible={categoryEditModalVisible}            onRequestClose={() => {
+            visible={categoryEditModalVisible}
+            onRequestClose={() => {
               setCategoryEditModalVisible(false);
               setEditCategoryId(null);
               setEditCategoryName('');
@@ -1678,9 +1721,8 @@ const MainComponent: React.FC = () => {
                   onChangeText={setEditCategoryDescription}
                   multiline
                   placeholder="Enter category description"
-                />
-
-                <View style={styles.modalButtons}>                  <TouchableOpacity
+                />                <View style={styles.modalButtons}>
+                  <TouchableOpacity
                     style={styles.modalButton}
                     onPress={() => {
                       setCategoryEditModalVisible(false);
@@ -1702,7 +1744,6 @@ const MainComponent: React.FC = () => {
               </View>
             </View>
           </Modal>
-
           {/* Delete Category Modal */}
           <Modal
             animationType="slide"
@@ -1723,7 +1764,8 @@ const MainComponent: React.FC = () => {
                 {hasReferences ? (
                   <View>
                     <Text style={styles.modalLabel}>
-                      This category is referenced in {referenceCount} activity log
+                      This category is referenced in {referenceCount} activity
+                      log
                       {referenceCount === 1 ? '' : 's'}. You can either delete
                       the category or merge it with another category.
                     </Text>
@@ -1744,16 +1786,17 @@ const MainComponent: React.FC = () => {
                             categoryToDelete.id,
                             mergeTargetName
                           );
-                          await deleteCategory(categoryToDelete.id);                          Alert.alert(
+                          await deleteCategory(categoryToDelete.id);
+                          Alert.alert(
                             'Success',
                             `Category "${categoryToDelete.name}" merged into "${mergeTargetName}" and deleted.`
                           );
-                          
+
                           // Show ad after successful category merge (natural completion point)
                           setTimeout(() => {
                             tryShowAd('action');
                           }, 1500);
-                          
+
                           // Refresh data
                           fetchData();
                           // Close modal
@@ -1783,13 +1826,16 @@ const MainComponent: React.FC = () => {
                         if (!categoryToDelete) return;
                         try {
                           // Delete category                          await deleteCategory(categoryToDelete.id);
-                          Alert.alert('Success', 'Category deleted successfully.');
-                          
+                          Alert.alert(
+                            'Success',
+                            'Category deleted successfully.'
+                          );
+
                           // Show ad after successful category deletion
                           setTimeout(() => {
                             tryShowAd('action');
                           }, 1500);
-                          
+
                           // Refresh data
                           fetchData();
                           // Close modal

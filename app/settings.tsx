@@ -9,6 +9,8 @@ import {
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as dbServices from '../src/services/dbServices';
+import { useRouter } from 'expo-router';
+import { useAuth } from './context/AuthContext';
 
 export const SettingsContext = React.createContext({
   syncWithCloud: false,
@@ -22,16 +24,27 @@ export default function SettingsScreen() {
   const [syncWithCloud, setSyncWithCloud] = useState(false);
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
   const [isPaidCustomer, setIsPaidCustomer] = useState(false);
+  const router = useRouter();
+  const { isLogged, setIsLogged, setIsPaid } = useAuth();
 
   useEffect(() => {
     (async () => {
       const syncSetting = await AsyncStorage.getItem('syncWithCloud');
       setSyncWithCloud(syncSetting === 'true');
-      // Load paid user status from storage
+      // Load paid user status from storage, but only if user is logged in
       const paid = await AsyncStorage.getItem('isPaidUser');
-      setIsPaidCustomer(paid === 'true');
+      const shouldBePaidUser = paid === 'true' && isLogged;
+      setIsPaidCustomer(shouldBePaidUser);
+      
+      // If paid user status doesn't match login status, update storage
+      if (paid === 'true' && !isLogged) {
+        await AsyncStorage.setItem('isPaidUser', 'false');
+        setIsPaid(false);
+      } else if (shouldBePaidUser) {
+        setIsPaid(true);
+      }
     })();
-  }, []);
+  }, [isLogged]);
 
   useEffect(() => {
     let syncInterval: NodeJS.Timeout | null = null;
@@ -42,10 +55,12 @@ export default function SettingsScreen() {
         // Run immediately
         dbServices.syncToCloud('Discussion').catch(() => {});
         dbServices.syncToCloud('ActivityLog').catch(() => {});
+        dbServices.syncToCloud('Category').catch(() => {});
         // Then every 30 minutes
         syncInterval = setInterval(() => {
           dbServices.syncToCloud('Discussion').catch(() => {});
           dbServices.syncToCloud('ActivityLog').catch(() => {});
+          dbServices.syncToCloud('Category').catch(() => {});
         }, 30 * 60 * 1000);
       }
     };
@@ -68,6 +83,7 @@ export default function SettingsScreen() {
     try {
       await dbServices.syncToCloud('Discussion');
       await dbServices.syncToCloud('ActivityLog');
+      await dbServices.syncToCloud('Category');
       Alert.alert('Sync Complete', 'Data synced with cloud.');
     } catch (e) {
       Alert.alert('Sync Failed', 'Could not sync data.');
@@ -178,17 +194,41 @@ export default function SettingsScreen() {
           <Switch
             value={isPaidCustomer}
             onValueChange={async (value) => {
-              setIsPaidCustomer(value);
-              await AsyncStorage.setItem(
-                'isPaidUser',
-                value ? 'true' : 'false'
-              );
-              if (value) {
+              if (value && !isLogged) {
+                // Enabling paid features requires Firebase login
+                Alert.alert(
+                  'Login Required', 
+                  'To enable paid features, you need to log in with your Firebase account. You will be redirected to the login screen.',
+                  [
+                    { text: 'Cancel', style: 'cancel' },
+                    { 
+                      text: 'Login', 
+                      onPress: () => router.push('/login')
+                    }
+                  ]
+                );
+                return;
+              }
+              
+              if (!value) {
+                // Disabling paid features - switch to local mode
+                setIsPaid(false);
+                await AsyncStorage.setItem('isPaidUser', 'false');
+                Alert.alert(
+                  'Switched to Local Mode', 
+                  'You are now using local-only mode. Your data will be stored locally only.'
+                );
+              } else {
+                // Enable paid features (user is already logged in)
+                setIsPaid(true);
+                await AsyncStorage.setItem('isPaidUser', 'true');
                 Alert.alert(
                   'Paid Features Enabled', 
                   'You can now enable cloud sync and access premium features.'
                 );
               }
+              
+              setIsPaidCustomer(value);
             }}
           />
         </View>

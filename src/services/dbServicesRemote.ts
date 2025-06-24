@@ -32,7 +32,8 @@ import { format } from 'date-fns';
 import { sendQuestionForParsing, sendQuestion } from './openaiAPI';
 import { ActivityLog } from './types';
 import { addChangeLogEntry } from './dbServices';
-import { ENABLE_DISCUSSION_SYNC, ENABLE_ACTIVITYLOG_SYNC, ENABLE_CATEGORY_SYNC } from './syncConfig';
+import { ENABLE_DISCUSSION_SYNC, ENABLE_ACTIVITYLOG_SYNC, ENABLE_CATEGORY_SYNC, ACTIVITYLOG_ONE_TIME_IMPORT } from './syncConfig';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Interfaces (same as dbServicesLocal.ts)
 interface Discussion {
@@ -98,8 +99,9 @@ export const findDuplicateActivityLog = async (
   description: string,
   uid: string
 ): Promise<ActivityLog | null> => {
+  // Use user-level collection instead of root collection
   const q = query(
-    collection(db, 'ActivityLog'),
+    collection(db, `Users/${uid}/ActivityLog`),
     where('discussionId', '==', discussionId),
     where('category', '==', category),
     where('description', '==', description),
@@ -469,24 +471,39 @@ export async function synchronizeActivityLog(
   }
 
   try {
-    console.log(`Starting ActivityLog sync with appVersion: ${appVersion}`);
-    const uid = auth.currentUser?.uid;
+    console.log(`Starting ActivityLog sync (legacy import via Realm) with appVersion: ${appVersion}`);
+    
+    // Check if one-time import has already been completed
+    if (ACTIVITYLOG_ONE_TIME_IMPORT) {
+      const importCompleted = await AsyncStorage.getItem('activityLogImportCompleted');
+      if (importCompleted === 'true') {
+        console.log('ActivityLog one-time import already completed. Skipping sync.');
+        return;
+      }
+    }
+    
+    const uid = await getUID();
     if (!uid) {
       console.error('No user ID for ActivityLog synchronization.');
       return;
     }
 
-    console.log(`Synchronizing ActivityLog for UID: ${uid}`);
-    const batch = writeBatch(db);
-    let operations = 0;
-
-    // Copy from /ActivityLog to Users/{uid}/ActivityLog
+    console.log(`Synchronizing ActivityLog for UID: ${uid} (Legacy app does NOT write to ActivityLog - one-time import)`);
+    
+    // Step 1: Check Realm is initialized
+    if (!realm) {
+      console.error('Realm not initialized');
+      return;
+    }
+    
+    // Step 2: ONLY read from root /ActivityLog collection
     const globalActivityLogQuery = query(collection(db, 'ActivityLog'));
     const globalSnapshot = await getDocs(globalActivityLogQuery);
     console.log(
-      `Found ${globalSnapshot.docs.length} global ActivityLog entries`
+      `Found ${globalSnapshot.docs.length} global ActivityLog entries to import`
     );
 
+    let importedCount = 0;
     for (const globalDoc of globalSnapshot.docs) {
       const globalData = globalDoc.data() as ActivityLog;
       if (globalData.uid && globalData.uid !== uid) {
@@ -496,78 +513,58 @@ export async function synchronizeActivityLog(
         continue;
       }
 
-      const userActivityLogRef = doc(
-        db,
-        `Users/${uid}/ActivityLog`,
-        globalDoc.id
-      );
-      const userDoc = await getDoc(userActivityLogRef);
-      if (!userDoc.exists()) {
-        batch.set(userActivityLogRef, {
-          ...globalData,
-          id: globalDoc.id,
-          uid,
-          timestamp: globalData.timestamp || Timestamp.fromDate(new Date()),
-        });
-        console.log(
-          `Queued copy of ActivityLog ${globalDoc.id} to Users/${uid}/ActivityLog`
-        );
-        operations++;
-      } else {
-        console.log(
-          `ActivityLog ${globalDoc.id} already exists in Users/${uid}/ActivityLog`
-        );
-      }
-    }
-
-    // Copy from Users/{uid}/ActivityLog to /ActivityLog
-    const userActivityLogQuery = query(
-      collection(db, `Users/${uid}/ActivityLog`)
-    );
-    const userSnapshot = await getDocs(userActivityLogQuery);
-    console.log(`Found ${userSnapshot.docs.length} user ActivityLog entries`);
-
-    for (const userDoc of userSnapshot.docs) {
-      const userData = userDoc.data() as ActivityLog;
-      if (!userData.uid) {
-        console.warn(
-          `ActivityLog ${userDoc.id} in Users/${uid}/ActivityLog missing uid, skipping`
-        );
+      // Step 3: Use timestamp as unique identifier to prevent duplicates
+      const entryTimestamp = globalData.timestamp instanceof Date ? globalData.timestamp : 
+                           (globalData.timestamp as any)?.toDate ? (globalData.timestamp as any).toDate() : new Date();
+      
+      // Check if entry with this timestamp already exists in Realm
+      const existingEntryByTimestamp = realm.objects('ActivityLog').filtered('timestamp = $0', entryTimestamp);
+      if (existingEntryByTimestamp.length > 0) {
+        console.log(`ActivityLog with timestamp ${entryTimestamp.toISOString()} already exists in Realm`);
         continue;
       }
-      const globalActivityLogRef = doc(db, 'ActivityLog', userDoc.id);
-      const globalDoc = await getDoc(globalActivityLogRef);
-      if (!globalDoc.exists()) {
-        batch.set(globalActivityLogRef, {
-          ...userData,
-          id: userDoc.id,
-          uid,
-          timestamp: userData.timestamp || Timestamp.fromDate(new Date()),
+
+      // Generate consistent ID based on timestamp to avoid duplicates
+      const timestampId = entryTimestamp.getTime().toString();
+      const existingEntryById = realm.objectForPrimaryKey('ActivityLog', timestampId);
+      
+      if (!existingEntryById) {
+        // Step 4: Write to Realm first (this will then sync to Users/{uid}/ActivityLog via existing sync)
+        realm.write(() => {
+          realm!.create('ActivityLog', {
+            id: timestampId, // Use timestamp-based ID for consistency
+            discussionId: globalData.discussionId || timestampId,
+            categoryId: globalData.category || 'uncategorized',
+            category: globalData.category || 'uncategorized',
+            description: globalData.description || '',
+            timestamp: entryTimestamp,
+            cleared: globalData.cleared || false,
+            synced: false, // Mark as unsynced so it will be uploaded to Users/{uid}/ActivityLog
+            uid: uid,
+          });
         });
-        console.log(`Queued copy of ActivityLog ${userDoc.id} to /ActivityLog`);
-        operations++;
+        console.log(`Imported ActivityLog ${timestampId} (timestamp: ${entryTimestamp.toISOString()}) to Realm`);
+        importedCount++;
       } else {
-        console.log(`ActivityLog ${userDoc.id} already exists in /ActivityLog`);
+        console.log(`ActivityLog ${timestampId} already exists in Realm`);
       }
     }
 
-    if (operations === 0) {
-      console.log('No ActivityLog entries to synchronize.');
-      return;
+    console.log(`ActivityLog synchronization (legacy import via Realm) completed. Imported ${importedCount} entries.`);
+    
+    // Step 5: Trigger sync from Realm to Users/{uid}/ActivityLog
+    if (importedCount > 0) {
+      console.log('Triggering sync of imported ActivityLog entries to Users/{uid}/ActivityLog...');
+      await syncRealmRowsToFirestore('ActivityLog', realm.objects('ActivityLog').filtered('synced = false').map(obj => obj.toJSON()));
     }
-
-    console.log(`Committing batch with ${operations} operations...`);
-    await batch.commit();
-    console.log(
-      `ActivityLog synchronization completed successfully with ${operations} operations.`
-    );
+    
+    // Mark one-time import as completed
+    if (ACTIVITYLOG_ONE_TIME_IMPORT) {
+      await AsyncStorage.setItem('activityLogImportCompleted', 'true');
+      console.log('ActivityLog one-time import marked as completed.');
+    }
   } catch (error) {
     console.error('Error synchronizing ActivityLog:', error);
-    if ((error as any).code === 'permission-denied') {
-      console.error(
-        'Permission denied. Check Firestore security rules for /ActivityLog and Users/{uid}/ActivityLog.'
-      );
-    }
     throw error;
   }
 }
@@ -586,21 +583,28 @@ export async function synchronizeDiscussions(
       return;
     }
 
-    const uid = auth.currentUser?.uid;
+    const uid = await getUID();
     if (!uid) {
       console.error('No user ID for synchronization.');
       return;
     }
 
-    console.log('Starting discussion synchronization...');
-    const batch = writeBatch(db);
+    console.log(`Synchronizing Discussion for UID: ${uid} (Legacy app continues to write - ongoing sync needed)`);
 
+    // Step 1: Check Realm is initialized
+    if (!realm) {
+      console.error('Realm not initialized');
+      return;
+    }
+
+    // Step 2: ONLY read from root Discussion collection
     const globalDiscussionQuery = query(collection(db, 'Discussion'));
     const globalSnapshot = await getDocs(globalDiscussionQuery);
     console.log(
-      `Found ${globalSnapshot.docs.length} global Discussion entries`
+      `Found ${globalSnapshot.docs.length} global Discussion entries to import`
     );
 
+    let importedCount = 0;
     for (const globalDoc of globalSnapshot.docs) {
       const globalData = globalDoc.data() as Discussion;
       if (globalData.uid && globalData.uid !== uid) {
@@ -610,55 +614,49 @@ export async function synchronizeDiscussions(
         continue;
       }
 
-      const userDiscussionRef = doc(
-        db,
-        `Users/${uid}/Discussion`,
-        globalDoc.id
-      );
-      const userDoc = await getDoc(userDiscussionRef);
-      if (!userDoc.exists()) {
-        batch.set(userDiscussionRef, {
-          ...globalData,
-          id: globalDoc.id,
-          discussionId: globalDoc.id,
-          uid,
-          timestamp: globalData.timestamp || new Date(),
+      // Step 3: Use timestamp as unique identifier to prevent duplicates
+      const entryTimestamp = globalData.timestamp instanceof Date ? globalData.timestamp :
+                           (globalData.timestamp as any)?.toDate ? (globalData.timestamp as any).toDate() : new Date();
+      
+      // Check if entry with this timestamp already exists in Realm
+      const existingEntryByTimestamp = realm.objects('Discussion').filtered('timestamp = $0', entryTimestamp);
+      if (existingEntryByTimestamp.length > 0) {
+        console.log(`Discussion with timestamp ${entryTimestamp.toISOString()} already exists in Realm`);
+        continue;
+      }
+
+      // Generate consistent ID based on timestamp to avoid duplicates
+      const timestampId = entryTimestamp.getTime().toString();
+      const existingEntryById = realm.objectForPrimaryKey('Discussion', timestampId);
+      
+      if (!existingEntryById) {
+        // Step 4: Write to Realm first (this will then sync to Users/{uid}/Discussion via existing sync)
+        realm.write(() => {
+          realm!.create('Discussion', {
+            id: timestampId, // Use timestamp-based ID for consistency
+            discussionId: timestampId, // Keep consistent with ID
+            description: globalData.description || '',
+            timestamp: entryTimestamp,
+            typeSay: globalData.typeSay || '',
+            cleared: globalData.cleared || false,
+            synced: false, // Mark as unsynced so it will be uploaded to Users/{uid}/Discussion
+            uid: uid,
+          });
         });
-        console.log(
-          `Queued copy of Discussion ${globalDoc.id} to Users/${uid}/Discussion`
-        );
+        console.log(`Imported Discussion ${timestampId} (timestamp: ${entryTimestamp.toISOString()}) to Realm`);
+        importedCount++;
       } else {
-        console.log(
-          `Discussion ${globalDoc.id} already exists in Users/${uid}/Discussion`
-        );
+        console.log(`Discussion ${timestampId} already exists in Realm`);
       }
     }
 
-    const userDiscussionQuery = query(
-      collection(db, `Users/${uid}/Discussion`)
-    );
-    const userSnapshot = await getDocs(userDiscussionQuery);
-    console.log(`Found ${userSnapshot.docs.length} user Discussion entries`);
-
-    for (const userDoc of userSnapshot.docs) {
-      const userData = userDoc.data() as Discussion;
-      const globalDiscussionRef = doc(db, 'Discussion', userDoc.id);
-      const globalDoc = await getDoc(globalDiscussionRef);
-      if (!globalDoc.exists()) {
-        batch.set(globalDiscussionRef, {
-          ...userData,
-          id: userDoc.id,
-          discussionId: userDoc.id,
-          timestamp: userData.timestamp || new Date(),
-        });
-        console.log(`Queued copy of Discussion ${userDoc.id} to /Discussion`);
-      } else {
-        console.log(`Discussion ${userDoc.id} already exists in /Discussion`);
-      }
+    console.log(`Discussion synchronization (legacy import via Realm) completed. Imported ${importedCount} entries.`);
+    
+    // Step 5: Trigger sync from Realm to Users/{uid}/Discussion
+    if (importedCount > 0) {
+      console.log('Triggering sync of imported Discussion entries to Users/{uid}/Discussion...');
+      await syncRealmRowsToFirestore('Discussion', realm.objects('Discussion').filtered('synced = false').map(obj => obj.toJSON()));
     }
-
-    await batch.commit();
-    console.log('Discussion synchronization completed.');
   } catch (error) {
     console.error('Error synchronizing Discussion:', error);
     if ((error as any).code === 'permission-denied') {

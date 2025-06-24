@@ -12,7 +12,7 @@ import { getReactNativePersistence } from 'firebase/auth';
 
 // Check if we should enable Firebase (set to false for offline-first mode)
 const ENABLE_FIREBASE = true; // Enable for authentication
-const ENABLE_FIRESTORE = false; // Keep Firestore disabled for offline-first
+const ENABLE_FIRESTORE = true; // Enable Firestore for paid users
 
 const firebaseConfig = {
   apiKey: Constants.expoConfig?.extra?.firebase?.apiKey || process.env.EXPO_PUBLIC_FIREBASE_API_KEY || "AIzaSyDba17ybV3s_h6gcZSP1-9nGgaALc1_2Pk",

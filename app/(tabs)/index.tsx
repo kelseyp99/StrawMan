@@ -172,37 +172,67 @@ export default function AskJanet() {
 
       if (!isMounted) return; // Prevent navigation if component unmounted
 
-      if (isLogged) {
-        // Check if there's a Firebase user first
-        const firebaseUser = auth.currentUser;
+      // Check if user is marked as paid user
+      const isPaidUser = (await AsyncStorage.getItem('isPaidUser')) === 'true';
+      
+      if (isPaidUser) {
+        // Paid user mode - require Firebase authentication
+        if (!isLogged) {
+          console.log('Paid user not logged in, redirecting to login');
+          setTimeout(() => {
+            if (isMounted && !isLogged) {
+              router.replace('/login');
+            }
+          }, 100);
+          setLoadingAuth(false);
+          return;
+        }
 
+        // Check if there's a Firebase user
+        const firebaseUser = auth.currentUser;
         if (firebaseUser) {
           // Use Firebase user information
-          console.log('User logged in with Firebase auth:', firebaseUser.email);
+          console.log('Paid user logged in with Firebase auth:', firebaseUser.email);
           setUserEmail(firebaseUser.email);
           setUserUID(firebaseUser.uid);
+          await setUID(firebaseUser.uid); // Store Firebase UID
         } else {
-          // Fall back to local auth
-          console.log('User logged in with local auth');
-          setUserEmail('local@user.app'); // Default email for local auth
-          setUserUID('local-user'); // Default UID for local auth
-        }
-
-        try {
-          await initializeUser();
-          await loadInitialData();
-        } catch (error) {
-          console.error('Init err:', error);
+          console.log('Paid user logged in but no Firebase user, redirecting to login');
+          setTimeout(() => {
+            if (isMounted) {
+              router.replace('/login');
+            }
+          }, 100);
+          setLoadingAuth(false);
+          return;
         }
       } else {
-        console.log('No user logged in, redirecting to login');
-        // Add a small delay to prevent rapid navigation loops
-        setTimeout(() => {
-          if (isMounted && !isLogged) {
-            router.replace('/login');
-          }
-        }, 100);
+        // Local-only mode - generate or use local UID
+        console.log('Using local-only mode');
+        setUserEmail('local@user.app'); // Default email for local auth
+        
+        // Get or generate a local UID
+        let localUID = await AsyncStorage.getItem('localUID');
+        if (!localUID) {
+          localUID = `local-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+          await AsyncStorage.setItem('localUID', localUID);
+          console.log('Generated new local UID:', localUID);
+        } else {
+          console.log('Using existing local UID:', localUID);
+        }
+        
+        setUserUID(localUID);
+        await setUID(localUID); // Store local UID
+        setIsLogged(true); // Mark as logged in for local mode
       }
+
+      try {
+        await initializeUser();
+        await loadInitialData();
+      } catch (error) {
+        console.error('Init err:', error);
+      }
+
       setLoadingAuth(false);
     }
 
@@ -976,13 +1006,16 @@ export default function AskJanet() {
         const syncWithCloud =
           (await AsyncStorage.getItem('syncWithCloud')) === 'true';
         if (syncWithCloud) {
-          // Sync both tables as a backup
+          // Sync all tables as a backup
           dbServices
             .syncToCloud('Discussion')
             .catch((e) => console.warn('Discussion syncToCloud failed:', e));
           dbServices
             .syncToCloud('ActivityLog')
             .catch((e) => console.warn('ActivityLog syncToCloud failed:', e));
+          dbServices
+            .syncToCloud('Category')
+            .catch((e) => console.warn('Category syncToCloud failed:', e));
         }
       } catch (e) {
         console.warn('Could not check syncWithCloud:', e);

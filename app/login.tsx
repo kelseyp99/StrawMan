@@ -27,6 +27,7 @@ import * as WebBrowser from 'expo-web-browser';
 import * as Google from 'expo-auth-session/providers/google';
 import Constants from 'expo-constants';
 import { initializeUser } from '../src/services/dbServices';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const STORAGE_FILE = `${FileSystem.documentDirectory}userUID.txt`;
 
@@ -40,7 +41,7 @@ export default function Login() {
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [userUID, setUserUID] = useState<string | null>(null);
   const router = useRouter();
-  const { setIsLogged } = useAuth();
+  const { setIsLogged, setIsPaid } = useAuth();
 
   // Log Constants.expoConfig for debugging
   console.log('Expo Config:', JSON.stringify(Constants.expoConfig, null, 2));
@@ -70,15 +71,22 @@ export default function Login() {
     };
     loadUID();
 
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
         console.log('User logged in:', user.uid);
         console.log('Setting isLogged to true in AuthContext');
         setUserEmail(user.email);
         setUserUID(user.uid);
         setUID(user.uid);
+        
         // Update AuthContext state
         setIsLogged(true);
+        
+        // Set as paid user when successfully logged in with Firebase
+        setIsPaid(true);
+        await AsyncStorage.setItem('isPaidUser', 'true');
+        console.log('User marked as paid customer after Firebase login');
+        
         // Initialize user data
         initializeUser().catch((error) =>
           console.error('Error initializing user:', error)
