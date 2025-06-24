@@ -1013,19 +1013,28 @@ const MainComponent: React.FC = () => {
         }
       }
     },
-    [selectedActivityLogId]
-  );
+    [selectedActivityLogId]  );
 
   // Handler for adding new category from the modal
-  const handleAddNewCategory = useCallback(async () => {
-    if (!newCategory.trim()) {
+  const handleAddNewCategory = useCallback(async () => {    if (!newCategory.trim()) {
       Alert.alert('Error', 'Category name cannot be empty.');
+      return;
+    }
+
+    // Check for duplicate category name (case-insensitive)
+    const trimmedName = newCategory.trim();
+    const existingCategory = allCategories.find(cat => 
+      cat.toLowerCase() === trimmedName.toLowerCase()
+    );
+    
+    if (existingCategory) {
+      Alert.alert('Error', `Category "${trimmedName}" already exists. Please choose a different name.`);
       return;
     }
 
     try {
       // Create the new category
-      await addOrUpdateCategory(newCategory.trim());
+      const categoryId = await addOrUpdateCategory(newCategory.trim());
 
       // Refresh the categories list
       await loadCategories();
@@ -1048,14 +1057,12 @@ const MainComponent: React.FC = () => {
       console.error('Error creating category:', error);
       Alert.alert('Error', 'Failed to create category.');
     }
-  }, [newCategory, selectedActivityLogId, loadCategories]);
+  }, [newCategory, selectedActivityLogId, loadCategories, allCategories]);
 
   // Handler for deleting activity log from modal
   const handleDeleteActivityLog = useCallback(async (id: string) => {
     try {
-      await deleteActivityLog(id);
-
-      // Remove from related activity logs
+      await deleteActivityLog(id);      // Remove from related activity logs
       setRelatedActivityLogs((prev) => prev.filter((log) => log.id !== id));
 
       // Remove from descriptions and categories
@@ -1064,12 +1071,14 @@ const MainComponent: React.FC = () => {
         delete newDesc[id];
         return newDesc;
       });
-
+      
       setActivityLogCategories((prev) => {
         const newCat = { ...prev };
         delete newCat[id];
         return newCat;
-      });      Alert.alert('Success', 'Activity log deleted successfully.');
+      });
+      
+      Alert.alert('Success', 'Activity log deleted successfully.');
       
       // Show interstitial ad after successful activity log deletion
       setTimeout(() => {
@@ -1147,34 +1156,48 @@ const MainComponent: React.FC = () => {
   const saveEdit = useCallback(async () => {
     // Implementation for saving edits
     console.log('Save edit called - implementation needed');
-  }, []);
-  // Create category handler
+  }, []);  // Create category handler
   const handleCreateCategory = () => {
     setEditCategoryId(null);
     setEditCategoryName('');
     setEditCategoryDescription('');
     setCategoryEditModalTitle('Create Category');
     setCategoryEditModalVisible(true);
-  };
-
-  // Save function specifically for Categories
+  };  // Save function specifically for Categories
   const saveCategoryEdit = useCallback(async () => {
-    if (!editCategoryId) return;
+    if (!editCategoryName.trim()) {
+      Alert.alert('Error', 'Category name cannot be empty.');
+      return;
+    }
+    
+    // Check for duplicate category name (case-insensitive)
+    const trimmedName = editCategoryName.trim();
+    const categoriesTable = tables.find(table => table.name === 'Categories');
+    const existingCategory = categoriesTable?.data.find(cat => 
+      cat.name.toLowerCase() === trimmedName.toLowerCase() && 
+      cat.id !== editCategoryId
+    );
+    
+    if (existingCategory) {
+      Alert.alert('Error', `Category "${trimmedName}" already exists. Please choose a different name.`);
+      return;
+    }
+    
     try {
       // Prepare category data
       const categoryData = {
         id: editCategoryId,
         name: editCategoryName.trim(),
-        description: editCategoryDescription.trim(),
-      }; // Update or create category
+        description: editCategoryDescription.trim(),      }; // Update or create category
       await addOrUpdateCategory(
         editCategoryName.trim(),
         editCategoryDescription.trim(),
         editCategoryId || undefined
       );
 
-      // Refresh categories
+      // Refresh categories and main table data
       await loadCategories();
+      await fetchData();
 
       // Close modal
       setCategoryEditModalVisible(false);
@@ -1186,12 +1209,13 @@ const MainComponent: React.FC = () => {
     } catch (error) {
       console.error('Error saving category:', error);
       Alert.alert('Error', 'Failed to save category.');
-    }
-  }, [
+    }  }, [
     editCategoryId,
     editCategoryName,
     editCategoryDescription,
     loadCategories,
+    fetchData,
+    tables,
   ]);
 
   // Legacy data import handler

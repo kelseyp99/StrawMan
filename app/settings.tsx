@@ -126,7 +126,12 @@ export default function SettingsScreen() {
             marginBottom: 15,
           }}
         >
-          <Text>Sync with Cloud</Text>
+          <View style={{ flex: 1 }}>
+            <Text>Sync with Cloud</Text>
+            <Text style={{ fontSize: 12, color: '#666' }}>
+              {isPaidCustomer ? 'Available with paid features' : 'Requires paid features'}
+            </Text>
+          </View>
           <Switch value={syncWithCloud} onValueChange={handleSyncToggle} />
         </View>
         <TouchableOpacity
@@ -142,6 +147,20 @@ export default function SettingsScreen() {
         >
           <Text style={{ color: '#fff', fontWeight: 'bold' }}>Sync Now</Text>
         </TouchableOpacity>
+        {/* Developer/Testing Section */}
+        <View
+          style={{
+            borderTopWidth: 1,
+            borderTopColor: '#eee',
+            paddingTop: 15,
+            marginTop: 15,
+            marginBottom: 15,
+          }}
+        >
+          <Text style={{ fontSize: 16, fontWeight: 'bold', marginBottom: 10, color: '#666' }}>
+            Developer Options
+          </Text>
+        </View>
         <View
           style={{
             flexDirection: 'row',
@@ -150,7 +169,12 @@ export default function SettingsScreen() {
             marginBottom: 15,
           }}
         >
-          <Text>Paid User Status (Test)</Text>
+          <View style={{ flex: 1 }}>
+            <Text>Enable Paid Features</Text>
+            <Text style={{ fontSize: 12, color: '#666' }}>
+              Toggle to access sync & premium features
+            </Text>
+          </View>
           <Switch
             value={isPaidCustomer}
             onValueChange={async (value) => {
@@ -159,6 +183,12 @@ export default function SettingsScreen() {
                 'isPaidUser',
                 value ? 'true' : 'false'
               );
+              if (value) {
+                Alert.alert(
+                  'Paid Features Enabled', 
+                  'You can now enable cloud sync and access premium features.'
+                );
+              }
             }}
           />
         </View>
