@@ -55,6 +55,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSync } from '../context/SyncContext';
 import { extractAndImportLegacyFirestoreData } from '../../src/services/dbServicesRemote';
 import { canAccessLoginAndSync } from '../../src/services/planManager';
+import RNIap, { purchaseUpdatedListener, purchaseErrorListener, ProductPurchase, SubscriptionPurchase } from 'react-native-iap';
+import { setPlanBySku, PLAN_SKUS } from '../../src/services/planManager';
 
 // App version from app.json
 const APP_VERSION = '1.1.0';
@@ -1052,6 +1054,46 @@ export default function AskJanet() {
       }
       // else, stay on index
     })();
+  }, []);
+
+  // --- IAP Subscription Listener Integration ---
+  useEffect(() => {
+    let purchaseUpdateSubscription: any;
+    let purchaseErrorSubscription: any;
+
+    async function handlePurchase(purchase: ProductPurchase | SubscriptionPurchase) {
+      // Check SKU and update plan/subscription dates
+      if (purchase.productId === PLAN_SKUS.PREMIUM) {
+        await setPlanBySku(PLAN_SKUS.PREMIUM);
+      } else if (purchase.productId === PLAN_SKUS.LIMITED) {
+        await setPlanBySku(PLAN_SKUS.LIMITED);
+      }
+      // Optionally, finish the transaction if needed
+      try {
+        await RNIap.finishTransaction({ purchase });
+      } catch (e) {
+        console.warn('IAP finishTransaction error:', e);
+      }
+    }
+
+    RNIap.initConnection().then(() => {
+      purchaseUpdateSubscription = purchaseUpdatedListener(async (purchase) => {
+        try {
+          await handlePurchase(purchase);
+        } catch (e) {
+          console.warn('IAP purchase update error:', e);
+        }
+      });
+      purchaseErrorSubscription = purchaseErrorListener((error) => {
+        console.warn('IAP purchase error:', error);
+      });
+    });
+
+    return () => {
+      if (purchaseUpdateSubscription) purchaseUpdateSubscription.remove();
+      if (purchaseErrorSubscription) purchaseErrorSubscription.remove();
+      RNIap.endConnection();
+    };
   }, []);
 
   if (loadingAuth || authLoading)
