@@ -1213,56 +1213,69 @@ export async function createRuleCandidate(data: any): Promise<void> {
   // Placeholder
 }
 
-export async function readChangeLog(filter: any): Promise<any[]> {
-  return [];
-}
-
-export async function syncTableFromRemote(
-  tableName: string,
-  newRows: any[]
-): Promise<void> {
-  // Placeholder
-}
-
-export async function logChange(
-  tableName: string,
-  rowId: string,
-  operation: string
-): Promise<void> {
-  // Placeholder
-}
-
-export async function deleteAllLocalRows(): Promise<void> {
-  // Placeholder
-}
-
-export async function addChangeLogEntry(
-  tableName: string,
-  rowId: string,
-  operation: 'create' | 'update' | 'delete',
-  timestamp?: Date
-): Promise<void> {
-  if (!realm) {
-    console.warn('Realm not initialized, skipping ChangeLog entry');
-    return;
+/**
+ * Read local ChangeLog entries for a table, optionally filtered by synced status.
+ */
+export async function readChangeLog({ tableName, synced }: { tableName: string; synced?: boolean }): Promise<any[]> {
+  if (!realm) throw new Error('Realm not initialized');
+  let query = `tableName == $0`;
+  let args: any[] = [tableName];
+  if (typeof synced === 'boolean') {
+    query += ' AND synced == $1';
+    args.push(synced);
   }
-  try {
-    const ts = timestamp || new Date();
-    realm.write(() => {
-      realm?.create('ChangeLog', {
-        id: `${tableName}_${rowId}_${ts.getTime()}`,
-        tableName,
-        rowId,
-        operation,
-        timestamp: ts,
-        synced: false,
-      });
-    });
-    console.log(`Added ChangeLog entry: ${tableName} ${rowId} ${operation}`);
-  } catch (error) {
-    console.error('Error adding ChangeLog entry:', error);
-    throw error;
-  }
+  const results = realm.objects('ChangeLog').filtered(query, ...args);
+  return results.map((entry: any) => ({ ...entry }));
+}
+
+/**
+ * Apply a ChangeLog operation to the local Realm database.
+ * Handles 'create', 'update', and 'delete' for the given table and rowId.
+ */
+export async function applyChangeLogOperation(tableName: string, entry: any): Promise<void> {
+  if (!realm) throw new Error('Realm not initialized');
+  realm.write(() => {
+    if (entry.operation === 'delete') {
+      const obj = realm!.objectForPrimaryKey(tableName, entry.rowId);
+      if (obj) realm!.delete(obj);
+    } else if (entry.operation === 'create' || entry.operation === 'update') {
+      // For simplicity, assume entry.data is a snapshot of the row
+      if (entry.data) {
+        realm!.create(tableName, entry.data, Realm.UpdateMode.Modified);
+      }
+    }
+  });
+}
+
+/**
+ * Add or update a ChangeLog entry in local Realm.
+ */
+export async function addOrUpdateChangeLogEntry(tableName: string, rowId: string, operation: string, timestamp: Date, data?: any): Promise<void> {
+  if (!realm) throw new Error('Realm not initialized');
+  realm.write(() => {
+    realm!.create('ChangeLog', {
+      id: `${tableName}_${rowId}_${new Date(timestamp).getTime()}`,
+      tableName,
+      rowId,
+      operation,
+      timestamp: new Date(timestamp),
+      synced: false,
+      data: data || null,
+    }, Realm.UpdateMode.Modified);
+  });
+}
+
+/**
+ * Mark a ChangeLog entry as synced in local Realm.
+ */
+export async function markChangeLogEntrySynced(tableName: string, rowId: string): Promise<void> {
+  if (!realm) throw new Error('Realm not initialized');
+  realm.write(() => {
+    const entries = realm!.objects('ChangeLog').filtered('tableName == $0 AND rowId == $1', tableName, rowId);
+    for (const entry of entries) {
+      entry.synced = true;
+    }
+  });
 }
 
 export async function importLegacyDiscussions(

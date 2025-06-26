@@ -1522,3 +1522,65 @@ export async function debugTestDataFetch(): Promise<void> {
     console.error('[DEBUG] Error in debugTestDataFetch:', error);
   }
 }
+
+/**
+ * Bi-directional, last-write-wins sync between local Realm and remote Firebase using a unified change log.
+ * All data changes must be recorded in ChangeLog. No direct changes to data are allowed.
+ * This function should be called by the manual sync trigger.
+ */
+export async function syncBidirectionalChangeLog() {
+  const tables = ['ActivityLog', 'Discussion', 'Category']; // Add more as needed
+  for (const tableName of tables) {
+    // --- Phase 1: Local → Remote ---
+    const localChangeLog = await local.readChangeLog({ tableName, synced: false });
+    const remoteChangeLog = await remote.readChangeLog({ tableName });
+    const remoteChangeLogMap = new Map();
+    remoteChangeLog.forEach((entry: any) => {
+      remoteChangeLogMap.set(entry.rowId, entry);
+    });
+    for (const localEntry of localChangeLog) {
+      const remoteEntry = remoteChangeLogMap.get(localEntry.rowId);
+      if (remoteEntry) {
+        // Both logs have entry for this row
+        if (new Date(localEntry.timestamp) > new Date(remoteEntry.timestamp)) {
+          // Local is newer: apply to remote
+          await remote.applyChangeLogOperation(tableName, localEntry);
+          await remote.addOrUpdateChangeLogEntry(tableName, localEntry.rowId, localEntry.operation, localEntry.timestamp, localEntry.data);
+        } else if (new Date(remoteEntry.timestamp) > new Date(localEntry.timestamp)) {
+          // Remote is newer: apply to local
+          await local.applyChangeLogOperation(tableName, remoteEntry);
+          await local.addOrUpdateChangeLogEntry(tableName, remoteEntry.rowId, remoteEntry.operation, remoteEntry.timestamp, remoteEntry.data);
+        }
+      } else {
+        // No remote entry: push local to remote
+        await remote.applyChangeLogOperation(tableName, localEntry);
+        await remote.addOrUpdateChangeLogEntry(tableName, localEntry.rowId, localEntry.operation, localEntry.timestamp, localEntry.data);
+      }
+      // Mark local entry as synced
+      await local.markChangeLogEntrySynced(tableName, localEntry.rowId);
+    }
+
+    // --- Phase 2: Remote → Local ---
+    const updatedLocalChangeLog = await local.readChangeLog({ tableName });
+    const localChangeLogMap = new Map();
+    updatedLocalChangeLog.forEach((entry: any) => {
+      localChangeLogMap.set(entry.rowId, entry);
+    });
+    const unsyncedRemoteChangeLog = remoteChangeLog.filter((entry: any) => !entry.synced);
+    for (const remoteEntry of unsyncedRemoteChangeLog) {
+      const localEntry = localChangeLogMap.get(remoteEntry.rowId);
+      if (!localEntry) {
+        // No local entry: apply remote to local
+        await local.applyChangeLogOperation(tableName, remoteEntry);
+        await local.addOrUpdateChangeLogEntry(tableName, remoteEntry.rowId, remoteEntry.operation, remoteEntry.timestamp, remoteEntry.data);
+      } else if (new Date(remoteEntry.timestamp) > new Date(localEntry.timestamp)) {
+        // Remote is newer: apply to local
+        await local.applyChangeLogOperation(tableName, remoteEntry);
+        await local.addOrUpdateChangeLogEntry(tableName, remoteEntry.rowId, remoteEntry.operation, remoteEntry.timestamp, remoteEntry.data);
+      }
+      // Mark remote entry as synced
+      await remote.markChangeLogEntrySynced(tableName, remoteEntry.rowId);
+    }
+  }
+  console.log('[SYNC] Bi-directional change log sync complete.');
+}
