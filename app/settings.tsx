@@ -10,7 +10,7 @@ import {
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
 import { useAuth } from './context/AuthContext';
-import { canAccessLoginAndSync } from '../src/services/planManager';
+import { canAccessLoginAndSync, getSubscriptionWarningLevel, getSubscriptionDaysLeft, isSubscriptionExpired } from '../src/services/planManager';
 
 export const SettingsContext = React.createContext({
   syncWithCloud: false,
@@ -24,6 +24,8 @@ export default function SettingsScreen() {
   const [syncWithCloud, setSyncWithCloud] = useState(false);
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
   const [isPaidCustomer, setIsPaidCustomer] = useState(false);
+  const [subscriptionWarning, setSubscriptionWarning] = useState<'none' | '30days' | '7days' | '1day' | 'expired'>('none');
+  const [daysLeft, setDaysLeft] = useState<number>(0);
   const router = useRouter();
   const { isLogged, setIsLogged, setIsPaid } = useAuth();
 
@@ -45,6 +47,18 @@ export default function SettingsScreen() {
       }
     })();
   }, [isLogged]);
+
+  useEffect(() => {
+    // Check subscription warning level on mount and when screen is focused
+    const checkWarning = () => {
+      const warning = getSubscriptionWarningLevel();
+      setSubscriptionWarning(warning);
+      setDaysLeft(getSubscriptionDaysLeft());
+    };
+    checkWarning();
+    const interval = setInterval(checkWarning, 24 * 60 * 60 * 1000); // Check daily
+    return () => clearInterval(interval);
+  }, []);
 
   const handleSyncToggle = async (value: boolean) => {
     // If user tries to enable sync, check if $30 plan and route to login if needed
@@ -124,6 +138,16 @@ export default function SettingsScreen() {
           </View>
           <Switch value={syncWithCloud} onValueChange={handleSyncToggle} />
         </View>
+        {/* Subscription Expiry Warning */}
+        {subscriptionWarning !== 'none' && (
+          <View style={{ backgroundColor: subscriptionWarning === 'expired' ? '#ffcccc' : '#fffbe6', padding: 10, borderRadius: 6, marginBottom: 15 }}>
+            <Text style={{ color: subscriptionWarning === 'expired' ? '#b71c1c' : '#bfa100', fontWeight: 'bold' }}>
+              {subscriptionWarning === 'expired'
+                ? 'Your subscription has expired. Please renew to continue using paid features.'
+                : `Your subscription expires in ${daysLeft} day${daysLeft === 1 ? '' : 's'}. Please renew soon!`}
+            </Text>
+          </View>
+        )}
         {/* Developer/Testing Section */}
         <View
           style={{

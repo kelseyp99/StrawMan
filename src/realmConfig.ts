@@ -12,6 +12,8 @@ const UserSchema = {
     appId: 'string',
     timestamp: 'date',
     isPaid: 'bool',
+    subscriptionStartDate: 'date?', // Added for yearly subscription
+    subscriptionExpiryDate: 'date?', // Added for yearly subscription
   },
 };
 

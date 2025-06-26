@@ -31,6 +31,8 @@ interface User {
   appId: string;
   timestamp: Date;
   isPaid: boolean;
+  subscriptionStartDate?: Date;
+  subscriptionExpiryDate?: Date;
 }
 
 export interface Parameters {
@@ -333,6 +335,8 @@ export async function initializeUser(): Promise<void> {
         appId: APP_ID,
         timestamp: new Date(),
         isPaid: false, // Update based on subscription check
+        subscriptionStartDate: undefined,
+        subscriptionExpiryDate: undefined,
       };
       const existingUser = realm?.objects<User>('User')[0];
       if (existingUser) {
@@ -342,6 +346,8 @@ export async function initializeUser(): Promise<void> {
         existingUser.appId = userData.appId;
         existingUser.timestamp = userData.timestamp;
         existingUser.isPaid = userData.isPaid;
+        existingUser.subscriptionStartDate = userData.subscriptionStartDate;
+        existingUser.subscriptionExpiryDate = userData.subscriptionExpiryDate;
       } else {
         console.log('Initializing user');
         realm?.create('User', userData);
