@@ -48,6 +48,9 @@ import { extractAndImportLegacyFirestoreData } from '../services/dbServicesRemot
 import { findDuplicateActivityLog } from '../services/phraseProcessor';
 import { useSync } from '../../app/context/SyncContext';
 import RNFS from 'react-native-fs';
+import { UpgradePromptModal } from './UpgradeModals';
+import { useAuth } from '../../app/context/AuthContext';
+
 // Temporarily commented out Firebase imports to prevent lockup
 // import { db } from '../firebaseConfig';
 // import {
@@ -267,6 +270,9 @@ const MainComponent: React.FC = () => {
     showAfterAction: true, // Show after user completes actions
     minScreenTimeBeforeAd: 10000, // Wait 10 seconds on screen before eligible
   });
+
+  const { isPaid } = useAuth();
+  const [showUpgradePrompt, setShowUpgradePrompt] = useState(false);
 
   const [tables, setTables] = useState<SwipeableTablePropsType[]>([]);
   const [sortBy, setSortBy] = useState<{
@@ -1345,6 +1351,24 @@ const MainComponent: React.FC = () => {
     []
   );
 
+  // Show upgrade modal every 5th entry for free users
+  useEffect(() => {
+    if (isPaid) return; // Only for free users
+    const incrementEntryCount = async () => {
+      try {
+        let count = parseInt((await AsyncStorage.getItem('mainTableEntryCount')) || '0', 10);
+        count = isNaN(count) ? 1 : count + 1;
+        await AsyncStorage.setItem('mainTableEntryCount', count.toString());
+        if (count % 5 === 0) {
+          setShowUpgradePrompt(true);
+        }
+      } catch (e) {
+        // ignore
+      }
+    };
+    incrementEntryCount();
+  }, []); // Only on mount
+
   if (loading) {
     return (
       <View style={styles.container}>
@@ -1369,6 +1393,14 @@ const MainComponent: React.FC = () => {
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       style={styles.container}
     >
+      <UpgradePromptModal
+        visible={showUpgradePrompt}
+        onClose={() => setShowUpgradePrompt(false)}
+        onUpgrade={() => {
+          setShowUpgradePrompt(false);
+          // Optionally trigger plan modal if desired
+        }}
+      />
       {initialized && tables.length > 0 ? (
         <View style={styles.tableContainer}>
           <View style={styles.navigation}>
