@@ -1712,3 +1712,20 @@ export async function deleteCategoryLocal(id: string): Promise<void> {
     throw error;
   }
 }
+
+// --- Stubs for missing local sync helpers ---
+export async function syncTableFromRemote(tableName: string, newRows: any[]): Promise<void> {
+  // TODO: Implement logic to sync table from remote
+}
+
+export function logChange(tableName: string, rowId: string, operation: string): void {
+  // TODO: Implement local log change logic
+}
+
+export async function deleteAllLocalRows(): Promise<void> {
+  // TODO: Implement logic to delete all local rows
+}
+
+export async function addChangeLogEntry(tableName: string, rowId: string, operation: string, timestamp: Date): Promise<void> {
+  // TODO: Implement logic to add a change log entry
+}

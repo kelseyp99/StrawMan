@@ -1022,14 +1022,21 @@ export async function findCategoryByName(name: string): Promise<any> {
   }
 }
 
-export async function mergeCategoryReferences(fromCategoryId: string, toCategoryId: string): Promise<void> {
-  console.log('mergeCategoryReferences called with:', { fromCategoryId, toCategoryId });
+export async function mergeCategoryReferences(
+  fromCategoryId: string,
+  toCategoryId: string
+): Promise<void> {
+  console.log('mergeCategoryReferences called with:', {
+    fromCategoryId,
+    toCategoryId,
+  });
   try {
     // Always use local for merging, then sync if needed
     await local.mergeCategoryReferences(fromCategoryId, toCategoryId);
-    
+
     // Log the merge operation
-    const uid = (await getUID()) || 'unknown';    await logSyncEntry({
+    const uid = (await getUID()) || 'unknown';
+    await logSyncEntry({
       id: `merge_${fromCategoryId}_to_${toCategoryId}`,
       tableName: 'Category',
       operation: 'update',
@@ -1387,7 +1394,12 @@ export async function addChangeLogEntry(
       // If remote implementation exists, call it here
       // await remote.addChangeLogEntry(tableName, rowId, operation, timestamp);
     }
-    await local.addChangeLogEntry(tableName, rowId, operation, timestamp);
+    await local.addChangeLogEntry(
+      tableName,
+      rowId,
+      operation,
+      timestamp ?? new Date()
+    );
   } catch (error) {
     console.error('Error in addChangeLogEntry:', error);
     throw error;
@@ -1532,7 +1544,10 @@ export async function syncBidirectionalChangeLog() {
   const tables = ['ActivityLog', 'Discussion', 'Category']; // Add more as needed
   for (const tableName of tables) {
     // --- Phase 1: Local → Remote ---
-    const localChangeLog = await local.readChangeLog({ tableName, synced: false });
+    const localChangeLog = await local.readChangeLog({
+      tableName,
+      synced: false,
+    });
     const remoteChangeLog = await remote.readChangeLog({ tableName });
     const remoteChangeLogMap = new Map();
     remoteChangeLog.forEach((entry: any) => {
@@ -1545,16 +1560,36 @@ export async function syncBidirectionalChangeLog() {
         if (new Date(localEntry.timestamp) > new Date(remoteEntry.timestamp)) {
           // Local is newer: apply to remote
           await remote.applyChangeLogOperation(tableName, localEntry);
-          await remote.addOrUpdateChangeLogEntry(tableName, localEntry.rowId, localEntry.operation, localEntry.timestamp, localEntry.data);
-        } else if (new Date(remoteEntry.timestamp) > new Date(localEntry.timestamp)) {
+          await remote.addOrUpdateChangeLogEntry(
+            tableName,
+            localEntry.rowId,
+            localEntry.operation,
+            localEntry.timestamp,
+            localEntry.data
+          );
+        } else if (
+          new Date(remoteEntry.timestamp) > new Date(localEntry.timestamp)
+        ) {
           // Remote is newer: apply to local
           await local.applyChangeLogOperation(tableName, remoteEntry);
-          await local.addOrUpdateChangeLogEntry(tableName, remoteEntry.rowId, remoteEntry.operation, remoteEntry.timestamp, remoteEntry.data);
+          await local.addOrUpdateChangeLogEntry(
+            tableName,
+            remoteEntry.rowId,
+            remoteEntry.operation,
+            remoteEntry.timestamp,
+            remoteEntry.data
+          );
         }
       } else {
         // No remote entry: push local to remote
         await remote.applyChangeLogOperation(tableName, localEntry);
-        await remote.addOrUpdateChangeLogEntry(tableName, localEntry.rowId, localEntry.operation, localEntry.timestamp, localEntry.data);
+        await remote.addOrUpdateChangeLogEntry(
+          tableName,
+          localEntry.rowId,
+          localEntry.operation,
+          localEntry.timestamp,
+          localEntry.data
+        );
       }
       // Mark local entry as synced
       await local.markChangeLogEntrySynced(tableName, localEntry.rowId);
@@ -1566,17 +1601,33 @@ export async function syncBidirectionalChangeLog() {
     updatedLocalChangeLog.forEach((entry: any) => {
       localChangeLogMap.set(entry.rowId, entry);
     });
-    const unsyncedRemoteChangeLog = remoteChangeLog.filter((entry: any) => !entry.synced);
+    const unsyncedRemoteChangeLog = remoteChangeLog.filter(
+      (entry: any) => !entry.synced
+    );
     for (const remoteEntry of unsyncedRemoteChangeLog) {
       const localEntry = localChangeLogMap.get(remoteEntry.rowId);
       if (!localEntry) {
         // No local entry: apply remote to local
         await local.applyChangeLogOperation(tableName, remoteEntry);
-        await local.addOrUpdateChangeLogEntry(tableName, remoteEntry.rowId, remoteEntry.operation, remoteEntry.timestamp, remoteEntry.data);
-      } else if (new Date(remoteEntry.timestamp) > new Date(localEntry.timestamp)) {
+        await local.addOrUpdateChangeLogEntry(
+          tableName,
+          remoteEntry.rowId,
+          remoteEntry.operation,
+          remoteEntry.timestamp,
+          remoteEntry.data
+        );
+      } else if (
+        new Date(remoteEntry.timestamp) > new Date(localEntry.timestamp)
+      ) {
         // Remote is newer: apply to local
         await local.applyChangeLogOperation(tableName, remoteEntry);
-        await local.addOrUpdateChangeLogEntry(tableName, remoteEntry.rowId, remoteEntry.operation, remoteEntry.timestamp, remoteEntry.data);
+        await local.addOrUpdateChangeLogEntry(
+          tableName,
+          remoteEntry.rowId,
+          remoteEntry.operation,
+          remoteEntry.timestamp,
+          remoteEntry.data
+        );
       }
       // Mark remote entry as synced
       await remote.markChangeLogEntrySynced(tableName, remoteEntry.rowId);

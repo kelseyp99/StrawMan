@@ -2472,6 +2472,20 @@ export async function deleteAllRemoteChangeLogs() {
   );
 }
 
-export function getCategoryById() {
-  throw new Error('Function not implemented.');
+// --- Change Log Sync Helpers for Remote ---
+export async function readChangeLog({ tableName }: { tableName: string }): Promise<any[]> {
+  // TODO: Implement remote changelog fetch logic
+  return [];
+}
+
+export async function applyChangeLogOperation(tableName: string, entry: any): Promise<void> {
+  // TODO: Implement remote apply logic
+}
+
+export async function addOrUpdateChangeLogEntry(tableName: string, rowId: string, operation: string, timestamp: Date, data?: any): Promise<void> {
+  // TODO: Implement remote add/update logic
+}
+
+export async function markChangeLogEntrySynced(tableName: string, rowId: string): Promise<void> {
+  // TODO: Implement remote mark as synced logic
 }
