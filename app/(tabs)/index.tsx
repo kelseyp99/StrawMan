@@ -174,7 +174,7 @@ export default function AskJanet() {
 
       // Check if user is marked as paid user
       const isPaidUser = (await AsyncStorage.getItem('isPaidUser')) === 'true';
-      
+
       if (isPaidUser) {
         // Paid user mode - require Firebase authentication
         if (!isLogged) {
@@ -192,12 +192,17 @@ export default function AskJanet() {
         const firebaseUser = auth.currentUser;
         if (firebaseUser) {
           // Use Firebase user information
-          console.log('Paid user logged in with Firebase auth:', firebaseUser.email);
+          console.log(
+            'Paid user logged in with Firebase auth:',
+            firebaseUser.email
+          );
           setUserEmail(firebaseUser.email);
           setUserUID(firebaseUser.uid);
           await setUID(firebaseUser.uid); // Store Firebase UID
         } else {
-          console.log('Paid user logged in but no Firebase user, redirecting to login');
+          console.log(
+            'Paid user logged in but no Firebase user, redirecting to login'
+          );
           setTimeout(() => {
             if (isMounted) {
               router.replace('/login');
@@ -210,17 +215,19 @@ export default function AskJanet() {
         // Local-only mode - generate or use local UID
         console.log('Using local-only mode');
         setUserEmail('local@user.app'); // Default email for local auth
-        
+
         // Get or generate a local UID
         let localUID = await AsyncStorage.getItem('localUID');
         if (!localUID) {
-          localUID = `local-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+          localUID = `local-${Date.now()}-${Math.random()
+            .toString(36)
+            .substr(2, 9)}`;
           await AsyncStorage.setItem('localUID', localUID);
           console.log('Generated new local UID:', localUID);
         } else {
           console.log('Using existing local UID:', localUID);
         }
-        
+
         setUserUID(localUID);
         await setUID(localUID); // Store local UID
         setIsLogged(true); // Mark as logged in for local mode
@@ -1014,7 +1021,7 @@ export default function AskJanet() {
           } catch (error) {
             console.warn('Legacy import failed on startup:', error);
           }
-          
+
           // Then: Sync Realm data to user-level Firestore
           dbServices
             .syncToCloud('Discussion')

@@ -364,11 +364,8 @@ const MainComponent: React.FC = () => {
     if (!uid) return;
     try {
       setLoading(true);
-      // console.log('[PERF] Starting data fetch...');
-
       // Fetch data with minimal processing
       const activityLogRaw = await getActivityLogs();
-      // console.log('[PERF] Fetched', activityLogRaw.length, 'activity logs');      // Process all activity logs and add proper date sorting
       const activityLogData = (
         await Promise.all(
           activityLogRaw.map(async (log: any) => {
@@ -563,13 +560,6 @@ const MainComponent: React.FC = () => {
     }
   }, [uid, fetchData]);
 
-  // Refresh data when sync completes
-  useEffect(() => {
-    if (uid && lastSync > 0) {
-      console.log('[TABLES] Sync completed, refreshing data...');
-      fetchData();
-    }
-  }, [lastSync, uid, fetchData]);
   useEffect(() => {
     // Temporarily disabled to prevent lockup
     // console.log('[DEBUG] discussionSnapshot useEffect disabled to prevent lockup');

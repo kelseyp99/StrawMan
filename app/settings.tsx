@@ -8,8 +8,6 @@ import {
   Alert,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import * as dbServices from '../src/services/dbServices';
-import { synchronizeDiscussions, synchronizeActivityLog } from '../src/services/dbServices';
 import { useRouter } from 'expo-router';
 import { useAuth } from './context/AuthContext';
 
@@ -47,45 +45,6 @@ export default function SettingsScreen() {
     })();
   }, [isLogged]);
 
-  useEffect(() => {
-    let syncInterval: NodeJS.Timeout | null = null;
-    const startSyncTimer = async () => {
-      const syncWithCloud =
-        (await AsyncStorage.getItem('syncWithCloud')) === 'true';
-      if (syncWithCloud) {
-        // First: Import legacy data from root Firestore to Realm
-        try {
-          await synchronizeDiscussions('1.0.0'); // Import from root Discussion table
-          await synchronizeActivityLog('1.0.0'); // Import from root ActivityLog table
-        } catch (error) {
-          console.error('Legacy import failed:', error);
-        }
-        
-        // Then: Sync Realm data to user-level Firestore
-        dbServices.syncToCloud('Discussion').catch(() => {});
-        dbServices.syncToCloud('ActivityLog').catch(() => {});
-        dbServices.syncToCloud('Category').catch(() => {});
-        
-        // Set up periodic sync (legacy import + upload)
-        syncInterval = setInterval(async () => {
-          try {
-            await synchronizeDiscussions('1.0.0');
-            await synchronizeActivityLog('1.0.0');
-          } catch (error) {
-            console.error('Periodic legacy import failed:', error);
-          }
-          dbServices.syncToCloud('Discussion').catch(() => {});
-          dbServices.syncToCloud('ActivityLog').catch(() => {});
-          dbServices.syncToCloud('Category').catch(() => {});
-        }, 30 * 60 * 1000);
-      }
-    };
-    startSyncTimer();
-    return () => {
-      if (syncInterval) clearInterval(syncInterval);
-    };
-  }, [syncWithCloud]);
-
   const handleSyncToggle = async (value: boolean) => {
     if (value && !isPaidCustomer) {
       setShowUpgradeModal(true);
@@ -93,24 +52,6 @@ export default function SettingsScreen() {
     }
     setSyncWithCloud(value);
     await AsyncStorage.setItem('syncWithCloud', value ? 'true' : 'false');
-  };
-
-  const handleManualSync = async () => {
-    try {
-      // First: Import legacy data from root Firestore to Realm
-      await synchronizeDiscussions('1.0.0');
-      await synchronizeActivityLog('1.0.0');
-      
-      // Then: Sync Realm data to user-level Firestore
-      await dbServices.syncToCloud('Discussion');
-      await dbServices.syncToCloud('ActivityLog');
-      await dbServices.syncToCloud('Category');
-      
-      Alert.alert('Sync Complete', 'Legacy data imported and synced with cloud.');
-    } catch (e) {
-      console.error('Manual sync error:', e);
-      Alert.alert('Sync Failed', 'Could not complete sync process.');
-    }
   };
 
   return (
@@ -173,19 +114,6 @@ export default function SettingsScreen() {
           </View>
           <Switch value={syncWithCloud} onValueChange={handleSyncToggle} />
         </View>
-        <TouchableOpacity
-          style={{
-            backgroundColor: '#007AFF',
-            padding: 12,
-            borderRadius: 6,
-            alignItems: 'center',
-            marginBottom: 15,
-          }}
-          onPress={handleManualSync}
-          disabled={!syncWithCloud}
-        >
-          <Text style={{ color: '#fff', fontWeight: 'bold' }}>Sync Now</Text>
-        </TouchableOpacity>
         {/* Developer/Testing Section */}
         <View
           style={{
