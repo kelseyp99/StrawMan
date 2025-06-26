@@ -54,6 +54,7 @@ import * as dbServices from '../../src/services/dbServices';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSync } from '../context/SyncContext';
 import { extractAndImportLegacyFirestoreData } from '../../src/services/dbServicesRemote';
+import { canAccessLoginAndSync } from '../../src/services/planManager';
 
 // App version from app.json
 const APP_VERSION = '1.1.0';
@@ -1036,6 +1037,20 @@ export default function AskJanet() {
       } catch (e) {
         console.warn('Could not check syncWithCloud:', e);
       }
+    })();
+  }, []);
+
+  useEffect(() => {
+    (async () => {
+      // If user is not on $30 plan or sync is not enabled, stay here
+      const canSync = await canAccessLoginAndSync();
+      const syncWithCloud = await AsyncStorage.getItem('syncWithCloud');
+      if (canSync && syncWithCloud === 'true') {
+        // $30 plan and sync enabled: go to login screen
+        router.replace('/login');
+        return;
+      }
+      // else, stay on index
     })();
   }, []);
 

@@ -6,6 +6,7 @@ import { ActivityLog } from './types';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ENABLE_CATEGORY_SYNC } from './syncConfig';
 import { ENABLE_FIRESTORE } from '../firebaseConfig';
+import { isPaidUser as planIsPaidUser } from './planManager';
 
 // Helper function to check if remote sync should be used
 async function shouldUseRemote(): Promise<boolean> {
@@ -78,14 +79,8 @@ async function logSyncEntry(entry: SyncEntry): Promise<void> {
 }
 
 export async function isPaidUser(): Promise<boolean> {
-  try {
-    // Check AsyncStorage for paid user status (for testing/demo purposes)
-    const paidStatus = await AsyncStorage.getItem('isPaidUser');
-    return paidStatus === 'true';
-  } catch (error) {
-    console.warn('Could not check paid user status:', error);
-    return false; // Default to free user
-  }
+  // Use planManager logic: only premium plan is paid
+  return planIsPaidUser();
 }
 
 export const findDuplicateActivityLog = async (

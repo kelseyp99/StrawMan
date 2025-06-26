@@ -10,6 +10,7 @@ import {
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
 import { useAuth } from './context/AuthContext';
+import { canAccessLoginAndSync } from '../src/services/planManager';
 
 export const SettingsContext = React.createContext({
   syncWithCloud: false,
@@ -46,9 +47,18 @@ export default function SettingsScreen() {
   }, [isLogged]);
 
   const handleSyncToggle = async (value: boolean) => {
-    if (value && !isPaidCustomer) {
-      setShowUpgradeModal(true);
-      return;
+    // If user tries to enable sync, check if $30 plan and route to login if needed
+    if (value) {
+      const canSync = await canAccessLoginAndSync();
+      if (!canSync) {
+        setShowUpgradeModal(true);
+        return;
+      }
+      // If $30 plan, go to login if not logged in
+      if (!isLogged) {
+        router.push('/login');
+        return;
+      }
     }
     setSyncWithCloud(value);
     await AsyncStorage.setItem('syncWithCloud', value ? 'true' : 'false');
