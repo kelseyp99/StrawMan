@@ -9,9 +9,17 @@ const useOpenAI = true;
 const categories = ['exercise', 'meal', 'sleep', 'mood'];
 
 export function transformInput(input: string): string {
-  // Simple input transformation - just trim whitespace for now
-  // This can be expanded later if needed
-  return input.trim();
+  // Custom transformation for codes starting with 8 or 8a
+  const trimmed = input.trim();
+  if (trimmed.toLowerCase().startsWith('8a')) {
+    // "8a" → "Ate a..."
+    return 'Ate a' + trimmed.slice(2);
+  } else if (trimmed.startsWith('8')) {
+    // "8" → "Ate..."
+    return 'Ate' + trimmed.slice(1);
+  }
+  // Default: just trim whitespace
+  return trimmed;
 }
 
 export const processPhrase = async (
