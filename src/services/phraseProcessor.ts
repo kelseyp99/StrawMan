@@ -32,7 +32,7 @@ export const processPhrase = async (
 ): Promise<ParsedActivity> => {
   // Firebase-dependent functionality disabled for offline-first operation
   // TODO: Implement with local Realm database
-  
+
   for (const entry of discussionCounts) {
     if (entry.description === description) {
       const updatedCounts = discussionCounts.map((countEntry) =>
@@ -57,9 +57,9 @@ export const processPhrase = async (
     !activityAnalysis.parsedDescription
   ) {
     // console.log('Applying OpenAI analysis');
-    activityAnalysis = await analyzeActivity({ 
-      categories: distinctCategories, 
-      description: description 
+    activityAnalysis = await analyzeActivity({
+      categories: distinctCategories,
+      description: description,
     });
     // console.log('OpenAI analysis result:', activityAnalysis);
   }
@@ -72,11 +72,12 @@ export const processPhrase = async (
     count: 1,
     description: activityAnalysis.parsedDescription,
   };
-  
+
   setDiscussionCounts((prev: any) =>
-    [...prev, { ...newDiscussionCount, discussionID: 'local_' + Date.now() }].sort(
-      (a: any, b: any) => b.count - a.count
-    )
+    [
+      ...prev,
+      { ...newDiscussionCount, discussionID: 'local_' + Date.now() },
+    ].sort((a: any, b: any) => b.count - a.count)
   );
 
   return activityAnalysis;
@@ -155,7 +156,10 @@ export async function applyRules(
   const normalizedDiscussion = discussion.toLowerCase().trim();
   if (abbreviationMap.has(normalizedDiscussion)) {
     const expandedDescription = abbreviationMap.get(normalizedDiscussion)!;
-    const category = categorizeDescription(expandedDescription, distinctCategories);
+    const category = categorizeDescription(
+      expandedDescription,
+      distinctCategories
+    );
     return {
       category,
       parsedDescription: expandedDescription,
@@ -164,31 +168,82 @@ export async function applyRules(
 
   // If no abbreviation match, try to categorize the original text
   const category = categorizeDescription(discussion, distinctCategories);
-  
+
   return {
     category: category || 'general',
     parsedDescription: discussion,
   };
 }
 
-function categorizeDescription(description: string, distinctCategories: string[]): string {
+function categorizeDescription(
+  description: string,
+  distinctCategories: string[]
+): string {
   const lowerDescription = description.toLowerCase();
-  
+
   // Define keyword mappings for categories
   const categoryKeywords = {
-    exercise: ['run', 'walk', 'gym', 'yoga', 'workout', 'exercise', 'jog', 'bike', 'swim', 'stretch'],
-    meal: ['ate', 'eat', 'breakfast', 'lunch', 'dinner', 'snack', 'food', 'meal', 'hungry'],
-    drink: ['drink', 'drank', 'water', 'coffee', 'tea', 'juice', 'soda', 'beer', 'wine'],
+    exercise: [
+      'run',
+      'walk',
+      'gym',
+      'yoga',
+      'workout',
+      'exercise',
+      'jog',
+      'bike',
+      'swim',
+      'stretch',
+    ],
+    meal: [
+      'ate',
+      'eat',
+      'breakfast',
+      'lunch',
+      'dinner',
+      'snack',
+      'food',
+      'meal',
+      'hungry',
+    ],
+    drink: [
+      'drink',
+      'drank',
+      'water',
+      'coffee',
+      'tea',
+      'juice',
+      'soda',
+      'beer',
+      'wine',
+    ],
     sleep: ['sleep', 'nap', 'tired', 'wake', 'bed', 'rest'],
-    mood: ['happy', 'sad', 'angry', 'excited', 'calm', 'stressed', 'anxious', 'feeling'],
-    health: ['medicine', 'vitamin', 'supplement', 'doctor', 'sick', 'headache', 'pain'],
+    mood: [
+      'happy',
+      'sad',
+      'angry',
+      'excited',
+      'calm',
+      'stressed',
+      'anxious',
+      'feeling',
+    ],
+    health: [
+      'medicine',
+      'vitamin',
+      'supplement',
+      'doctor',
+      'sick',
+      'headache',
+      'pain',
+    ],
     bathroom: ['urinated', 'poop', 'diarrhea', 'constipated', 'bathroom'],
     hygiene: ['shower', 'bath', 'brush', 'floss', 'wash', 'clean'],
   };
 
   // Check each category for keyword matches
   for (const [category, keywords] of Object.entries(categoryKeywords)) {
-    if (keywords.some(keyword => lowerDescription.includes(keyword))) {
+    if (keywords.some((keyword) => lowerDescription.includes(keyword))) {
       // Check if this category exists in the distinct categories
       if (distinctCategories.includes(category)) {
         return category;

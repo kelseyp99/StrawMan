@@ -206,7 +206,8 @@ const config: Configuration = {
     SyncEntrySchema,
     DiscussionCountSchema,
     ChangeLogSchema,
-    CategorySchema,  ],
+    CategorySchema,
+  ],
   schemaVersion: 14, // Bumped from 13 to 14 to add uid, lockedCategory, lockedDescription, attachedFile fields
   onMigration: (oldRealm: Realm, newRealm: Realm) => {
     console.log(
@@ -237,7 +238,9 @@ const config: Configuration = {
       // No data migration needed for new schemas or uid removal
     }
     if (oldRealm.schemaVersion < 14) {
-      console.log('[Migration] Adding uid, lockedCategory, lockedDescription, attachedFile fields');
+      console.log(
+        '[Migration] Adding uid, lockedCategory, lockedDescription, attachedFile fields'
+      );
       // Set default values for new fields
       newRealm.objects('ActivityLog').forEach((log: any) => {
         if (log.uid === undefined) log.uid = 'local-user';

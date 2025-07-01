@@ -32,7 +32,12 @@ import { format } from 'date-fns';
 import { sendQuestionForParsing, sendQuestion } from './openaiAPI';
 import { ActivityLog } from './types';
 import { addChangeLogEntry } from './dbServices';
-import { ENABLE_DISCUSSION_SYNC, ENABLE_ACTIVITYLOG_SYNC, ENABLE_CATEGORY_SYNC, ACTIVITYLOG_ONE_TIME_IMPORT } from './syncConfig';
+import {
+  ENABLE_DISCUSSION_SYNC,
+  ENABLE_ACTIVITYLOG_SYNC,
+  ENABLE_CATEGORY_SYNC,
+  ACTIVITYLOG_ONE_TIME_IMPORT,
+} from './syncConfig';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Interfaces (same as dbServicesLocal.ts)
@@ -471,31 +476,39 @@ export async function synchronizeActivityLog(
   }
 
   try {
-    console.log(`Starting ActivityLog sync (legacy import via Realm) with appVersion: ${appVersion}`);
-    
+    console.log(
+      `Starting ActivityLog sync (legacy import via Realm) with appVersion: ${appVersion}`
+    );
+
     // Check if one-time import has already been completed
     if (ACTIVITYLOG_ONE_TIME_IMPORT) {
-      const importCompleted = await AsyncStorage.getItem('activityLogImportCompleted');
+      const importCompleted = await AsyncStorage.getItem(
+        'activityLogImportCompleted'
+      );
       if (importCompleted === 'true') {
-        console.log('ActivityLog one-time import already completed. Skipping sync.');
+        console.log(
+          'ActivityLog one-time import already completed. Skipping sync.'
+        );
         return;
       }
     }
-    
+
     const uid = await getUID();
     if (!uid) {
       console.error('No user ID for ActivityLog synchronization.');
       return;
     }
 
-    console.log(`Synchronizing ActivityLog for UID: ${uid} (Legacy app does NOT write to ActivityLog - one-time import)`);
-    
+    console.log(
+      `Synchronizing ActivityLog for UID: ${uid} (Legacy app does NOT write to ActivityLog - one-time import)`
+    );
+
     // Step 1: Check Realm is initialized
     if (!realm) {
       console.error('Realm not initialized');
       return;
     }
-    
+
     // Step 2: ONLY read from root /ActivityLog collection
     const globalActivityLogQuery = query(collection(db, 'ActivityLog'));
     const globalSnapshot = await getDocs(globalActivityLogQuery);
@@ -514,20 +527,31 @@ export async function synchronizeActivityLog(
       }
 
       // Step 3: Use timestamp as unique identifier to prevent duplicates
-      const entryTimestamp = globalData.timestamp instanceof Date ? globalData.timestamp : 
-                           (globalData.timestamp as any)?.toDate ? (globalData.timestamp as any).toDate() : new Date();
-      
+      const entryTimestamp =
+        globalData.timestamp instanceof Date
+          ? globalData.timestamp
+          : (globalData.timestamp as any)?.toDate
+          ? (globalData.timestamp as any).toDate()
+          : new Date();
+
       // Check if entry with this timestamp already exists in Realm
-      const existingEntryByTimestamp = realm.objects('ActivityLog').filtered('timestamp = $0', entryTimestamp);
+      const existingEntryByTimestamp = realm
+        .objects('ActivityLog')
+        .filtered('timestamp = $0', entryTimestamp);
       if (existingEntryByTimestamp.length > 0) {
-        console.log(`ActivityLog with timestamp ${entryTimestamp.toISOString()} already exists in Realm`);
+        console.log(
+          `ActivityLog with timestamp ${entryTimestamp.toISOString()} already exists in Realm`
+        );
         continue;
       }
 
       // Generate consistent ID based on timestamp to avoid duplicates
       const timestampId = entryTimestamp.getTime().toString();
-      const existingEntryById = realm.objectForPrimaryKey('ActivityLog', timestampId);
-      
+      const existingEntryById = realm.objectForPrimaryKey(
+        'ActivityLog',
+        timestampId
+      );
+
       if (!existingEntryById) {
         // Step 4: Write to Realm first (this will then sync to Users/{uid}/ActivityLog via existing sync)
         realm.write(() => {
@@ -543,21 +567,33 @@ export async function synchronizeActivityLog(
             uid: uid,
           });
         });
-        console.log(`Imported ActivityLog ${timestampId} (timestamp: ${entryTimestamp.toISOString()}) to Realm`);
+        console.log(
+          `Imported ActivityLog ${timestampId} (timestamp: ${entryTimestamp.toISOString()}) to Realm`
+        );
         importedCount++;
       } else {
         console.log(`ActivityLog ${timestampId} already exists in Realm`);
       }
     }
 
-    console.log(`ActivityLog synchronization (legacy import via Realm) completed. Imported ${importedCount} entries.`);
-    
+    console.log(
+      `ActivityLog synchronization (legacy import via Realm) completed. Imported ${importedCount} entries.`
+    );
+
     // Step 5: Trigger sync from Realm to Users/{uid}/ActivityLog
     if (importedCount > 0) {
-      console.log('Triggering sync of imported ActivityLog entries to Users/{uid}/ActivityLog...');
-      await syncRealmRowsToFirestore('ActivityLog', realm.objects('ActivityLog').filtered('synced = false').map(obj => obj.toJSON()));
+      console.log(
+        'Triggering sync of imported ActivityLog entries to Users/{uid}/ActivityLog...'
+      );
+      await syncRealmRowsToFirestore(
+        'ActivityLog',
+        realm
+          .objects('ActivityLog')
+          .filtered('synced = false')
+          .map((obj) => obj.toJSON())
+      );
     }
-    
+
     // Mark one-time import as completed
     if (ACTIVITYLOG_ONE_TIME_IMPORT) {
       await AsyncStorage.setItem('activityLogImportCompleted', 'true');
@@ -589,7 +625,9 @@ export async function synchronizeDiscussions(
       return;
     }
 
-    console.log(`Synchronizing Discussion for UID: ${uid} (Legacy app continues to write - ongoing sync needed)`);
+    console.log(
+      `Synchronizing Discussion for UID: ${uid} (Legacy app continues to write - ongoing sync needed)`
+    );
 
     // Step 1: Check Realm is initialized
     if (!realm) {
@@ -615,20 +653,31 @@ export async function synchronizeDiscussions(
       }
 
       // Step 3: Use timestamp as unique identifier to prevent duplicates
-      const entryTimestamp = globalData.timestamp instanceof Date ? globalData.timestamp :
-                           (globalData.timestamp as any)?.toDate ? (globalData.timestamp as any).toDate() : new Date();
-      
+      const entryTimestamp =
+        globalData.timestamp instanceof Date
+          ? globalData.timestamp
+          : (globalData.timestamp as any)?.toDate
+          ? (globalData.timestamp as any).toDate()
+          : new Date();
+
       // Check if entry with this timestamp already exists in Realm
-      const existingEntryByTimestamp = realm.objects('Discussion').filtered('timestamp = $0', entryTimestamp);
+      const existingEntryByTimestamp = realm
+        .objects('Discussion')
+        .filtered('timestamp = $0', entryTimestamp);
       if (existingEntryByTimestamp.length > 0) {
-        console.log(`Discussion with timestamp ${entryTimestamp.toISOString()} already exists in Realm`);
+        console.log(
+          `Discussion with timestamp ${entryTimestamp.toISOString()} already exists in Realm`
+        );
         continue;
       }
 
       // Generate consistent ID based on timestamp to avoid duplicates
       const timestampId = entryTimestamp.getTime().toString();
-      const existingEntryById = realm.objectForPrimaryKey('Discussion', timestampId);
-      
+      const existingEntryById = realm.objectForPrimaryKey(
+        'Discussion',
+        timestampId
+      );
+
       if (!existingEntryById) {
         // Step 4: Write to Realm first (this will then sync to Users/{uid}/Discussion via existing sync)
         realm.write(() => {
@@ -643,19 +692,31 @@ export async function synchronizeDiscussions(
             uid: uid,
           });
         });
-        console.log(`Imported Discussion ${timestampId} (timestamp: ${entryTimestamp.toISOString()}) to Realm`);
+        console.log(
+          `Imported Discussion ${timestampId} (timestamp: ${entryTimestamp.toISOString()}) to Realm`
+        );
         importedCount++;
       } else {
         console.log(`Discussion ${timestampId} already exists in Realm`);
       }
     }
 
-    console.log(`Discussion synchronization (legacy import via Realm) completed. Imported ${importedCount} entries.`);
-    
+    console.log(
+      `Discussion synchronization (legacy import via Realm) completed. Imported ${importedCount} entries.`
+    );
+
     // Step 5: Trigger sync from Realm to Users/{uid}/Discussion
     if (importedCount > 0) {
-      console.log('Triggering sync of imported Discussion entries to Users/{uid}/Discussion...');
-      await syncRealmRowsToFirestore('Discussion', realm.objects('Discussion').filtered('synced = false').map(obj => obj.toJSON()));
+      console.log(
+        'Triggering sync of imported Discussion entries to Users/{uid}/Discussion...'
+      );
+      await syncRealmRowsToFirestore(
+        'Discussion',
+        realm
+          .objects('Discussion')
+          .filtered('synced = false')
+          .map((obj) => obj.toJSON())
+      );
     }
   } catch (error) {
     console.error('Error synchronizing Discussion:', error);
@@ -2473,19 +2534,35 @@ export async function deleteAllRemoteChangeLogs() {
 }
 
 // --- Change Log Sync Helpers for Remote ---
-export async function readChangeLog({ tableName }: { tableName: string }): Promise<any[]> {
+export async function readChangeLog({
+  tableName,
+}: {
+  tableName: string;
+}): Promise<any[]> {
   // TODO: Implement remote changelog fetch logic
   return [];
 }
 
-export async function applyChangeLogOperation(tableName: string, entry: any): Promise<void> {
+export async function applyChangeLogOperation(
+  tableName: string,
+  entry: any
+): Promise<void> {
   // TODO: Implement remote apply logic
 }
 
-export async function addOrUpdateChangeLogEntry(tableName: string, rowId: string, operation: string, timestamp: Date, data?: any): Promise<void> {
+export async function addOrUpdateChangeLogEntry(
+  tableName: string,
+  rowId: string,
+  operation: string,
+  timestamp: Date,
+  data?: any
+): Promise<void> {
   // TODO: Implement remote add/update logic
 }
 
-export async function markChangeLogEntrySynced(tableName: string, rowId: string): Promise<void> {
+export async function markChangeLogEntrySynced(
+  tableName: string,
+  rowId: string
+): Promise<void> {
   // TODO: Implement remote mark as synced logic
 }

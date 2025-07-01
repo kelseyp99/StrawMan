@@ -1,100 +1,72 @@
-# 📌 Learn more: https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files
-
-# ✅ Dependencies
+# Node modules
 node_modules/
 
-# ✅ Expo Files
-.expo/
-.expo-shared/
-dist/
-web-build/
-expo-env.d.ts
+# Ignore generated Android resource images
+android/app/src/main/res/drawable-hdpi/*
+android/app/src/main/res/drawable-mdpi/*
+android/app/src/main/res/drawable-xhdpi/*
+android/app/src/main/res/drawable-xxhdpi/*
+android/app/src/main/res/drawable-xxxhdpi/*
 
-# ✅ Native Builds & Credentials
-*.orig.*
-*.jks
-*.p8
-*.p12
-*.key
-*.mobileprovision
-*.apk
-*.aab
 
-# ✅ Metro Bundler
-.metro-health-check*
-
-# ✅ Debugging Logs
+# Logs
+logs.txt
+*.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-*.log
 
-# ✅ macOS System Files
+# Build output
+build/
+*.apk
+*.aab
+*.tar.gz
+
+# Expo
+.expo/
+.expo-shared/
+
+# Metro
+.cache/
+
+# macOS
 .DS_Store
-*.pem
 
-# ✅ Local Environment Variables
-.env*
-.env.local
-.env.development
-.env.production
-.env.test
+# Android
+android/app/build/
+android/.gradle/
+android/local.properties
+android/.idea/
 
-# ✅ TypeScript Build Info
+# iOS
+ios/
+
+# Environment
+.env
+.env.*
+
+# VSCode
+.vscode/
+
+# Misc
+*.keystore
+*.jks
+
+# Backup
+*-backup/
+
+# Coverage
+coverage/
+
+# TypeScript
 *.tsbuildinfo
 
-# ✅ Miscellaneous
-app-example/
-junk/
-crash_log.txt
-backup_log.txt
+# Others
+*.swp
+*.swo
 
-# ✅ Realm Files
-*.realm
-*.realm.lock
+# Ignore backup config
+app.json.bak
 
-# ✅ Ignore all image files
-*.png
-*.jpg
-*.jpeg
-*.gif
-
-# ✅ Allow images in assets/images/
-!/assets/images/**/*.png
-!/assets/images/**/*.jpg
-!/assets/images/**/*.jpeg
-!/assets/images/**/*.gif
-
-# ✅ Ignore all JavaScript files
-*.js
-
-# ✅ Explicitly include necessary JavaScript files
-!metro.config.js
-!app.config.js
-
-# ✅ Temporary build script
-src/utils/scripts/build_and_distribute.sh
-
-# ✅ Other generated files
-lifelog-f2904-b5d58f4dfdec.json
-*.tflite
-*.bin
-
-# ✅ Ensure shell scripts use LF line endings
-*.sh text eol=lf
-
-# Ignore override config file
-/config-overrides.js
-
-# Ignore junk folder
-/junk/
-
-# Ignore these folders in src
-/src/assets/
-/src/components/
-/src/css/
-/src/js/
-/src/scripts/
-
-# Ignore JS files anywhere in src
-/src/**/*.js
+# Ignore SmartCities workspace
+SmartCities.code-workspace

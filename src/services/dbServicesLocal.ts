@@ -307,12 +307,16 @@ export async function logSyncEntry(entry: SyncEntry): Promise<void> {
   }
   try {
     realm?.write(() => {
-      realm?.create('SyncEntry', {
-        id: entry.id,
-        tableName: entry.tableName,
-        operation: entry.operation,
-        timestamp: entry.timestamp,
-      }, UpdateMode.Modified); // Use UpdateMode.Modified to update existing entries
+      realm?.create(
+        'SyncEntry',
+        {
+          id: entry.id,
+          tableName: entry.tableName,
+          operation: entry.operation,
+          timestamp: entry.timestamp,
+        },
+        UpdateMode.Modified
+      ); // Use UpdateMode.Modified to update existing entries
     });
     console.log('Logged SyncEntry to Realm:', entry);
   } catch (error) {
@@ -688,8 +692,8 @@ export async function addOrUpdateCategory(
   }
   try {
     let categoryId = id;
-    const currentUID = await getUID() || 'local_user';
-    
+    const currentUID = (await getUID()) || 'local_user';
+
     realm.write(() => {
       if (id) {
         const existing = realm?.objectForPrimaryKey<Category>('Category', id);
@@ -982,11 +986,13 @@ export async function processPendingTells(): Promise<void> {
 
   try {
     console.log('Processing pending tell statements...');
-    
+
     // Get all uncleared "tell" discussions
     const discussions = realm.objects<Discussion>('Discussion');
-    const pendingTells = discussions.filtered('typeSay == "tell" AND cleared == false');
-    
+    const pendingTells = discussions.filtered(
+      'typeSay == "tell" AND cleared == false'
+    );
+
     if (pendingTells.length === 0) {
       console.log('No pending tell statements to process.');
       return;
@@ -996,16 +1002,20 @@ export async function processPendingTells(): Promise<void> {
 
     // Get available categories for rule processing
     const categories = await getCategoryNames();
-    
+
     for (const discussion of pendingTells) {
       console.log('Processing tell:', discussion.description);
 
       // Check if ActivityLog already exists for this discussion
-      const existingActivityLog = realm.objects<ActivityLog>('ActivityLog')
+      const existingActivityLog = realm
+        .objects<ActivityLog>('ActivityLog')
         .filtered('discussionId == $0', discussion.id);
-      
+
       if (existingActivityLog.length > 0) {
-        console.log('ActivityLog already exists for discussion:', discussion.id);
+        console.log(
+          'ActivityLog already exists for discussion:',
+          discussion.id
+        );
         // Mark discussion as cleared
         realm.write(() => {
           discussion.cleared = true;
@@ -1015,7 +1025,7 @@ export async function processPendingTells(): Promise<void> {
 
       // Import processPhrase to apply rules and get category
       const { processPhrase } = require('./phraseProcessor');
-      
+
       try {
         // Use processPhrase to determine category and description
         const result = await processPhrase(
@@ -1039,15 +1049,20 @@ export async function processPendingTells(): Promise<void> {
           lockedDescription: false,
         });
 
-        console.log(`Created ActivityLog for discussion ${discussion.id} with category: ${result.category}`);
+        console.log(
+          `Created ActivityLog for discussion ${discussion.id} with category: ${result.category}`
+        );
 
         // Mark discussion as cleared
         realm.write(() => {
           discussion.cleared = true;
         });
-
       } catch (error) {
-        console.error('Error processing tell statement:', discussion.description, error);
+        console.error(
+          'Error processing tell statement:',
+          discussion.description,
+          error
+        );
       }
     }
 
@@ -1121,7 +1136,7 @@ export async function syncToCloud(
   method?: string
 ): Promise<void> {
   console.log(`Local syncToCloud called for table: ${tableName}`);
-  
+
   if (!realm) {
     console.error('Realm not initialized for sync');
     return;
@@ -1129,9 +1144,13 @@ export async function syncToCloud(
 
   try {
     // Get unsynced records for the specified table
-    const unsyncedRecords = realm.objects(tableName).filtered('synced == false');
-    console.log(`Found ${unsyncedRecords.length} unsynced ${tableName} records`);
-    
+    const unsyncedRecords = realm
+      .objects(tableName)
+      .filtered('synced == false');
+    console.log(
+      `Found ${unsyncedRecords.length} unsynced ${tableName} records`
+    );
+
     if (unsyncedRecords.length === 0) {
       console.log(`No unsynced ${tableName} records to sync`);
       return;
@@ -1141,16 +1160,27 @@ export async function syncToCloud(
     const recordsToSync = Array.from(unsyncedRecords).map((record: any) => ({
       ...record,
       // Convert dates to ISO strings for Firestore
-      createdAt: record.createdAt instanceof Date ? record.createdAt : new Date(record.createdAt || Date.now()),
-      updatedAt: record.updatedAt instanceof Date ? record.updatedAt : new Date(record.updatedAt || Date.now()),
+      createdAt:
+        record.createdAt instanceof Date
+          ? record.createdAt
+          : new Date(record.createdAt || Date.now()),
+      updatedAt:
+        record.updatedAt instanceof Date
+          ? record.updatedAt
+          : new Date(record.updatedAt || Date.now()),
     }));
 
     // Import remote services for syncing (use require for compatibility)
     const remote = require('./dbServicesRemote');
-    
+
     // Sync records to Firestore
-    const syncedIds = await remote.syncRealmRowsToFirestore(tableName, recordsToSync);
-    console.log(`Successfully synced ${syncedIds.length} ${tableName} records to Firestore`);
+    const syncedIds = await remote.syncRealmRowsToFirestore(
+      tableName,
+      recordsToSync
+    );
+    console.log(
+      `Successfully synced ${syncedIds.length} ${tableName} records to Firestore`
+    );
 
     // Mark synced records as synced in Realm
     if (realm) {
@@ -1164,7 +1194,9 @@ export async function syncToCloud(
       });
     }
 
-    console.log(`Marked ${syncedIds.length} ${tableName} records as synced in Realm`);
+    console.log(
+      `Marked ${syncedIds.length} ${tableName} records as synced in Realm`
+    );
   } catch (error) {
     console.error(`Error syncing ${tableName} to cloud:`, error);
     throw error;
@@ -1222,7 +1254,13 @@ export async function createRuleCandidate(data: any): Promise<void> {
 /**
  * Read local ChangeLog entries for a table, optionally filtered by synced status.
  */
-export async function readChangeLog({ tableName, synced }: { tableName: string; synced?: boolean }): Promise<any[]> {
+export async function readChangeLog({
+  tableName,
+  synced,
+}: {
+  tableName: string;
+  synced?: boolean;
+}): Promise<any[]> {
   if (!realm) throw new Error('Realm not initialized');
   let query = `tableName == $0`;
   let args: any[] = [tableName];
@@ -1238,7 +1276,10 @@ export async function readChangeLog({ tableName, synced }: { tableName: string; 
  * Apply a ChangeLog operation to the local Realm database.
  * Handles 'create', 'update', and 'delete' for the given table and rowId.
  */
-export async function applyChangeLogOperation(tableName: string, entry: any): Promise<void> {
+export async function applyChangeLogOperation(
+  tableName: string,
+  entry: any
+): Promise<void> {
   if (!realm) throw new Error('Realm not initialized');
   realm.write(() => {
     if (entry.operation === 'delete') {
@@ -1256,28 +1297,43 @@ export async function applyChangeLogOperation(tableName: string, entry: any): Pr
 /**
  * Add or update a ChangeLog entry in local Realm.
  */
-export async function addOrUpdateChangeLogEntry(tableName: string, rowId: string, operation: string, timestamp: Date, data?: any): Promise<void> {
+export async function addOrUpdateChangeLogEntry(
+  tableName: string,
+  rowId: string,
+  operation: string,
+  timestamp: Date,
+  data?: any
+): Promise<void> {
   if (!realm) throw new Error('Realm not initialized');
   realm.write(() => {
-    realm!.create('ChangeLog', {
-      id: `${tableName}_${rowId}_${new Date(timestamp).getTime()}`,
-      tableName,
-      rowId,
-      operation,
-      timestamp: new Date(timestamp),
-      synced: false,
-      data: data || null,
-    }, Realm.UpdateMode.Modified);
+    realm!.create(
+      'ChangeLog',
+      {
+        id: `${tableName}_${rowId}_${new Date(timestamp).getTime()}`,
+        tableName,
+        rowId,
+        operation,
+        timestamp: new Date(timestamp),
+        synced: false,
+        data: data || null,
+      },
+      Realm.UpdateMode.Modified
+    );
   });
 }
 
 /**
  * Mark a ChangeLog entry as synced in local Realm.
  */
-export async function markChangeLogEntrySynced(tableName: string, rowId: string): Promise<void> {
+export async function markChangeLogEntrySynced(
+  tableName: string,
+  rowId: string
+): Promise<void> {
   if (!realm) throw new Error('Realm not initialized');
   realm.write(() => {
-    const entries = realm!.objects('ChangeLog').filtered('tableName == $0 AND rowId == $1', tableName, rowId);
+    const entries = realm!
+      .objects('ChangeLog')
+      .filtered('tableName == $0 AND rowId == $1', tableName, rowId);
     for (const entry of entries) {
       entry.synced = true;
     }
@@ -1720,11 +1776,18 @@ export async function deleteCategoryLocal(id: string): Promise<void> {
 }
 
 // --- Stubs for missing local sync helpers ---
-export async function syncTableFromRemote(tableName: string, newRows: any[]): Promise<void> {
+export async function syncTableFromRemote(
+  tableName: string,
+  newRows: any[]
+): Promise<void> {
   // TODO: Implement logic to sync table from remote
 }
 
-export function logChange(tableName: string, rowId: string, operation: string): void {
+export function logChange(
+  tableName: string,
+  rowId: string,
+  operation: string
+): void {
   // TODO: Implement local log change logic
 }
 
@@ -1732,6 +1795,11 @@ export async function deleteAllLocalRows(): Promise<void> {
   // TODO: Implement logic to delete all local rows
 }
 
-export async function addChangeLogEntry(tableName: string, rowId: string, operation: string, timestamp: Date): Promise<void> {
+export async function addChangeLogEntry(
+  tableName: string,
+  rowId: string,
+  operation: string,
+  timestamp: Date
+): Promise<void> {
   // TODO: Implement logic to add a change log entry
 }

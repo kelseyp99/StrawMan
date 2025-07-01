@@ -1,5 +1,5 @@
 {
-  "name": "LifeLog",
+  "name": "lifelog",
   "main": "expo-router/entry",
   "version": "1.1.0",
   "appId": "com.anonymous.lifelog",
@@ -30,6 +30,7 @@
     "date-fns": "^4.1.0",
     "dotenv": "^16.4.7",
     "expo": "~52.0.47",
+    "expo-asset": "~11.0.5",
     "expo-auth-session": "~6.0.3",
     "expo-blur": "~14.0.3",
     "expo-constants": "~17.0.7",
@@ -104,7 +105,8 @@
     "doctor": {
       "reactNativeDirectoryCheck": {
         "exclude": [
-          "react-native-document-picker"
+          "react-native-document-picker",
+          "react-native-iap"
         ],
         "listUnknownPackages": false
       }

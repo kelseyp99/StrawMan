@@ -10,7 +10,12 @@ import {
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
 import { useAuth } from './context/AuthContext';
-import { canAccessLoginAndSync, getSubscriptionWarningLevel, getSubscriptionDaysLeft, isSubscriptionExpired } from '../src/services/planManager';
+import {
+  canAccessLoginAndSync,
+  getSubscriptionWarningLevel,
+  getSubscriptionDaysLeft,
+  isSubscriptionExpired,
+} from '../src/services/planManager';
 
 export const SettingsContext = React.createContext({
   syncWithCloud: false,
@@ -24,7 +29,9 @@ export default function SettingsScreen() {
   const [syncWithCloud, setSyncWithCloud] = useState(false);
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
   const [isPaidCustomer, setIsPaidCustomer] = useState(false);
-  const [subscriptionWarning, setSubscriptionWarning] = useState<'none' | '30days' | '7days' | '1day' | 'expired'>('none');
+  const [subscriptionWarning, setSubscriptionWarning] = useState<
+    'none' | '30days' | '7days' | '1day' | 'expired'
+  >('none');
   const [daysLeft, setDaysLeft] = useState<number>(0);
   const router = useRouter();
   const { isLogged, setIsLogged, setIsPaid } = useAuth();
@@ -37,7 +44,7 @@ export default function SettingsScreen() {
       const paid = await AsyncStorage.getItem('isPaidUser');
       const shouldBePaidUser = paid === 'true' && isLogged;
       setIsPaidCustomer(shouldBePaidUser);
-      
+
       // If paid user status doesn't match login status, update storage
       if (paid === 'true' && !isLogged) {
         await AsyncStorage.setItem('isPaidUser', 'false');
@@ -133,18 +140,36 @@ export default function SettingsScreen() {
           <View style={{ flex: 1 }}>
             <Text>Sync with Cloud</Text>
             <Text style={{ fontSize: 12, color: '#666' }}>
-              {isPaidCustomer ? 'Available with paid features' : 'Requires paid features'}
+              {isPaidCustomer
+                ? 'Available with paid features'
+                : 'Requires paid features'}
             </Text>
           </View>
           <Switch value={syncWithCloud} onValueChange={handleSyncToggle} />
         </View>
         {/* Subscription Expiry Warning */}
         {subscriptionWarning !== 'none' && (
-          <View style={{ backgroundColor: subscriptionWarning === 'expired' ? '#ffcccc' : '#fffbe6', padding: 10, borderRadius: 6, marginBottom: 15 }}>
-            <Text style={{ color: subscriptionWarning === 'expired' ? '#b71c1c' : '#bfa100', fontWeight: 'bold' }}>
+          <View
+            style={{
+              backgroundColor:
+                subscriptionWarning === 'expired' ? '#ffcccc' : '#fffbe6',
+              padding: 10,
+              borderRadius: 6,
+              marginBottom: 15,
+            }}
+          >
+            <Text
+              style={{
+                color:
+                  subscriptionWarning === 'expired' ? '#b71c1c' : '#bfa100',
+                fontWeight: 'bold',
+              }}
+            >
               {subscriptionWarning === 'expired'
                 ? 'Your subscription has expired. Please renew to continue using paid features.'
-                : `Your subscription expires in ${daysLeft} day${daysLeft === 1 ? '' : 's'}. Please renew soon!`}
+                : `Your subscription expires in ${daysLeft} day${
+                    daysLeft === 1 ? '' : 's'
+                  }. Please renew soon!`}
             </Text>
           </View>
         )}
@@ -158,7 +183,14 @@ export default function SettingsScreen() {
             marginBottom: 15,
           }}
         >
-          <Text style={{ fontSize: 16, fontWeight: 'bold', marginBottom: 10, color: '#666' }}>
+          <Text
+            style={{
+              fontSize: 16,
+              fontWeight: 'bold',
+              marginBottom: 10,
+              color: '#666',
+            }}
+          >
             Developer Options
           </Text>
         </View>
@@ -182,25 +214,25 @@ export default function SettingsScreen() {
               if (value && !isLogged) {
                 // Enabling paid features requires Firebase login
                 Alert.alert(
-                  'Login Required', 
+                  'Login Required',
                   'To enable paid features, you need to log in with your Firebase account. You will be redirected to the login screen.',
                   [
                     { text: 'Cancel', style: 'cancel' },
-                    { 
-                      text: 'Login', 
-                      onPress: () => router.push('/login')
-                    }
+                    {
+                      text: 'Login',
+                      onPress: () => router.push('/login'),
+                    },
                   ]
                 );
                 return;
               }
-              
+
               if (!value) {
                 // Disabling paid features - switch to local mode
                 setIsPaid(false);
                 await AsyncStorage.setItem('isPaidUser', 'false');
                 Alert.alert(
-                  'Switched to Local Mode', 
+                  'Switched to Local Mode',
                   'You are now using local-only mode. Your data will be stored locally only.'
                 );
               } else {
@@ -208,11 +240,11 @@ export default function SettingsScreen() {
                 setIsPaid(true);
                 await AsyncStorage.setItem('isPaidUser', 'true');
                 Alert.alert(
-                  'Paid Features Enabled', 
+                  'Paid Features Enabled',
                   'You can now enable cloud sync and access premium features.'
                 );
               }
-              
+
               setIsPaidCustomer(value);
             }}
           />

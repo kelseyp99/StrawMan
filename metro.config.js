@@ -20,7 +20,7 @@ module.exports = (async () => {
   // Block problematic packages
   config.resolver.blockList = [
     ...(Array.isArray(config.resolver.blockList) ? config.resolver.blockList : []),
-    /node_modules\/react-native-google-mobile-ads\/.*/, // Block on all platforms for now
+    // /node_modules\/react-native-google-mobile-ads\/.*/, // Block on all platforms for now (DISABLED FOR NATIVE BUILDS)
     /#realm\.node$/, // Block Node.js realm bindings
     /node_modules\/realm\/prebuilds\/node\/.*/, // Block Node.js prebuilds
   ];

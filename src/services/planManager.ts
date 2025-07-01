@@ -6,8 +6,8 @@ import { realm } from '../realmConfig';
 export type PlanType = 'free' | 'limited' | 'premium';
 
 export const PLAN_SKUS = {
-  LIMITED: 'plan_limited_10',   // $10 SKU
-  PREMIUM: 'plan_premium_30',  // $30 SKU
+  LIMITED: 'plan_limited_10', // $10 SKU
+  PREMIUM: 'plan_premium_30', // $30 SKU
 };
 
 export async function setPlanBySku(sku: string) {
@@ -82,7 +82,11 @@ export async function setYearlySubscriptionDates() {
 
 export function getSubscriptionDaysLeft(): number {
   const user = getUserFromRealm();
-  if (!user?.subscriptionExpiryDate || !(user.subscriptionExpiryDate instanceof Date)) return 0;
+  if (
+    !user?.subscriptionExpiryDate ||
+    !(user.subscriptionExpiryDate instanceof Date)
+  )
+    return 0;
   const now = new Date();
   const expiry = user.subscriptionExpiryDate;
   return Math.ceil((expiry.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
@@ -92,7 +96,12 @@ export function isSubscriptionExpired(): boolean {
   return getSubscriptionDaysLeft() <= 0;
 }
 
-export function getSubscriptionWarningLevel(): 'none' | '30days' | '7days' | '1day' | 'expired' {
+export function getSubscriptionWarningLevel():
+  | 'none'
+  | '30days'
+  | '7days'
+  | '1day'
+  | 'expired' {
   const days = getSubscriptionDaysLeft();
   if (days <= 0) return 'expired';
   if (days <= 1) return '1day';

@@ -1,51 +1,6 @@
 ﻿{
   "expo": {
     "name": "LifeLog - Personal Tracker",
-    "slug": "LifeLog",
-    "description": "Offline-first personal life tracking app with optional Firebase authentication for cloud sync. Track your daily activities, habits, and goals with complete privacy control. Features intelligent data tables with chronological sorting, visual status indicators, and robust text processing for seamless data viewing and management.",
-    "orientation": "portrait",
-    "icon": "src/assets/images/ask-janet-icon.png",
-    "scheme": "lifelog",
-    "userInterfaceStyle": "automatic",
-    "ios": {
-      "supportsTablet": true
-    },
-    "android": {
-      "adaptiveIcon": {
-        "foregroundImage": "src/assets/images/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
-      },
-      "permissions": [
-        "android.permission.WRITE_EXTERNAL_STORAGE",
-        "android.permission.READ_EXTERNAL_STORAGE",
-        "android.permission.MANAGE_EXTERNAL_STORAGE"
-      ],
-      "package": "com.anonymous.lifelog"
-    },
-    "plugins": [
-      "expo-router",
-      [
-        "realm",
-        {
-          "sync": false,
-          "platform": "react-native"
-        }
-      ]
-    ],
-    "web": {
-      "bundler": "metro",
-      "output": "static",
-      "favicon": "./assets/images/favicon.png"
-    },
-    "extra": {
-      "eas": {
-        "projectId": "a27bcb78-af2a-4ef8-adeb-7fae3e17731d"
-      }
-    },
-    "owner": "kelseyp99",
-    "jsEngine": "hermes"
-  },
-  "react-native-google-mobile-ads": {
-    "android_app_id": "ca-app-pub-3940256099942544~3347511713"
+    "slug": "LifeLog"
   }
 }

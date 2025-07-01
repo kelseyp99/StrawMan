@@ -2,7 +2,10 @@ import React, { useState } from 'react';
 import { View, StyleSheet, Alert, TouchableOpacity, Text } from 'react-native';
 import { useAuth } from '../context/AuthContext';
 import { useSync } from '../context/SyncContext';
-import { UpgradePromptModal, PlanModal } from '../../src/components/UpgradeModals';
+import {
+  UpgradePromptModal,
+  PlanModal,
+} from '../../src/components/UpgradeModals';
 
 export default function ToolsScreen() {
   const { isLogged, isPaid } = useAuth();
@@ -32,10 +35,7 @@ export default function ToolsScreen() {
   return (
     <View style={styles.container}>
       <TouchableOpacity
-        style={[
-          styles.syncButton,
-          isSyncing ? { opacity: 0.5 } : null,
-        ]}
+        style={[styles.syncButton, isSyncing ? { opacity: 0.5 } : null]}
         onPress={handleManualSync}
         disabled={isSyncing}
       >
@@ -61,7 +61,10 @@ export default function ToolsScreen() {
         onClose={() => setShowPlans(false)}
         onSelectPlan={(plan) => {
           setShowPlans(false);
-          Alert.alert('Selected Plan', plan === 'limited' ? '$10 Limited Plan' : '$30 Premium Plan');
+          Alert.alert(
+            'Selected Plan',
+            plan === 'limited' ? '$10 Limited Plan' : '$30 Premium Plan'
+          );
         }}
       />
     </View>
