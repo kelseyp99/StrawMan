@@ -11,6 +11,8 @@ import {
   Alert,
   Platform,
 } from 'react-native';
+import { TextInput } from 'react-native';
+import { Clipboard } from '@react-native-clipboard/clipboard';
 import { getModelAPIkey } from '../../src/services/apiUtils';
 import { useRouter } from 'expo-router';
 import { useAuth } from '../context/AuthContext';
@@ -45,7 +47,6 @@ import ActionButtons from '../../src/components/ActionButtons';
 import SettingsButton from '../../src/components/SettingsButton';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import RNFS from 'react-native-fs';
-import Clipboard from '@react-native-clipboard/clipboard';
 import { check, request, PERMISSIONS, RESULTS } from 'react-native-permissions';
 import { setUID } from '../../src/utils/uidManager';
 import * as FileSystem from 'expo-file-system';
@@ -55,7 +56,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSync } from '../context/SyncContext';
 import { extractAndImportLegacyFirestoreData } from '../../src/services/dbServicesRemote';
 import { canAccessLoginAndSync } from '../../src/services/planManager';
-// import RNIap, { purchaseUpdatedListener, purchaseErrorListener, ProductPurchase, SubscriptionPurchase } from 'react-native-iap';
+// IAP temporarily disabled
 // import { setPlanBySku, PLAN_SKUS } from '../../src/services/planManager';
 
 // App version from app.json
@@ -125,7 +126,7 @@ export default function AskJanet() {
   >([]);
   const [discussion, setDiscussion] = useState<Discussion | null>(null);
   const router = useRouter();
-  const { isLogged, loading: authLoading, setIsLogged } = useAuth(); // Use local auth context
+  const { isLogged, loading: authLoading, setIsLogged, setIsPaid } = useAuth(); // Use local auth context
   const [responses, setResponses] = useState<
     { responseType: string; text: string }[]
   >([]);
@@ -1016,28 +1017,54 @@ export default function AskJanet() {
         const syncWithCloud =
           (await AsyncStorage.getItem('syncWithCloud')) === 'true';
         if (syncWithCloud) {
+          console.log('🔄 Sync enabled, attempting Firebase operations...');
+          
+          // Check if we have a real Firebase user (not hardcoded)
+          const firebaseUser = auth.currentUser;
+          if (!firebaseUser) {
+            console.warn('⚠️ No Firebase authentication - skipping Firebase sync operations');
+            console.log('💡 Using hardcoded UID for local-only mode');
+            return;
+          }
+          
+          console.log('✅ Firebase user authenticated, proceeding with sync...');
+          
           // First: Import legacy data from root Firestore to Realm
           try {
             await synchronizeDiscussions('1.0.0');
             await synchronizeActivityLog('1.0.0');
-            console.log('Legacy import completed on startup');
+            console.log('✅ Legacy import completed on startup');
           } catch (error) {
-            console.warn('Legacy import failed on startup:', error);
+            console.warn('❌ Legacy import failed on startup:', error);
+            // Don't fail the entire app if legacy import fails
           }
 
           // Then: Sync Realm data to user-level Firestore
-          dbServices
-            .syncToCloud('Discussion')
-            .catch((e) => console.warn('Discussion syncToCloud failed:', e));
-          dbServices
-            .syncToCloud('ActivityLog')
-            .catch((e) => console.warn('ActivityLog syncToCloud failed:', e));
-          dbServices
-            .syncToCloud('Category')
-            .catch((e) => console.warn('Category syncToCloud failed:', e));
+          try {
+            await dbServices.syncToCloud('Discussion');
+            console.log('✅ Discussion syncToCloud completed');
+          } catch (e) {
+            console.warn('❌ Discussion syncToCloud failed:', e);
+          }
+          
+          try {
+            await dbServices.syncToCloud('ActivityLog');
+            console.log('✅ ActivityLog syncToCloud completed');
+          } catch (e) {
+            console.warn('❌ ActivityLog syncToCloud failed:', e);
+          }
+          
+          try {
+            await dbServices.syncToCloud('Category');
+            console.log('✅ Category syncToCloud completed');
+          } catch (e) {
+            console.warn('❌ Category syncToCloud failed:', e);
+          }
+        } else {
+          console.log('🚫 Sync disabled - skipping Firebase operations');
         }
       } catch (e) {
-        console.warn('Could not check syncWithCloud:', e);
+        console.warn('❌ Could not check syncWithCloud:', e);
       }
     })();
   }, []);
@@ -1057,44 +1084,13 @@ export default function AskJanet() {
   }, []);
 
   // --- IAP Subscription Listener Integration ---
-//   useEffect(() => {
-//     let purchaseUpdateSubscription: any;
-//     let purchaseErrorSubscription: any;
-// 
-//     async function handlePurchase(purchase: any) {
-//       // Check SKU and update plan/subscription dates
-//       if (purchase.productId === PLAN_SKUS.PREMIUM) {
-//         await setPlanBySku(PLAN_SKUS.PREMIUM);
-//       } else if (purchase.productId === PLAN_SKUS.LIMITED) {
-//         await setPlanBySku(PLAN_SKUS.LIMITED);
-//       }
-//       // Optionally, finish the transaction if needed
-//       try {
-//         await RNIap.finishTransaction({ purchase });
-//       } catch (e) {
-//         console.warn('IAP finishTransaction error:', e);
-//       }
-//     }
-// 
-//     RNIap.initConnection().then(() => {
-//       purchaseUpdateSubscription = purchaseUpdatedListener(async (purchase) => {
-//         try {
-//           await handlePurchase(purchase);
-//         } catch (e) {
-//           console.warn('IAP purchase update error:', e);
-//         }
-//       });
-//       purchaseErrorSubscription = purchaseErrorListener((error) => {
-//         console.warn('IAP purchase error:', error);
-//       });
-//     });
-// 
-//     return () => {
-//       if (purchaseUpdateSubscription) purchaseUpdateSubscription.remove();
-//       if (purchaseErrorSubscription) purchaseErrorSubscription.remove();
-//       RNIap.endConnection();
-//     };
-//   }, []);
+  useEffect(() => {
+    console.warn('IAP functionality temporarily disabled to prevent crashes');
+    // IAP code disabled until react-native-iap is properly installed
+    return () => {
+      // No cleanup needed when IAP is disabled
+    };
+  }, []);
 
   if (loadingAuth || authLoading)
     return <ActivityIndicator size="large" color="#0000ff" />;
@@ -1238,6 +1234,32 @@ export default function AskJanet() {
           </TouchableOpacity>
         )}
       />
+      {/* Debug sync button */}
+      <View style={styles.saveButtons}>
+        <TouchableOpacity
+          style={styles.saveButton}
+          onPress={async () => {
+            try {
+              console.log('🔧 [DEBUG] Setting up paid user and sync...');
+              await AsyncStorage.setItem('isPaidUser', 'true');
+              await AsyncStorage.setItem('syncWithCloud', 'true');
+              await AsyncStorage.setItem('userPlan', 'premium');
+              
+              console.log('🔧 [DEBUG] Triggering manual sync...');
+              const { triggerSync: syncFunction } = useSync();
+              await syncFunction();
+              console.log('🔧 [DEBUG] Manual sync complete');
+              
+              Alert.alert('Debug', 'Sync triggered with paid user settings');
+            } catch (error) {
+              console.error('🔧 [DEBUG] Error:', error);
+              Alert.alert('Debug Error', String(error));
+            }
+          }}
+        >
+          <Text style={styles.saveButtonText}>🔧 Enable Sync & Test</Text>
+        </TouchableOpacity>
+      </View>
       <View style={styles.bottomContainer}>
         <Pressable onPress={toggleMenu} style={styles.hamburger}>
           <Icon name="menu" size={24} color="#333" />

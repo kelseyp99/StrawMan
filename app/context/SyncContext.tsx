@@ -26,7 +26,7 @@ export const SyncProvider: React.FC<{ children: React.ReactNode }> = ({
     setIsSyncing(true);
     try {
       // Check if user is paid and has sync enabled before syncing
-      const paid = await AsyncStorage.getItem('isPaidCustomer');
+      const paid = await AsyncStorage.getItem('isPaidUser');
       const syncEnabled = await AsyncStorage.getItem('syncWithCloud');
 
       if (paid === 'true' && syncEnabled === 'true') {
@@ -34,7 +34,7 @@ export const SyncProvider: React.FC<{ children: React.ReactNode }> = ({
         await syncFromRemote();
         console.log('[SYNC] Sync complete');
       } else {
-        console.log('[SYNC] Sync skipped - user not paid or sync disabled');
+        console.log('[SYNC] Sync skipped - user not paid or sync disabled', { paid, syncEnabled });
       }
 
       setLastSync(Date.now());

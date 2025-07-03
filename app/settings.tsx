@@ -16,6 +16,7 @@ import {
   getSubscriptionDaysLeft,
   isSubscriptionExpired,
 } from '../src/services/planManager';
+import DebugSyncButton from '../src/components/DebugSyncButton';
 
 export const SettingsContext = React.createContext({
   syncWithCloud: false,
@@ -293,6 +294,9 @@ export default function SettingsScreen() {
             </View>
           </View>
         </Modal>
+        
+        {/* Debug button for testing sync functionality */}
+        <DebugSyncButton />
       </View>
     </SettingsContext.Provider>
   );

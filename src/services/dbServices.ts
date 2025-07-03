@@ -13,12 +13,14 @@ async function shouldUseRemote(): Promise<boolean> {
   try {
     // First check if Firestore is enabled
     if (!ENABLE_FIRESTORE) {
+      console.log('[DEBUG] shouldUseRemote: Firestore disabled');
       return false;
     }
 
     const paid = await isPaidUser();
     const syncWithCloud =
       (await AsyncStorage.getItem('syncWithCloud')) === 'true';
+    console.log('[DEBUG] shouldUseRemote:', { paid, syncWithCloud, result: paid && syncWithCloud });
     return paid && syncWithCloud;
   } catch (e) {
     console.warn('Could not check remote sync settings:', e);
@@ -912,9 +914,17 @@ export async function synchronizeDiscussions(
 export async function synchronizeCategories(appVersion: string): Promise<void> {
   console.log('synchronizeCategories called with appVersion:', appVersion);
   try {
-    if (await shouldUseRemoteForCategories()) {
+    const useRemoteCategories = await shouldUseRemoteForCategories();
+    console.log('[DEBUG] synchronizeCategories - useRemoteCategories:', useRemoteCategories);
+    
+    if (useRemoteCategories) {
+      console.log('[DEBUG] synchronizeCategories - calling remote.synchronizeCategories');
       await remote.synchronizeCategories(appVersion);
+    } else {
+      console.log('[DEBUG] synchronizeCategories - skipping remote sync');
     }
+    
+    console.log('[DEBUG] synchronizeCategories - calling local.synchronizeCategories');
     await local.synchronizeCategories(appVersion);
     const uid = (await getUID()) || 'unknown';
     await logSyncEntry({
