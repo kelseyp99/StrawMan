@@ -1496,6 +1496,12 @@ const MainComponent: React.FC = () => {
             windowSize={5}
             getItemLayout={getItemLayout}
             style={styles.tableList}
+            contentContainerStyle={styles.tableContentContainer}
+            showsVerticalScrollIndicator={true}
+            scrollEnabled={true}
+            nestedScrollEnabled={true}
+            bounces={true}
+            overScrollMode="always"
           />
           <Modal
             animationType="slide"
@@ -1689,6 +1695,11 @@ const MainComponent: React.FC = () => {
                   maxToRenderPerBatch={10}
                   windowSize={5}
                   nestedScrollEnabled={true}
+                  showsVerticalScrollIndicator={true}
+                  scrollEnabled={true}
+                  bounces={true}
+                  style={styles.categoryListContainer}
+                  contentContainerStyle={styles.categoryListContent}
                 />
                 <TextInput
                   style={styles.modalInput}
@@ -1920,7 +1931,7 @@ const styles = StyleSheet.create({
     // Removed alignItems: 'flex-start' to allow full width
   },
   tableContainer: {
-    // flex: 1, // Removed to prevent vertical stretching
+    flex: 1, // Re-enabled for proper scrolling
     width: SCREEN_WIDTH - 20,
     alignSelf: 'center',
     justifyContent: 'flex-start', // ensure table content starts at top
@@ -1996,9 +2007,21 @@ const styles = StyleSheet.create({
     textAlign: 'left',
   },
   tableList: {
-    // flex: 1, // Removed to prevent vertical stretching
+    flex: 1, // Allow table to take available space
     width: '100%',
     alignSelf: 'stretch',
+    minHeight: 200, // Minimum height to ensure scrolling works
+  },
+  tableContentContainer: {
+    paddingBottom: 20,
+    flexGrow: 1,
+  },
+  categoryListContainer: {
+    maxHeight: 300, // Limit height to ensure scrolling
+    marginBottom: 20,
+  },
+  categoryListContent: {
+    paddingBottom: 10,
   },
   deleteButton: {
     backgroundColor: '#ff4444',
