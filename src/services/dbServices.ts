@@ -1245,7 +1245,7 @@ export async function syncFromRemote() {
   }
 }
 
-export { syncTableFromRemote } from './dbServicesLocal';
+export { syncTableFromRemote, cleanupDuplicateCategories } from './dbServicesLocal';
 
 /**
  * Utility: Run all sync functions (Discussions, ActivityLog, Categories, and full remote sync)

@@ -6,7 +6,7 @@ import {
   UpgradePromptModal,
   PlanModal,
 } from '../../src/components/UpgradeModals';
-import { synchronizeCategories } from '../../src/services/dbServices';
+import { synchronizeCategories, cleanupDuplicateCategories } from '../../src/services/dbServices';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export default function ToolsScreen() {
@@ -74,6 +74,23 @@ export default function ToolsScreen() {
         <Text style={styles.debugButtonText}>🔧 Enable Sync & Test Categories</Text>
       </TouchableOpacity>
       
+      {/* Category cleanup button */}
+      <TouchableOpacity
+        style={styles.cleanupButton}
+        onPress={async () => {
+          try {
+            console.log('🧹 [CLEANUP] Starting category duplicate cleanup...');
+            await cleanupDuplicateCategories();
+            Alert.alert('Cleanup Complete', 'Duplicate categories have been removed.');
+          } catch (error) {
+            console.error('🧹 [CLEANUP] Error:', error);
+            Alert.alert('Cleanup Error', String(error));
+          }
+        }}
+      >
+        <Text style={styles.cleanupButtonText}>🧹 Clean Duplicate Categories</Text>
+      </TouchableOpacity>
+      
       {!isPaid && (
         <TouchableOpacity
           style={styles.upgradeButton}
@@ -126,6 +143,19 @@ const styles = StyleSheet.create({
     width: 280,
   },
   debugButtonText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: 'bold',
+  },
+  cleanupButton: {
+    backgroundColor: '#ff6b35',
+    padding: 12,
+    borderRadius: 6,
+    alignItems: 'center',
+    marginBottom: 20,
+    width: 280,
+  },
+  cleanupButtonText: {
     color: '#fff',
     fontSize: 14,
     fontWeight: 'bold',

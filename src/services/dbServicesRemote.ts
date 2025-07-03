@@ -801,7 +801,7 @@ export async function getCategories(): Promise<Category[]> {
 
   try {
     const snapshot = await getDocs(collection(db, `Users/${uid}/Category`));
-    return snapshot.docs.map((doc) => {
+    const categories = snapshot.docs.map((doc) => {
       const data = doc.data();
       return {
         id: data.id,
@@ -814,6 +814,17 @@ export async function getCategories(): Promise<Category[]> {
         uid: data.uid,
       } as Category;
     });
+
+    // Filter out duplicates by name, keeping the most recent one
+    const uniqueCategories = new Map<string, Category>();
+    categories.forEach(category => {
+      const existing = uniqueCategories.get(category.name);
+      if (!existing || (category.updatedAt && existing.updatedAt && category.updatedAt > existing.updatedAt)) {
+        uniqueCategories.set(category.name, category);
+      }
+    });
+
+    return Array.from(uniqueCategories.values());
   } catch (error) {
     console.error('Error getting categories:', error);
     return [];

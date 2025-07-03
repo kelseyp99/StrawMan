@@ -651,7 +651,7 @@ export async function getCategories(): Promise<Category[]> {
   }
   try {
     const categories = realm.objects<Category>('Category');
-    return Array.from(categories).map((cat) => ({
+    const categoryArray = Array.from(categories).map((cat) => ({
       id: cat.id,
       name: cat.name,
       description: cat.description,
@@ -661,6 +661,17 @@ export async function getCategories(): Promise<Category[]> {
       syncTimestamp: cat.syncTimestamp,
       uid: cat.uid,
     }));
+
+    // Filter out duplicates by name, keeping the most recent one
+    const uniqueCategories = new Map<string, Category>();
+    categoryArray.forEach(category => {
+      const existing = uniqueCategories.get(category.name);
+      if (!existing || (category.updatedAt && existing.updatedAt && category.updatedAt > existing.updatedAt)) {
+        uniqueCategories.set(category.name, category);
+      }
+    });
+
+    return Array.from(uniqueCategories.values());
   } catch (error) {
     console.error('Error getting categories:', error);
     throw error;
@@ -674,9 +685,61 @@ export async function getCategoryNames(): Promise<string[]> {
   }
   try {
     const categories = realm.objects<Category>('Category');
-    return Array.from(categories).map((cat) => cat.name);
+    const categoryNames = Array.from(categories).map((cat) => cat.name);
+    
+    // Remove duplicates using Set
+    return Array.from(new Set(categoryNames));
   } catch (error) {
     console.error('Error getting category names:', error);
+    throw error;
+  }
+}
+
+export async function cleanupDuplicateCategories(): Promise<void> {
+  if (!realm) {
+    console.error('Failed to open Realm instance');
+    throw new Error('Failed to open Realm instance');
+  }
+  
+  try {
+    const categories = realm.objects<Category>('Category');
+    const categoryMap = new Map<string, Category[]>();
+    
+    // Group categories by name
+    Array.from(categories).forEach(category => {
+      const name = category.name;
+      if (!categoryMap.has(name)) {
+        categoryMap.set(name, []);
+      }
+      categoryMap.get(name)!.push(category);
+    });
+    
+    realm.write(() => {
+      categoryMap.forEach((categoriesWithSameName, name) => {
+        if (categoriesWithSameName.length > 1) {
+          // Sort by updatedAt to keep the most recent
+          categoriesWithSameName.sort((a, b) => {
+            const dateA = a.updatedAt instanceof Date ? a.updatedAt : new Date(0);
+            const dateB = b.updatedAt instanceof Date ? b.updatedAt : new Date(0);
+            return dateB.getTime() - dateA.getTime();
+          });
+          
+          // Keep the first (most recent) and delete the rest
+          const toKeep = categoriesWithSameName[0];
+          const toDelete = categoriesWithSameName.slice(1);
+          
+          console.log(`[CLEANUP] Keeping category "${name}" with ID ${toKeep.id}, deleting ${toDelete.length} duplicates`);
+          
+          toDelete.forEach(duplicate => {
+            realm.delete(duplicate);
+          });
+        }
+      });
+    });
+    
+    console.log('[CLEANUP] Duplicate category cleanup completed');
+  } catch (error) {
+    console.error('Error cleaning up duplicate categories:', error);
     throw error;
   }
 }
@@ -1792,8 +1855,10 @@ export async function syncTableFromRemote(
       for (const row of newRows) {
         if (tableName === 'Category') {
           // Handle Category objects
-          const existing = realm.objectForPrimaryKey<Category>('Category', row.id);
-          if (!existing) {
+          const existingById = realm.objectForPrimaryKey<Category>('Category', row.id);
+          const existingByName = realm.objects<Category>('Category').filtered('name = $0', row.name);
+          
+          if (!existingById && existingByName.length === 0) {
             console.log(`[SYNC] Creating new Category: ${row.name} (${row.id})`);
             realm.create('Category', {
               id: row.id,
@@ -1804,8 +1869,10 @@ export async function syncTableFromRemote(
               synced: true, // Mark as synced since it came from remote
               uid: row.uid,
             });
+          } else if (existingById) {
+            console.log(`[SYNC] Category ${row.name} already exists with ID ${row.id}, skipping`);
           } else {
-            console.log(`[SYNC] Category ${row.name} already exists, skipping`);
+            console.log(`[SYNC] Category with name "${row.name}" already exists with different ID, skipping duplicate`);
           }
         } else if (tableName === 'ActivityLog') {
           // Handle ActivityLog objects (existing logic if needed)

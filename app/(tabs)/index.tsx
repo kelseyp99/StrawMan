@@ -11,8 +11,7 @@ import {
   Alert,
   Platform,
 } from 'react-native';
-import { TextInput } from 'react-native';
-import { Clipboard } from '@react-native-clipboard/clipboard';
+import Clipboard from '@react-native-clipboard/clipboard';
 import { getModelAPIkey } from '../../src/services/apiUtils';
 import { useRouter } from 'expo-router';
 import { useAuth } from '../context/AuthContext';
@@ -1212,6 +1211,10 @@ export default function AskJanet() {
       <FlatList
         data={history}
         keyExtractor={(item, index) => `${item.text}-${index}`}
+        style={styles.historyList}
+        contentContainerStyle={styles.historyContentContainer}
+        showsVerticalScrollIndicator={true}
+        scrollEnabled={true}
         renderItem={({ item }) => (
           <TouchableOpacity
             style={[
@@ -1296,6 +1299,11 @@ export default function AskJanet() {
             <FlatList
               data={distinctCategories}
               keyExtractor={(item) => item}
+              style={styles.categoryList}
+              contentContainerStyle={styles.categoryContentContainer}
+              showsVerticalScrollIndicator={true}
+              scrollEnabled={true}
+              nestedScrollEnabled={true}
               renderItem={({ item }) => (
                 <TouchableOpacity
                   style={styles.categoryItem}
@@ -1313,6 +1321,11 @@ export default function AskJanet() {
             <FlatList
               data={activityLogEntries}
               keyExtractor={(item, index) => `${item}-${index}`}
+              style={styles.activityLogList}
+              contentContainerStyle={styles.activityLogContentContainer}
+              showsVerticalScrollIndicator={true}
+              scrollEnabled={true}
+              nestedScrollEnabled={true}
               renderItem={({ item }) => (
                 <Text style={styles.modalLabel}>{item}</Text>
               )}
@@ -1383,6 +1396,14 @@ const styles = StyleSheet.create({
     padding: 20,
     width: '100%',
   },
+  historyList: {
+    flex: 1,
+    marginBottom: 80, // Space for bottom container
+  },
+  historyContentContainer: {
+    paddingBottom: 20,
+    flexGrow: 1,
+  },
   bottomContainer: {
     width: '100%',
     flexDirection: 'row',
@@ -1435,7 +1456,8 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 10,
     borderTopRightRadius: 10,
     width: '100%',
-    maxHeight: '80%',
+    maxHeight: '85%',
+    flex: 0,
   },
   modalTitle: {
     fontSize: 18,
@@ -1447,6 +1469,13 @@ const styles = StyleSheet.create({
     marginBottom: 10,
     color: '#333',
   },
+  categoryList: {
+    maxHeight: 120,
+    marginBottom: 10,
+  },
+  categoryContentContainer: {
+    paddingBottom: 10,
+  },
   categoryItem: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -1456,6 +1485,13 @@ const styles = StyleSheet.create({
   },
   categoryText: {
     fontSize: 16,
+  },
+  activityLogList: {
+    maxHeight: 100,
+    marginBottom: 10,
+  },
+  activityLogContentContainer: {
+    paddingBottom: 10,
   },
   modalButtons: {
     flexDirection: 'row',
