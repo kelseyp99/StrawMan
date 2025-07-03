@@ -79,12 +79,19 @@ export default function Login() {
         setUserUID(user.uid);
         setUID(user.uid);
         
+        // Persist user data to AsyncStorage for next session
+        await AsyncStorage.multiSet([
+          ['userEmail', user.email || ''],
+          ['userUID', user.uid],
+          ['isPaidUser', 'true'],
+        ]);
+        console.log('User data persisted to AsyncStorage');
+        
         // Update AuthContext state
         setIsLogged(true);
         
         // Set as paid user when successfully logged in with Firebase
         setIsPaid(true);
-        await AsyncStorage.setItem('isPaidUser', 'true');
         console.log('User marked as paid customer after Firebase login');
         
         // Initialize user data
@@ -98,6 +105,17 @@ export default function Login() {
         setUserUID(null);
         clearUID();
         removeUID();
+        
+        // Clear persisted user data
+        await AsyncStorage.multiRemove([
+          'userEmail',
+          'userUID',
+          'isPaidUser',
+          'syncWithCloud',
+          'userPlan'
+        ]);
+        console.log('User data cleared from AsyncStorage');
+        
         setIsLogged(false); // Ensure AuthContext is updated
       }
     });

@@ -55,7 +55,6 @@ import * as dbServices from '../../src/services/dbServices';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSync } from '../context/SyncContext';
 import { extractAndImportLegacyFirestoreData } from '../../src/services/dbServicesRemote';
-import { canAccessLoginAndSync } from '../../src/services/planManager';
 // IAP temporarily disabled
 // import { setPlanBySku, PLAN_SKUS } from '../../src/services/planManager';
 
@@ -162,7 +161,7 @@ export default function AskJanet() {
   const dialogRef = useRef<View>(null);
   const [fetchAttempts, setFetchAttempts] = useState(0);
   const MAX_FETCH_ATTEMPTS = 5;
-  const { lastSync } = useSync();
+  const { lastSync, triggerSync } = useSync();
 
   // Initialize user with Firebase auth (if available) or local auth system
   useEffect(() => {
@@ -180,33 +179,48 @@ export default function AskJanet() {
       const isPaidUser = (await AsyncStorage.getItem('isPaidUser')) === 'true';
 
       if (isPaidUser) {
-        // Paid user mode - require Firebase authentication
-        if (!isLogged) {
-          console.log('Paid user not logged in, redirecting to login');
-          setTimeout(() => {
-            if (isMounted && !isLogged) {
-              router.replace('/login');
-            }
-          }, 100);
-          setLoadingAuth(false);
-          return;
-        }
+        // Paid user mode - check for persisted authentication first
+        if (isLogged) {
+          // User is already logged in according to AuthContext
+          console.log('Paid user already logged in, checking Firebase auth...');
+          
+          // Try to get persisted user data
+          const [savedEmail, savedUID] = await Promise.all([
+            AsyncStorage.getItem('userEmail'),
+            AsyncStorage.getItem('userUID')
+          ]);
 
-        // Check if there's a Firebase user
-        const firebaseUser = auth.currentUser;
-        if (firebaseUser) {
-          // Use Firebase user information
-          console.log(
-            'Paid user logged in with Firebase auth:',
-            firebaseUser.email
-          );
-          setUserEmail(firebaseUser.email);
-          setUserUID(firebaseUser.uid);
-          await setUID(firebaseUser.uid); // Store Firebase UID
+          if (savedEmail && savedUID) {
+            console.log('Using persisted user data:', savedEmail);
+            setUserEmail(savedEmail);
+            setUserUID(savedUID);
+            await setUID(savedUID);
+          } else {
+            // Check current Firebase user
+            const firebaseUser = auth.currentUser;
+            if (firebaseUser) {
+              console.log('Using Firebase user data:', firebaseUser.email);
+              setUserEmail(firebaseUser.email);
+              setUserUID(firebaseUser.uid);
+              await setUID(firebaseUser.uid);
+              
+              // Persist user data for next time
+              await AsyncStorage.setItem('userEmail', firebaseUser.email || '');
+              await AsyncStorage.setItem('userUID', firebaseUser.uid);
+            } else {
+              console.log('No persisted or Firebase user data, redirecting to login');
+              setTimeout(() => {
+                if (isMounted) {
+                  router.replace('/login');
+                }
+              }, 100);
+              setLoadingAuth(false);
+              return;
+            }
+          }
         } else {
-          console.log(
-            'Paid user logged in but no Firebase user, redirecting to login'
-          );
+          // User not logged in, redirect to login
+          console.log('Paid user not logged in, redirecting to login');
           setTimeout(() => {
             if (isMounted) {
               router.replace('/login');
@@ -234,7 +248,7 @@ export default function AskJanet() {
 
         setUserUID(localUID);
         await setUID(localUID); // Store local UID
-        setIsLogged(true); // Mark as logged in for local mode
+        await setIsLogged(true); // Mark as logged in for local mode
       }
 
       try {
@@ -331,6 +345,16 @@ export default function AskJanet() {
       setUserUID(null);
       setDiscussion(null);
       setDiscussionCounts([]);
+      
+      // Clear persisted user data
+      await AsyncStorage.multiRemove([
+        'userEmail',
+        'userUID',
+        'isPaidUser',
+        'syncWithCloud',
+        'userPlan'
+      ]);
+      
       // Clear auth state
       await setIsLogged(false);
       router.replace('/login');
@@ -342,7 +366,10 @@ export default function AskJanet() {
   const handleInputChange = (text: string) => {
     setInput(text);
     setIsQuestion(/\b(what|when|how|why|does|is|can)\b/i.test(text));
-    setInDJ_Mode(/\b(DJ mode|dj mode|Dj mode|DJ|dj)\b/i.test(text));
+    const djMode = /\b(DJ mode|dj mode|Dj mode|DJ|dj)\b/i.test(text);
+    if (djMode) {
+      console.log('DJ Mode detected in input');
+    }
   };
 
   const delay = (ms: number) =>
@@ -1069,19 +1096,7 @@ export default function AskJanet() {
     })();
   }, []);
 
-  useEffect(() => {
-    (async () => {
-      // If user is not on $30 plan or sync is not enabled, stay here
-      const canSync = await canAccessLoginAndSync();
-      const syncWithCloud = await AsyncStorage.getItem('syncWithCloud');
-      if (canSync && syncWithCloud === 'true') {
-        // $30 plan and sync enabled: go to login screen
-        router.replace('/login');
-        return;
-      }
-      // else, stay on index
-    })();
-  }, []);
+  // Remove the automatic redirect to login - let the user stay logged in
 
   // --- IAP Subscription Listener Integration ---
   useEffect(() => {
@@ -1234,32 +1249,6 @@ export default function AskJanet() {
           </TouchableOpacity>
         )}
       />
-      {/* Debug sync button */}
-      <View style={styles.saveButtons}>
-        <TouchableOpacity
-          style={styles.saveButton}
-          onPress={async () => {
-            try {
-              console.log('🔧 [DEBUG] Setting up paid user and sync...');
-              await AsyncStorage.setItem('isPaidUser', 'true');
-              await AsyncStorage.setItem('syncWithCloud', 'true');
-              await AsyncStorage.setItem('userPlan', 'premium');
-              
-              console.log('🔧 [DEBUG] Triggering manual sync...');
-              const { triggerSync: syncFunction } = useSync();
-              await syncFunction();
-              console.log('🔧 [DEBUG] Manual sync complete');
-              
-              Alert.alert('Debug', 'Sync triggered with paid user settings');
-            } catch (error) {
-              console.error('🔧 [DEBUG] Error:', error);
-              Alert.alert('Debug Error', String(error));
-            }
-          }}
-        >
-          <Text style={styles.saveButtonText}>🔧 Enable Sync & Test</Text>
-        </TouchableOpacity>
-      </View>
       <View style={styles.bottomContainer}>
         <Pressable onPress={toggleMenu} style={styles.hamburger}>
           <Icon name="menu" size={24} color="#333" />

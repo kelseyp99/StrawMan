@@ -1780,7 +1780,49 @@ export async function syncTableFromRemote(
   tableName: string,
   newRows: any[]
 ): Promise<void> {
-  // TODO: Implement logic to sync table from remote
+  if (!realm) {
+    console.error('Failed to open Realm instance');
+    throw new Error('Failed to open Realm instance');
+  }
+
+  console.log(`[SYNC] syncTableFromRemote: Processing ${newRows.length} rows for ${tableName}`);
+
+  try {
+    realm.write(() => {
+      for (const row of newRows) {
+        if (tableName === 'Category') {
+          // Handle Category objects
+          const existing = realm.objectForPrimaryKey<Category>('Category', row.id);
+          if (!existing) {
+            console.log(`[SYNC] Creating new Category: ${row.name} (${row.id})`);
+            realm.create('Category', {
+              id: row.id,
+              name: row.name,
+              description: row.description || '',
+              createdAt: row.createdAt ? new Date(row.createdAt) : new Date(),
+              updatedAt: row.updatedAt ? new Date(row.updatedAt) : new Date(),
+              synced: true, // Mark as synced since it came from remote
+              uid: row.uid,
+            });
+          } else {
+            console.log(`[SYNC] Category ${row.name} already exists, skipping`);
+          }
+        } else if (tableName === 'ActivityLog') {
+          // Handle ActivityLog objects (existing logic if needed)
+          console.log(`[SYNC] ActivityLog sync not implemented in this function`);
+        } else if (tableName === 'Discussion') {
+          // Handle Discussion objects (existing logic if needed)
+          console.log(`[SYNC] Discussion sync not implemented in this function`);
+        } else {
+          console.warn(`[SYNC] Unknown table name: ${tableName}`);
+        }
+      }
+    });
+    console.log(`[SYNC] Successfully synced ${newRows.length} rows for ${tableName}`);
+  } catch (error) {
+    console.error(`[SYNC] Error syncing ${tableName} from remote:`, error);
+    throw error;
+  }
 }
 
 export function logChange(

@@ -6,6 +6,8 @@ import {
   UpgradePromptModal,
   PlanModal,
 } from '../../src/components/UpgradeModals';
+import { synchronizeCategories } from '../../src/services/dbServices';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export default function ToolsScreen() {
   const { isLogged, isPaid } = useAuth();
@@ -43,6 +45,35 @@ export default function ToolsScreen() {
           {isSyncing ? 'Syncing...' : 'Sync Now'}
         </Text>
       </TouchableOpacity>
+      
+      {/* Debug sync button moved from index */}
+      <TouchableOpacity
+        style={styles.debugButton}
+        onPress={async () => {
+          try {
+            console.log('🔧 [DEBUG] Setting up paid user and sync...');
+            await AsyncStorage.setItem('isPaidUser', 'true');
+            await AsyncStorage.setItem('syncWithCloud', 'true');
+            await AsyncStorage.setItem('userPlan', 'premium');
+            
+            console.log('🔧 [DEBUG] Triggering manual sync...');
+            await triggerSync();
+            
+            console.log('🔧 [DEBUG] Also manually calling synchronizeCategories...');
+            await synchronizeCategories('1.1.0');
+            
+            console.log('🔧 [DEBUG] Manual sync complete');
+            
+            Alert.alert('Debug', 'Sync triggered with paid user settings + category sync');
+          } catch (error) {
+            console.error('🔧 [DEBUG] Error:', error);
+            Alert.alert('Debug Error', String(error));
+          }
+        }}
+      >
+        <Text style={styles.debugButtonText}>🔧 Enable Sync & Test Categories</Text>
+      </TouchableOpacity>
+      
       {!isPaid && (
         <TouchableOpacity
           style={styles.upgradeButton}
@@ -85,6 +116,19 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontWeight: 'bold',
     fontSize: 16,
+  },
+  debugButton: {
+    backgroundColor: '#28a745',
+    padding: 12,
+    borderRadius: 6,
+    alignItems: 'center',
+    marginBottom: 20,
+    width: 280,
+  },
+  debugButtonText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: 'bold',
   },
   upgradeButton: {
     backgroundColor: '#FFD700',

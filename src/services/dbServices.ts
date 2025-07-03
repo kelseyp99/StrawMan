@@ -920,6 +920,23 @@ export async function synchronizeCategories(appVersion: string): Promise<void> {
     if (useRemoteCategories) {
       console.log('[DEBUG] synchronizeCategories - calling remote.synchronizeCategories');
       await remote.synchronizeCategories(appVersion);
+      
+      // NEW: Also download categories FROM Firebase TO local Realm
+      console.log('[DEBUG] synchronizeCategories - downloading categories from Firebase');
+      try {
+        const firebaseCategories = await remote.getCategories();
+        console.log(`[DEBUG] Downloaded ${firebaseCategories.length} categories from Firebase:`, firebaseCategories.map(c => c.name));
+        
+        if (firebaseCategories.length > 0) {
+          await local.syncTableFromRemote('Category', firebaseCategories);
+          console.log('[DEBUG] Successfully synced categories to local Realm');
+        } else {
+          console.log('[DEBUG] No categories found in Firebase');
+        }
+      } catch (downloadError) {
+        console.error('[DEBUG] Error downloading categories from Firebase:', downloadError);
+        // Don't fail the entire sync if download fails
+      }
     } else {
       console.log('[DEBUG] synchronizeCategories - skipping remote sync');
     }
@@ -1165,7 +1182,8 @@ export async function createRuleCandidate(data: {
  */
 export async function syncFromRemote() {
   // Tables to sync
-  const tables = ['ActivityLog', 'Discussion'];
+  const tables = ['ActivityLog', 'Discussion', 'Category'];
+  console.log('[SYNC] Starting syncFromRemote for tables:', tables);
   for (const tableName of tables) {
     // 1. Get all local changelog rowIds for this table
     let localChangeLog: any[] = [];
