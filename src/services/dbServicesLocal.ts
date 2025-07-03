@@ -1,25 +1,10 @@
 import Realm, { UpdateMode } from 'realm';
 import { realm } from '../realmConfig';
-import {
-  GPTResponsesSchema,
-  GPTSpecialtiesSchema,
-  ActivityLogSchema,
-  DiscussionSchema,
-  AlertSchema,
-  ParametersSchema,
-  CategorySchema,
-} from '../realmConfig';
-import { sendQuestion, sendQuestionForParsing } from './openaiAPI';
 import { getUID } from '../utils/uidManager';
-import { format } from 'date-fns';
-// REMOVE: import { addOrUpdateDiscussion as addOrUpdateDiscussionRouter } from './dbServices';
-import React, { useContext } from 'react';
-import { SettingsContext } from '../../app/settings';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import * as remote from './dbServicesRemote';
 import { ENABLE_DISCUSSION_SYNC, ENABLE_ACTIVITYLOG_SYNC } from './syncConfig';
 import { ActivityLog, Discussion } from './types';
-import { addOrUpdateDiscussion as addOrUpdateDiscussionRouter } from './dbServices';
+import { processPhrase } from './phraseProcessor';
+import * as remote from './dbServicesRemote';
 
 const APP_VERSION = '1.1.0';
 const APP_ID = 'com.anonymous.lifelog';
@@ -40,78 +25,6 @@ export interface Parameters {
   parameterValue?: string;
 }
 
-interface Rule {
-  pattern: string;
-  isRegex: boolean;
-  category: string;
-  priority: number;
-}
-
-interface GPTSpecialty {
-  id: string;
-  name: string;
-  url: string;
-  apiKey: string;
-  synced?: boolean;
-}
-
-interface GPTResponse {
-  id: string;
-  discussionId: string;
-  timestamp: Date;
-  prompt: string;
-  response: string;
-  responseType: string;
-  cleared: boolean;
-  synced: boolean;
-  syncTimestamp?: Date;
-}
-
-interface Alert {
-  id: string;
-  message: string;
-  timestamp: Date;
-  severity: string;
-  isActive: boolean;
-  nextTrigger: Date;
-  createdAt: Date;
-  synced: boolean;
-  syncTimestamp?: Date;
-}
-
-interface DiscussionCloudPayload {
-  DiscussionId: string;
-  UserId?: string;
-  description: string;
-  Operation: string;
-  typeSay?: string;
-}
-
-interface ActivityLogCloudPayload {
-  DiscussionId: string;
-  UserId?: string;
-  description: string;
-  Operation: string;
-  typeSay?: string;
-  cleared: boolean;
-  id: string;
-  category: string;
-  timestamp: Date;
-}
-
-interface CloudPayload {
-  timestamp: Date;
-  id: string;
-  description: string;
-  Operation: string;
-  typeSay?: string;
-  [key: string]: any;
-}
-
-interface LastOpenDiscussion {
-  id: string;
-  description: string;
-}
 
 interface Category {
   id: string;
@@ -186,10 +99,10 @@ export const findDuplicateActivityLog = (
         responseType: log.responseType,
         synced: log.synced,
         syncTimestamp: log.syncTimestamp,
-        uid: (log as any).uid || 'local_user',
-        lockedCategory: (log as any).lockedCategory || false,
-        lockedDescription: (log as any).lockedDescription || false,
-        categoryId: (log as any).categoryId,
+        uid: (log as unknown as { uid?: string }).uid || 'local_user',
+        lockedCategory: (log as unknown as { lockedCategory?: boolean }).lockedCategory || false,
+        lockedDescription: (log as unknown as { lockedDescription?: boolean }).lockedDescription || false,
+        categoryId: (log as unknown as { categoryId?: string }).categoryId,
       } as ActivityLog;
     }
 
@@ -227,10 +140,10 @@ export const findDuplicateActivityLog = (
             responseType: log.responseType,
             synced: log.synced,
             syncTimestamp: log.syncTimestamp,
-            uid: (log as any).uid || 'local_user',
-            lockedCategory: (log as any).lockedCategory || false,
-            lockedDescription: (log as any).lockedDescription || false,
-            categoryId: (log as any).categoryId,
+            uid: (log as unknown as { uid?: string }).uid || 'local_user',
+            lockedCategory: (log as unknown as { lockedCategory?: boolean }).lockedCategory || false,
+            lockedDescription: (log as unknown as { lockedDescription?: boolean }).lockedDescription || false,
+            categoryId: (log as unknown as { categoryId?: string }).categoryId,
           } as ActivityLog;
         }
       }
@@ -364,7 +277,7 @@ export async function initializeUser(): Promise<void> {
   }
 }
 
-export async function createDocument(data: any): Promise<string> {
+export async function createDocument(data: Record<string, unknown>): Promise<string> {
   if (!realm) throw new Error('Realm not initialized');
   try {
     const id = Date.now().toString();
@@ -372,7 +285,7 @@ export async function createDocument(data: any): Promise<string> {
       realm?.create('Document', {
         id,
         ...data,
-        timestamp: data.timestamp ? new Date(data.timestamp) : new Date(), // Use provided timestamp if available
+        timestamp: data.timestamp ? new Date(data.timestamp as string | number | Date) : new Date(), // Use provided timestamp if available
         synced: false,
       });
     });
@@ -384,7 +297,7 @@ export async function createDocument(data: any): Promise<string> {
   }
 }
 
-export async function readDocuments(): Promise<any[]> {
+export async function readDocuments(): Promise<Record<string, unknown>[]> {
   if (!realm) {
     console.error('Failed to open Realm instance');
     throw new Error('Failed to open Realm instance');
@@ -400,7 +313,7 @@ export async function readDocuments(): Promise<any[]> {
   }
 }
 
-export async function updateDocument(docId: string, data: any): Promise<void> {
+export async function updateDocument(docId: string, data: Record<string, unknown>): Promise<void> {
   if (!realm) {
     console.error('Failed to open Realm instance');
     throw new Error('Failed to open Realm instance');
@@ -461,14 +374,14 @@ export async function getDistinctCategories(): Promise<string[]> {
   }
 }
 
-export async function insertJsonFile(jsonData: any): Promise<void> {
+export async function insertJsonFile(jsonData: Array<{ category: string; value: string }>): Promise<void> {
   if (!realm) {
     console.error('Failed to open Realm instance');
     throw new Error('Failed to open Realm instance');
   }
   try {
     realm?.write(() => {
-      jsonData.forEach((item: any) => {
+      jsonData.forEach((item) => {
         const id = new Date().getTime();
         realm?.create('ActivityLog', {
           id,
@@ -519,6 +432,7 @@ export async function queryAllFieldsByCategories(
 
 // Removed all  logic from synchronization functions
 export async function synchronizeActivityLog(
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   appVersion: string
 ): Promise<void> {
   if (!ENABLE_ACTIVITYLOG_SYNC) {
@@ -564,7 +478,10 @@ export async function synchronizeDiscussions(
   }
 }
 
-export async function synchronizeCategories(appVersion: string): Promise<void> {
+export async function synchronizeCategories(
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  appVersion: string
+): Promise<void> {
   if (!realm) {
     console.error('Failed to open Realm instance');
     throw new Error('Failed to open Realm instance');
@@ -731,7 +648,7 @@ export async function cleanupDuplicateCategories(): Promise<void> {
           console.log(`[CLEANUP] Keeping category "${name}" with ID ${toKeep.id}, deleting ${toDelete.length} duplicates`);
           
           toDelete.forEach(duplicate => {
-            realm.delete(duplicate);
+            realm?.delete(duplicate);
           });
         }
       });
@@ -822,10 +739,10 @@ export async function getActivityLogs(): Promise<ActivityLog[]> {
       responseType: log.responseType || '',
       synced: log.synced || false,
       syncTimestamp: log.syncTimestamp,
-      categoryId: (log as any).categoryId,
-      uid: (log as any).uid || 'local_user',
-      lockedCategory: (log as any).lockedCategory || false,
-      lockedDescription: (log as any).lockedDescription || false,
+      categoryId: (log as unknown as { categoryId?: string }).categoryId,
+      uid: (log as unknown as { uid?: string }).uid || 'local_user',
+      lockedCategory: (log as unknown as { lockedCategory?: boolean }).lockedCategory || false,
+      lockedDescription: (log as unknown as { lockedDescription?: boolean }).lockedDescription || false,
     }));
   } catch (error) {
     console.error('Error getting activity logs:', error);
@@ -1001,7 +918,7 @@ export async function updateActivityLogCategory(
     realm.write(() => {
       const log = realm?.objectForPrimaryKey('ActivityLog', activityLogId);
       if (log) {
-        (log as any).category = category;
+        (log as unknown as { category?: string }).category = category;
       }
     });
   } catch (error) {
@@ -1021,7 +938,7 @@ export async function markDiscussionAsCleared(
     realm.write(() => {
       const discussion = realm?.objectForPrimaryKey('Discussion', discussionId);
       if (discussion) {
-        (discussion as any).cleared = true;
+        (discussion as unknown as { cleared?: boolean }).cleared = true;
       }
     });
   } catch (error) {
@@ -1031,13 +948,10 @@ export async function markDiscussionAsCleared(
 }
 
 // Add placeholder functions for missing ones
-export async function fetchInitialDiscussion(): Promise<any | null> {
-  return null;
-}
-
 export async function getNextOpenDiscussion(
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   lastVisibleId?: string
-): Promise<any> {
+): Promise<{ snapshot: unknown[]; hasMore: boolean; lastVisibleDoc: unknown | null }> {
   return { snapshot: [], hasMore: false, lastVisibleDoc: null };
 }
 
@@ -1086,9 +1000,6 @@ export async function processPendingTells(): Promise<void> {
         continue;
       }
 
-      // Import processPhrase to apply rules and get category
-      const { processPhrase } = require('./phraseProcessor');
-
       try {
         // Use processPhrase to determine category and description
         const result = await processPhrase(
@@ -1136,7 +1047,9 @@ export async function processPendingTells(): Promise<void> {
 }
 
 export async function addQuestionDiscussion(
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   question: string,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   discussionId: string
 ): Promise<void> {
   // Placeholder
@@ -1159,43 +1072,61 @@ export async function renameFieldToCleared(): Promise<void> {
   // Placeholder
 }
 
-export async function getLastOpenDiscussion(): Promise<any> {
+export async function getLastOpenDiscussion(): Promise<{
+  id: string;
+  description: string;
+}> {
   return { id: '', description: '' };
 }
 
 export async function disperseQuestion(
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   discussionId: string,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   gptResponseId: string
 ): Promise<string[] | undefined> {
   return undefined;
 }
 
 export async function addOrUpdateGPTResponse(
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   discussionId: string,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   response: string,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   responseType: string,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   cleared: boolean = false
 ): Promise<void> {
   // Placeholder
 }
 
-export async function getGPTResponses(discussionId: string): Promise<any[]> {
+export async function getGPTResponses(
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  discussionId: string
+): Promise<Record<string, unknown>[]> {
   return [];
 }
 
 export async function getParsedGPTResponses(
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   discussionId: string
 ): Promise<string[]> {
   return [];
 }
 
-export async function getAIResponse(question: string): Promise<string> {
+export async function getAIResponse(
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  question: string
+): Promise<string> {
   return '';
 }
 
 export async function syncToCloud(
   tableName: string,
-  payload?: any,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  payload?: Record<string, unknown>,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   method?: string
 ): Promise<void> {
   console.log(`Local syncToCloud called for table: ${tableName}`);
@@ -1220,21 +1151,18 @@ export async function syncToCloud(
     }
 
     // Convert Realm objects to plain objects for syncing
-    const recordsToSync = Array.from(unsyncedRecords).map((record: any) => ({
+    const recordsToSync = Array.from(unsyncedRecords).map((record: Record<string, unknown>) => ({
       ...record,
       // Convert dates to ISO strings for Firestore
       createdAt:
         record.createdAt instanceof Date
           ? record.createdAt
-          : new Date(record.createdAt || Date.now()),
+          : new Date((record.createdAt as string | number) || Date.now()),
       updatedAt:
         record.updatedAt instanceof Date
           ? record.updatedAt
-          : new Date(record.updatedAt || Date.now()),
+          : new Date((record.updatedAt as string | number) || Date.now()),
     }));
-
-    // Import remote services for syncing (use require for compatibility)
-    const remote = require('./dbServicesRemote');
 
     // Sync records to Firestore
     const syncedIds = await remote.syncRealmRowsToFirestore(
@@ -1251,7 +1179,7 @@ export async function syncToCloud(
         for (const syncedId of syncedIds) {
           const record = realm!.objectForPrimaryKey(tableName, syncedId);
           if (record) {
-            (record as any).synced = true;
+            (record as Record<string, unknown>).synced = true;
           }
         }
       });
@@ -1266,19 +1194,28 @@ export async function syncToCloud(
   }
 }
 
-export async function getNextActiveAlert(): Promise<any | null> {
+export async function getNextActiveAlert(): Promise<Record<string, unknown> | null> {
   return null;
 }
 
-export async function addOrUpdateAlert(alertData: any): Promise<void> {
+export async function addOrUpdateAlert(
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  alertData: Record<string, unknown>
+): Promise<void> {
   // Placeholder
 }
 
-export async function deactivateAlertByKey(key: number): Promise<void> {
+export async function deactivateAlertByKey(
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  key: number
+): Promise<void> {
   // Placeholder
 }
 
-export async function getURLofGPT(gpt_name: string): Promise<any | null> {
+export async function getURLofGPT(
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  gpt_name: string
+): Promise<{ url: string; apiKey: string } | null> {
   return null;
 }
 
@@ -1292,25 +1229,32 @@ export async function restoreLostData(): Promise<void> {
   // Placeholder
 }
 
-export async function getRules(): Promise<any[]> {
+export async function getRules(): Promise<Record<string, unknown>[]> {
   return [];
 }
 
-export async function updateGPTSpecialties(gptSpecialty: any): Promise<void> {
+export async function updateGPTSpecialties(
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  gptSpecialty: Record<string, unknown>
+): Promise<void> {
   // Placeholder
 }
 
-export async function getParameters(): Promise<any[]> {
+export async function getParameters(): Promise<Record<string, unknown>[]> {
   return [];
 }
 
 export async function getDescriptionsWithTimestamps(
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   categories: string[]
 ): Promise<string> {
   return '[]';
 }
 
-export async function createRuleCandidate(data: any): Promise<void> {
+export async function createRuleCandidate(
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  data: Record<string, unknown>
+): Promise<void> {
   // Placeholder
 }
 
@@ -1323,16 +1267,16 @@ export async function readChangeLog({
 }: {
   tableName: string;
   synced?: boolean;
-}): Promise<any[]> {
+}): Promise<Record<string, unknown>[]> {
   if (!realm) throw new Error('Realm not initialized');
   let query = `tableName == $0`;
-  let args: any[] = [tableName];
+  const args: unknown[] = [tableName];
   if (typeof synced === 'boolean') {
     query += ' AND synced == $1';
     args.push(synced);
   }
   const results = realm.objects('ChangeLog').filtered(query, ...args);
-  return results.map((entry: any) => ({ ...entry }));
+  return results.map((entry: Record<string, unknown>) => ({ ...entry }));
 }
 
 /**
@@ -1341,7 +1285,7 @@ export async function readChangeLog({
  */
 export async function applyChangeLogOperation(
   tableName: string,
-  entry: any
+  entry: Record<string, unknown>
 ): Promise<void> {
   if (!realm) throw new Error('Realm not initialized');
   realm.write(() => {
@@ -1365,7 +1309,7 @@ export async function addOrUpdateChangeLogEntry(
   rowId: string,
   operation: string,
   timestamp: Date,
-  data?: any
+  data?: Record<string, unknown>
 ): Promise<void> {
   if (!realm) throw new Error('Realm not initialized');
   realm.write(() => {
@@ -1404,7 +1348,7 @@ export async function markChangeLogEntrySynced(
 }
 
 export async function importLegacyDiscussions(
-  discussions: any[]
+  discussions: Discussion[]
 ): Promise<number> {
   if (!realm) {
     console.error('Failed to open Realm instance');
@@ -1413,7 +1357,7 @@ export async function importLegacyDiscussions(
   let count = 0;
   try {
     realm.write(() => {
-      discussions.forEach((discussion: any) => {
+      discussions.forEach((discussion: Discussion) => {
         realm?.create('Discussion', {
           id: discussion.id || Date.now().toString(),
           discussionId: discussion.discussionId || discussion.id,
@@ -1435,7 +1379,7 @@ export async function importLegacyDiscussions(
 }
 
 export async function importLegacyActivityLogs(
-  activityLogs: any[]
+  activityLogs: ActivityLog[]
 ): Promise<number> {
   if (!realm) {
     console.error('Failed to open Realm instance');
@@ -1444,7 +1388,7 @@ export async function importLegacyActivityLogs(
   let count = 0;
   try {
     realm.write(() => {
-      activityLogs.forEach((log: any) => {
+      activityLogs.forEach((log: ActivityLog) => {
         realm?.create('ActivityLog', {
           id: log.id || Date.now().toString(),
           discussionId: log.discussionId || '',
@@ -1476,7 +1420,7 @@ export async function ensureStringIds(tableName: string): Promise<void> {
     realm.write(() => {
       const objects = realm?.objects(tableName);
       if (objects) {
-        objects.forEach((obj: any) => {
+        objects.forEach((obj: Record<string, unknown>) => {
           if (typeof obj.id !== 'string') {
             obj.id = String(obj.id);
           }
@@ -1503,13 +1447,13 @@ export async function populateCategoryId(): Promise<void> {
       const categoryMap = new Map();
 
       if (categories) {
-        categories.forEach((c: any) => {
+        categories.forEach((c: Record<string, unknown>) => {
           categoryMap.set(c.name, c.id);
         });
       }
 
       if (activityLogs) {
-        activityLogs.forEach((log: any) => {
+        activityLogs.forEach((log: Record<string, unknown>) => {
           if (!log.categoryId && log.category) {
             const categoryId = categoryMap.get(log.category);
             if (categoryId) {
@@ -1539,7 +1483,7 @@ export async function createCategoriesFromLogs(): Promise<void> {
 
       // Collect unique categories from ActivityLog
       if (activityLogs) {
-        activityLogs.forEach((log: any) => {
+        activityLogs.forEach((log: Record<string, unknown>) => {
           if (log.category && log.category !== 'uncategorized') {
             categorySet.add(log.category);
           }
@@ -1567,8 +1511,8 @@ export async function createCategoriesFromLogs(): Promise<void> {
           console.log(`Created category: ${categoryName}`);
         } else {
           // Update existing category
-          (category as any).updatedAt = new Date();
-          (category as any).synced = false;
+          (category as Record<string, unknown>).updatedAt = new Date();
+          (category as Record<string, unknown>).synced = false;
           console.log(`Updated category: ${categoryName}`);
         }
       });
@@ -1601,7 +1545,7 @@ export async function printAllRealmDataToTerminal(): Promise<void> {
       try {
         const objects = realm.objects(tableName);
         console.log(`\n--- ${tableName} (${objects.length} records) ---`);
-        Array.from(objects).forEach((obj: any, index: number) => {
+        Array.from(objects).forEach((obj: Record<string, unknown>, index: number) => {
           console.log(`${index + 1}:`, JSON.stringify(obj, null, 2));
         });
       } catch (error) {
@@ -1623,7 +1567,7 @@ export async function debugPrintAllActivityLogs(): Promise<void> {
   try {
     const logs = realm.objects('ActivityLog');
     console.log(`=== ACTIVITY LOGS (${logs.length} records) ===`);
-    Array.from(logs).forEach((log: any, index: number) => {
+    Array.from(logs).forEach((log: Record<string, unknown>, index: number) => {
       console.log(`${index + 1}:`, {
         id: log.id,
         categoryId: log.categoryId,
@@ -1647,7 +1591,7 @@ export async function debugPrintAllDiscussions(): Promise<void> {
   try {
     const discussions = realm.objects('Discussion');
     console.log(`=== DISCUSSIONS (${discussions.length} records) ===`);
-    Array.from(discussions).forEach((discussion: any, index: number) => {
+    Array.from(discussions).forEach((discussion: Record<string, unknown>, index: number) => {
       console.log(`${index + 1}:`, {
         id: discussion.id,
         discussionId: discussion.discussionId,
@@ -1681,7 +1625,7 @@ export async function removeDuplicateActivityLogs(): Promise<{
     const duplicateIds = new Set<string>();
 
     // Group logs by discussionId + category + description
-    Array.from(allLogs).forEach((log: any) => {
+    Array.from(allLogs).forEach((log: ActivityLog) => {
       const key = `${log.discussionId}_${log.category}_${log.description}`;
 
       if (seenCombinations.has(key)) {
@@ -1807,8 +1751,8 @@ export async function mergeCategoryReferences(
         .filtered('categoryId == $0', fromCategoryId);
       if (activityLogs) {
         for (const log of activityLogs) {
-          (log as any).categoryId = toCategoryId;
-          (log as any).synced = false;
+          (log as Record<string, unknown>).categoryId = toCategoryId;
+          (log as Record<string, unknown>).synced = false;
         }
       }
     });
@@ -1841,7 +1785,7 @@ export async function deleteCategoryLocal(id: string): Promise<void> {
 // --- Stubs for missing local sync helpers ---
 export async function syncTableFromRemote(
   tableName: string,
-  newRows: any[]
+  newRows: Record<string, unknown>[]
 ): Promise<void> {
   if (!realm) {
     console.error('Failed to open Realm instance');
@@ -1855,17 +1799,17 @@ export async function syncTableFromRemote(
       for (const row of newRows) {
         if (tableName === 'Category') {
           // Handle Category objects
-          const existingById = realm.objectForPrimaryKey<Category>('Category', row.id);
-          const existingByName = realm.objects<Category>('Category').filtered('name = $0', row.name);
+          const existingById = realm?.objectForPrimaryKey<Category>('Category', row.id as string);
+          const existingByName = realm?.objects<Category>('Category').filtered('name = $0', row.name);
           
-          if (!existingById && existingByName.length === 0) {
+          if (!existingById && existingByName?.length === 0) {
             console.log(`[SYNC] Creating new Category: ${row.name} (${row.id})`);
-            realm.create('Category', {
+            realm?.create('Category', {
               id: row.id,
               name: row.name,
               description: row.description || '',
-              createdAt: row.createdAt ? new Date(row.createdAt) : new Date(),
-              updatedAt: row.updatedAt ? new Date(row.updatedAt) : new Date(),
+              createdAt: row.createdAt ? new Date(row.createdAt as string | number | Date) : new Date(),
+              updatedAt: row.updatedAt ? new Date(row.updatedAt as string | number | Date) : new Date(),
               synced: true, // Mark as synced since it came from remote
               uid: row.uid,
             });
@@ -1893,8 +1837,11 @@ export async function syncTableFromRemote(
 }
 
 export function logChange(
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   tableName: string,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   rowId: string,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   operation: string
 ): void {
   // TODO: Implement local log change logic
@@ -1905,10 +1852,18 @@ export async function deleteAllLocalRows(): Promise<void> {
 }
 
 export async function addChangeLogEntry(
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   tableName: string,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   rowId: string,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   operation: string,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   timestamp: Date
 ): Promise<void> {
   // TODO: Implement logic to add a change log entry
 }
+export function fetchInitialDiscussion() {
+  throw new Error('Function not implemented.');
+}
+

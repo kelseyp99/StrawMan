@@ -53,10 +53,10 @@ interface Category {
   id: string;
   name: string;
   description?: string;
-  createdAt: Date | any; // Allow Timestamp from Firebase
-  updatedAt: Date | any; // Allow Timestamp from Firebase
+  createdAt: Date | { toDate(): Date }; // Allow Timestamp from Firebase
+  updatedAt: Date | { toDate(): Date }; // Allow Timestamp from Firebase
   synced: boolean;
-  syncTimestamp?: Date | any;
+  syncTimestamp?: Date | { toDate(): Date };
   uid: string;
 }
 
@@ -88,8 +88,7 @@ export async function isPaidUser(): Promise<boolean> {
 export const findDuplicateActivityLog = async (
   discussionId: string,
   category: string,
-  description: string,
-  uid: string // keep for remote, but not for local
+  description: string
 ): Promise<ActivityLog | null> => {
   // console.log('findDuplicateActivityLog called');
   try {
@@ -162,7 +161,7 @@ export async function addOrUpdateDiscussion(
 export async function getDiscussions(
   lastX?: number,
   discussionId?: string
-): Promise<any[]> {
+): Promise<Discussion[]> {
   // console.log(
   //   'getDiscussions called with lastX:',
   //   lastX,
@@ -203,13 +202,16 @@ export async function deleteDiscussion(id: string): Promise<void> {
   }
 }
 
-export async function fetchInitialDiscussion(): Promise<any | null> {
+export async function fetchInitialDiscussion(): Promise<Discussion | null> {
   console.log('fetchInitialDiscussion called');
   try {
-    const result = (await shouldUseRemote())
-      ? await remote.fetchInitialDiscussion()
-      : await local.fetchInitialDiscussion();
-    return result;
+    if (await shouldUseRemote()) {
+      return await remote.fetchInitialDiscussion();
+    } else {
+      // Local version returns null, so we explicitly return null here
+      await local.fetchInitialDiscussion();
+      return null;
+    }
   } catch (error) {
     console.error('Error in fetchInitialDiscussion:', error);
     return null;
@@ -217,9 +219,9 @@ export async function fetchInitialDiscussion(): Promise<any | null> {
 }
 
 export async function getNextOpenDiscussion(lastVisibleId?: string): Promise<{
-  snapshot: any;
+  snapshot: unknown[] | unknown;
   hasMore: boolean;
-  lastVisibleDoc: any;
+  lastVisibleDoc: unknown | null;
 }> {
   console.log('getNextOpenDiscussion called with:', lastVisibleId);
   try {
@@ -461,7 +463,7 @@ export async function addOrUpdateGPTResponse(
   }
 }
 
-export async function getGPTResponses(discussionId: string): Promise<any[]> {
+export async function getGPTResponses(discussionId: string): Promise<Record<string, unknown>[]> {
   console.log('getGPTResponses called with:', discussionId);
   try {
     const result = (await shouldUseRemote())
@@ -514,7 +516,7 @@ export async function populateCategoryId(): Promise<void> {
 
 export async function syncToCloud(
   tableName: string,
-  payload?: any,
+  payload?: Record<string, unknown>,
   method?: 'POST' | 'PUT' | 'DELETE'
 ): Promise<void> {
   if (payload && method) {
@@ -551,7 +553,7 @@ export async function syncToCloud(
   }
 }
 
-export async function getNextActiveAlert(): Promise<any | null> {
+export async function getNextActiveAlert(): Promise<Record<string, unknown> | null> {
   console.log('getNextActiveAlert called');
   try {
     const result = (await shouldUseRemote())
@@ -564,7 +566,7 @@ export async function getNextActiveAlert(): Promise<any | null> {
   }
 }
 
-export async function addOrUpdateAlert(alertData: any): Promise<void> {
+export async function addOrUpdateAlert(alertData: Record<string, unknown>): Promise<void> {
   //console.log('addOrUpdateAlert called with:', alertData);
   try {
     if (await shouldUseRemote()) {
@@ -573,7 +575,7 @@ export async function addOrUpdateAlert(alertData: any): Promise<void> {
     await local.addOrUpdateAlert(alertData);
     const uid = (await getUID()) || 'unknown';
     await logSyncEntry({
-      id: alertData._id || new Date().getTime().toString(),
+      id: (alertData._id as string) || new Date().getTime().toString(),
       tableName: 'Alert',
       operation: alertData._id ? 'update' : 'create',
       timestamp: new Date(),
@@ -660,7 +662,7 @@ export async function restoreLostData(): Promise<void> {
   }
 }
 
-export async function getRules(): Promise<any[]> {
+export async function getRules(): Promise<Record<string, unknown>[]> {
   //console.log('getRules called');
   try {
     const result = (await shouldUseRemote())
@@ -697,7 +699,7 @@ export async function updateGPTSpecialties(gptSpecialty: {
   }
 }
 
-export async function getActivityLogs(): Promise<any[]> {
+export async function getActivityLogs(): Promise<ActivityLog[]> {
   //console.log('getActivityLogs called');
   try {
     const result = (await shouldUseRemote())
@@ -710,13 +712,13 @@ export async function getActivityLogs(): Promise<any[]> {
   }
 }
 
-export async function getParameters(): Promise<any[]> {
+export async function getParameters(): Promise<Record<string, unknown>[]> {
   //console.log('getParameters called');
   try {
     const result = (await shouldUseRemote())
       ? await remote.getParameters()
       : await local.getParameters();
-    return result;
+    return result as Record<string, unknown>[];
   } catch (error) {
     console.error('Error in getParameters:', error);
     return [];
@@ -738,7 +740,7 @@ export async function getDescriptionsWithTimestamps(
   }
 }
 
-export async function createDocument(data: any): Promise<string> {
+export async function createDocument(data: Record<string, unknown>): Promise<string> {
   //console.log('createDocument called with:', data);
   try {
     const remoteResult = await remote.createDocument(data);
@@ -758,7 +760,7 @@ export async function createDocument(data: any): Promise<string> {
   }
 }
 
-export async function readDocuments(): Promise<any[]> {
+export async function readDocuments(): Promise<Record<string, unknown>[]> {
   //console.log('readDocuments called');
   try {
     const result = (await shouldUseRemote())
@@ -771,7 +773,7 @@ export async function readDocuments(): Promise<any[]> {
   }
 }
 
-export async function updateDocument(docId: string, data: any): Promise<void> {
+export async function updateDocument(docId: string, data: Record<string, unknown>): Promise<void> {
   //console.log('updateDocument called with:', docId, data);
   try {
     await remote.updateDocument(docId, data);
@@ -835,7 +837,7 @@ export async function getCategoryById(id: string): Promise<Category | null> {
   }
 }
 
-export async function insertJsonFile(jsonData: any): Promise<void> {
+export async function insertJsonFile(jsonData: Array<{ category: string; value: string }>): Promise<void> {
   // console.log('insertJsonFile called with:', jsonData);
   try {
     await remote.insertJsonFile(jsonData);
@@ -928,7 +930,7 @@ export async function synchronizeCategories(appVersion: string): Promise<void> {
         console.log(`[DEBUG] Downloaded ${firebaseCategories.length} categories from Firebase:`, firebaseCategories.map(c => c.name));
         
         if (firebaseCategories.length > 0) {
-          await local.syncTableFromRemote('Category', firebaseCategories);
+          await local.syncTableFromRemote('Category', firebaseCategories as unknown as Record<string, unknown>[]);
           console.log('[DEBUG] Successfully synced categories to local Realm');
         } else {
           console.log('[DEBUG] No categories found in Firebase');
@@ -1029,7 +1031,7 @@ export async function checkCategoryReferences(categoryId: string): Promise<{
   }
 }
 
-export async function findCategoryByName(name: string): Promise<any> {
+export async function findCategoryByName(name: string): Promise<Category | null> {
   console.log('findCategoryByName called with:', name);
   try {
     if (await shouldUseRemoteForCategories()) {
@@ -1186,7 +1188,7 @@ export async function syncFromRemote() {
   console.log('[SYNC] Starting syncFromRemote for tables:', tables);
   for (const tableName of tables) {
     // 1. Get all local changelog rowIds for this table
-    let localChangeLog: any[] = [];
+    let localChangeLog: Record<string, unknown>[] = [];
     try {
       localChangeLog = await local.readChangeLog({ tableName });
     } catch (e) {
@@ -1196,19 +1198,18 @@ export async function syncFromRemote() {
       );
     }
     const localChangeLogRowIds = new Set(
-      (localChangeLog || []).map((cl: any) => cl.rowId?.toString())
+      (localChangeLog || []).map((cl) => cl.rowId?.toString()).filter((id): id is string => id !== undefined)
     );
 
     // 2. Download legacy/unsynced remote rows and create remote changelog entries
-    let newRows: any[] = [];
-    let changelogEntries: any[] = [];
+    let newRows: Record<string, unknown>[] = [];
     try {
       const result = await remote.downloadLegacyRowsAndSyncChangelog(
         tableName,
         localChangeLogRowIds
       );
       newRows = result.newRows;
-      changelogEntries = result.changelogEntries;
+      // changelogEntries = result.changelogEntries; // Not used currently
     } catch (e) {
       console.warn(
         `[SYNC] Could not download legacy rows for ${tableName}:`,
@@ -1230,7 +1231,7 @@ export async function syncFromRemote() {
     if (newRows && newRows.length > 0) {
       for (const row of newRows) {
         const rowId = row.id?.toString();
-        if (!localChangeLogRowIds.has(rowId)) {
+        if (rowId && !localChangeLogRowIds.has(rowId)) {
           try {
             local.logChange(tableName, rowId, 'create');
           } catch (e) {
@@ -1337,7 +1338,7 @@ export async function createCategoriesFromActivityLogs() {
     // Extract distinct categories (excluding empty, null, undefined, and 'uncategorized')
     const distinctCategories = new Set<string>();
 
-    activityLogs.forEach((log: any) => {
+    activityLogs.forEach((log: ActivityLog) => {
       const category = log.category?.trim();
       if (
         category &&
@@ -1430,7 +1431,7 @@ export async function addChangeLogEntry(
 }
 
 export async function importLegacyDiscussions(
-  discussions: any[]
+  discussions: Discussion[]
 ): Promise<number> {
   console.log(
     'importLegacyDiscussions called with:',
@@ -1438,7 +1439,13 @@ export async function importLegacyDiscussions(
     'discussions'
   );
   try {
-    return await local.importLegacyDiscussions(discussions);
+    // Map to ensure required properties are present
+    const mappedDiscussions = discussions.map(d => ({
+      ...d,
+      discussionId: d.discussionId || d.id, // Use id as fallback for discussionId
+      typeSay: d.typeSay || 'tell' // Default typeSay
+    }));
+    return await local.importLegacyDiscussions(mappedDiscussions);
   } catch (error) {
     console.error('Error in importLegacyDiscussions:', error);
     throw error;
@@ -1446,7 +1453,7 @@ export async function importLegacyDiscussions(
 }
 
 export async function importLegacyActivityLogs(
-  activityLogs: any[]
+  activityLogs: ActivityLog[]
 ): Promise<number> {
   console.log(
     'importLegacyActivityLogs called with:',
@@ -1573,31 +1580,31 @@ export async function syncBidirectionalChangeLog() {
     });
     const remoteChangeLog = await remote.readChangeLog({ tableName });
     const remoteChangeLogMap = new Map();
-    remoteChangeLog.forEach((entry: any) => {
+    remoteChangeLog.forEach((entry: Record<string, unknown>) => {
       remoteChangeLogMap.set(entry.rowId, entry);
     });
     for (const localEntry of localChangeLog) {
-      const remoteEntry = remoteChangeLogMap.get(localEntry.rowId);
+      const remoteEntry = remoteChangeLogMap.get(localEntry.rowId as string);
       if (remoteEntry) {
         // Both logs have entry for this row
-        if (new Date(localEntry.timestamp) > new Date(remoteEntry.timestamp)) {
+        if (new Date(localEntry.timestamp as string | number | Date) > new Date(remoteEntry.timestamp as string | number | Date)) {
           // Local is newer: apply to remote
           await remote.applyChangeLogOperation(tableName, localEntry);
           await remote.addOrUpdateChangeLogEntry(
             tableName,
-            localEntry.rowId,
-            localEntry.operation,
-            localEntry.timestamp,
-            localEntry.data
+            localEntry.rowId as string,
+            localEntry.operation as string,
+            localEntry.timestamp as Date,
+            localEntry.data as Record<string, unknown>
           );
         } else if (
-          new Date(remoteEntry.timestamp) > new Date(localEntry.timestamp)
+          new Date(remoteEntry.timestamp as string | number | Date) > new Date(localEntry.timestamp as string | number | Date)
         ) {
           // Remote is newer: apply to local
           await local.applyChangeLogOperation(tableName, remoteEntry);
           await local.addOrUpdateChangeLogEntry(
             tableName,
-            remoteEntry.rowId,
+            remoteEntry.rowId as string,
             remoteEntry.operation,
             remoteEntry.timestamp,
             remoteEntry.data
@@ -1605,27 +1612,26 @@ export async function syncBidirectionalChangeLog() {
         }
       } else {
         // No remote entry: push local to remote
-        await remote.applyChangeLogOperation(tableName, localEntry);
-        await remote.addOrUpdateChangeLogEntry(
-          tableName,
-          localEntry.rowId,
-          localEntry.operation,
-          localEntry.timestamp,
-          localEntry.data
-        );
+        await remote.applyChangeLogOperation(tableName, localEntry);          await remote.addOrUpdateChangeLogEntry(
+            tableName,
+            localEntry.rowId as string,
+            localEntry.operation as string,
+            localEntry.timestamp as Date,
+            localEntry.data as Record<string, unknown>
+          );
       }
       // Mark local entry as synced
-      await local.markChangeLogEntrySynced(tableName, localEntry.rowId);
+      await local.markChangeLogEntrySynced(tableName, localEntry.rowId as string);
     }
 
     // --- Phase 2: Remote → Local ---
     const updatedLocalChangeLog = await local.readChangeLog({ tableName });
     const localChangeLogMap = new Map();
-    updatedLocalChangeLog.forEach((entry: any) => {
+    updatedLocalChangeLog.forEach((entry: Record<string, unknown>) => {
       localChangeLogMap.set(entry.rowId, entry);
     });
     const unsyncedRemoteChangeLog = remoteChangeLog.filter(
-      (entry: any) => !entry.synced
+      (entry: Record<string, unknown>) => !entry.synced
     );
     for (const remoteEntry of unsyncedRemoteChangeLog) {
       const localEntry = localChangeLogMap.get(remoteEntry.rowId);

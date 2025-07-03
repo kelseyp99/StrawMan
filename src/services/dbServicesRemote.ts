@@ -3,7 +3,7 @@
 //   This function does not perform any download or update from Firestore to Realm, and is not related to previous .NET API or bidirectional sync logic.
 //   Use this for one-way upload of new Realm data to Firestore only.
 
-import { auth, db } from '../firebaseConfig';
+import { db } from '../firebaseConfig';
 import { realm } from '../realmConfig';
 import {
   collection,
@@ -20,6 +20,7 @@ import {
   DocumentData,
   DocumentReference,
   DocumentSnapshot,
+  QueryDocumentSnapshot,
   limit,
   onSnapshot,
   orderBy,
@@ -295,7 +296,7 @@ export async function getDescriptionsWithTimestamps(
   }
 }
 
-export const createDocument = async (data: any) => {
+export const createDocument = async (data: Record<string, unknown>) => {
   const uid = await getUID();
   if (!uid) {
     throw new Error('No UID available for create operation');
@@ -337,14 +338,15 @@ export const readDocuments = async () => {
   }
 };
 
-export const updateDocument = async (docId: string, data: any) => {
+export const updateDocument = async (docId: string, data: Record<string, unknown>) => {
   const uid = await getUID();
   if (!uid) {
     throw new Error('No UID available for update operation');
   }
   try {
     const docRef = doc(db, `Users/${uid}/Documents`, docId);
-    await updateDoc(docRef, data);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await updateDoc(docRef, data as any);
     console.log('Document updated with ID:', docId);
   } catch (error) {
     console.error('Error updating document:', error);
@@ -383,7 +385,7 @@ export async function getDistinctCategories(): Promise<string[]> {
     const categoriesSet = new Set<string>();
 
     try {
-      snapshot.forEach((doc: { data: () => any }) => {
+      snapshot.forEach((doc: QueryDocumentSnapshot<DocumentData>) => {
         const data = doc.data();
         if (data.category) {
           categoriesSet.add(data.category);
@@ -406,7 +408,7 @@ export async function getDistinctCategories(): Promise<string[]> {
   }
 }
 
-export async function insertJsonFile(jsonData: any): Promise<void> {
+export async function insertJsonFile(jsonData: Array<{ category: string; value: string }>): Promise<void> {
   const uid = await getUID();
   if (!uid) {
     throw new Error('No UID available for insert operation');
@@ -433,7 +435,7 @@ export async function insertJsonFile(jsonData: any): Promise<void> {
 
 export async function queryAllFieldsByCategories(
   categories: string[]
-): Promise<any[]> {
+): Promise<string[]> {
   console.log('Querying Firestore for categories:', categories);
   const uid = await getUID();
   if (!uid) {
@@ -530,8 +532,8 @@ export async function synchronizeActivityLog(
       const entryTimestamp =
         globalData.timestamp instanceof Date
           ? globalData.timestamp
-          : (globalData.timestamp as any)?.toDate
-          ? (globalData.timestamp as any).toDate()
+          : (globalData.timestamp as unknown as Timestamp)?.toDate
+          ? (globalData.timestamp as unknown as Timestamp).toDate()
           : new Date();
 
       // Check if entry with this timestamp already exists in Realm
@@ -656,8 +658,8 @@ export async function synchronizeDiscussions(
       const entryTimestamp =
         globalData.timestamp instanceof Date
           ? globalData.timestamp
-          : (globalData.timestamp as any)?.toDate
-          ? (globalData.timestamp as any).toDate()
+          : (globalData.timestamp as unknown as Timestamp)?.toDate
+          ? (globalData.timestamp as unknown as Timestamp).toDate()
           : new Date();
 
       // Check if entry with this timestamp already exists in Realm
@@ -720,7 +722,7 @@ export async function synchronizeDiscussions(
     }
   } catch (error) {
     console.error('Error synchronizing Discussion:', error);
-    if ((error as any).code === 'permission-denied') {
+    if ((error as { code?: string }).code === 'permission-denied') {
       console.error(
         'Permission denied. Check Firestore security rules for /Discussion and Users/{uid}/Discussion.'
       );
@@ -729,7 +731,7 @@ export async function synchronizeDiscussions(
   }
 }
 
-export async function synchronizeCategories(appVersion: string): Promise<void> {
+export async function synchronizeCategories(_appVersion: string): Promise<void> {
   const uid = await getUID();
   if (!uid) {
     throw new Error('No UID available for category synchronization');
@@ -926,7 +928,7 @@ function compareVersions(
 export async function getDiscussions(
   lastX?: number,
   discussionId?: string
-): Promise<any[]> {
+): Promise<Discussion[]> {
   const uid = await getUID();
   if (!uid) {
     throw new Error('No UID available for get discussions operation');
@@ -956,7 +958,7 @@ export async function getDiscussions(
       timestamp: doc.data().timestamp
         ? format(new Date(doc.data().timestamp.toDate()), 'M/d/yy \n h:mm a')
         : 'N/A',
-    }));
+    })) as Discussion[];
   } catch (error) {
     console.error('Error getting Discussion:', error);
     return [];
@@ -1042,7 +1044,7 @@ export const fetchInitialDiscussion = async () => {
   }
 };
 
-export const getNextOpenDiscussion = async (lastVisibleDoc?: any) => {
+export const getNextOpenDiscussion = async (lastVisibleDoc?: QueryDocumentSnapshot<DocumentData>) => {
   const uid = await getUID();
   if (!uid) {
     throw new Error('No UID available for get next open discussion operation');
@@ -1141,7 +1143,7 @@ export async function processPendingTells(): Promise<void> {
     console.log('Finished processing pending tell statements.');
   } catch (error) {
     console.error('Error processing pending tells:', error);
-    if ((error as any).code === 'permission-denied') {
+    if ((error as { code?: string }).code === 'permission-denied') {
       console.error(
         'Permission denied. Check Firestore security rules for /Discussion and Users/{uid}/ActivityLog.'
       );
@@ -1429,7 +1431,6 @@ interface LastOpenDiscussion {
 }
 
 export async function getLastOpenDiscussion(): Promise<LastOpenDiscussion> {
-  const currentTime = new Date();
   const uid = await getUID();
   if (!uid) {
     throw new Error('No UID available for get last open discussion operation');
@@ -1482,7 +1483,7 @@ async function waitForDocument(
           resolve(docSnap);
         }
       },
-      (error: any) => {
+      (error: Error) => {
         unsubscribe();
         reject(error);
       }
@@ -1529,7 +1530,7 @@ export async function disperseQuestion(
     const parsedQuestion = JSON.parse(
       (gptResponseDoc as DocumentSnapshot).get('response')
     );
-    let responses: string[] = [];
+    const responses: string[] = [];
     for (const part of parsedQuestion.parts) {
       const { gpt, category, parsedDescription: question } = part;
       console.log(
@@ -1582,7 +1583,7 @@ export async function disperseQuestionOLD(
         const parsedQuestion = JSON.parse(
           gptResponseDoc.data()!.response as string
         );
-        let responses: string[] = [];
+        const responses: string[] = [];
         for (const part of parsedQuestion.parts) {
           const gpt = part.gpt;
           const category = part.category;
@@ -1658,7 +1659,7 @@ export async function addOrUpdateGPTResponse(
   }
 }
 
-export async function getGPTResponses(discussionId: string): Promise<any[]> {
+export async function getGPTResponses(discussionId: string): Promise<Record<string, unknown>[]> {
   const uid = await getUID();
   if (!uid) {
     throw new Error('No UID available for get GPT responses operation');
@@ -1670,7 +1671,7 @@ export async function getGPTResponses(discussionId: string): Promise<any[]> {
       where('uid', '==', uid)
     );
     const snapshot = await getDocs(q);
-    return snapshot.docs.map((doc: { data: () => any }) => doc.data());
+    return snapshot.docs.map((doc: QueryDocumentSnapshot<DocumentData>) => doc.data());
   } catch (error) {
     console.error('Error getting GPT responses:', error);
     return [];
@@ -1686,7 +1687,7 @@ export async function getParsedGPTResponses(
   }
   try {
     const parsedResponses: string[] = [];
-    let lastVisible: any = null;
+    let lastVisible: QueryDocumentSnapshot<DocumentData> | null = null;
     const batchSize = 10;
     do {
       let q = query(
@@ -1742,7 +1743,7 @@ export async function createAndSyncChangelogEntry(
   rowId: string,
   operation: 'create' | 'update' | 'delete',
   timestamp?: Date
-): Promise<any> {
+): Promise<Record<string, unknown>> {
   const uid = await getUID();
   if (!uid) throw new Error('No UID available for changelog operation');
   const ts = timestamp || new Date();
@@ -1774,7 +1775,7 @@ export async function createAndSyncChangelogEntry(
 export async function downloadNewRowsAndSyncChangelog(
   tableName: string,
   localChangeLogRowIds: Set<string>
-): Promise<{ newRows: any[]; changelogEntries: any[] }> {
+): Promise<{ newRows: Record<string, unknown>[]; changelogEntries: Record<string, unknown>[] }> {
   const uid = await getUID();
   if (!uid) throw new Error('No UID available for download/sync operation');
   // 1. Get all remote rows from Firestore
@@ -1792,7 +1793,7 @@ export async function downloadNewRowsAndSyncChangelog(
     return { newRows: [], changelogEntries: [] };
   }
   // 3. For each new row, create changelog entry in Firestore and collect for local/router
-  const changelogEntries: any[] = [];
+  const changelogEntries: Record<string, unknown>[] = [];
   for (const row of newRows) {
     let timestamp: Date = new Date();
     if (
@@ -1842,7 +1843,7 @@ export async function downloadLegacyRowsAndSyncChangelog(
   tableName: string,
   localChangeLogRowIds: Set<string>,
   localChangeLogTimestamps?: Map<string, Date>
-): Promise<{ newRows: any[]; changelogEntries: any[] }> {
+): Promise<{ newRows: Record<string, unknown>[]; changelogEntries: Record<string, unknown>[] }> {
   console.log(`Downloading legacy rows for table: ${tableName}`);
   const uid = await getUID();
   if (!uid) throw new Error('No UID available for download/sync operation');
@@ -1866,11 +1867,12 @@ export async function downloadLegacyRowsAndSyncChangelog(
   // Optionally accept localChangeLogTimestamps for more robust comparison
   const localChangeLogMap = localChangeLogTimestamps || new Map<string, Date>();
   // 3. Build set of all rowIds in local changelog
-  const localRowIds = localChangeLogRowIds;
+  // (unused variable removed: localRowIds = localChangeLogRowIds)
   // 4. For each remote row, apply union logic
-  const legacyRows: any[] = [];
+  const legacyRows: Record<string, unknown>[] = [];
   for (const row of remoteRows) {
     const rowId = row.id?.toString?.();
+    if (!rowId) continue; // Skip if no valid row ID
     const remoteTS = remoteChangeLogMap.get(rowId);
     const localTS = localChangeLogMap.get(rowId);
     if (!remoteTS && !localTS) {
@@ -1892,9 +1894,10 @@ export async function downloadLegacyRowsAndSyncChangelog(
     return row;
   });
   // 5. For each legacy row, create a remote changelog entry if missing
-  const changelogEntries: any[] = [];
+  const changelogEntries: Record<string, unknown>[] = [];
   for (const row of legacyRowsWithDates) {
     const rowId = row.id?.toString?.();
+    if (!rowId) continue; // Skip if no valid row ID
     let timestamp: Date = new Date();
     if (
       'syncTimestamp' in row &&
@@ -1943,7 +1946,7 @@ export async function downloadLegacyRowsAndSyncChangelog(
 // Sync unsynced Realm rows to Firestore
 export async function syncRealmRowsToFirestore(
   tableName: string,
-  realmRows: any[]
+  realmRows: Record<string, unknown>[]
 ): Promise<string[]> {
   const uid = await getUID();
   if (!uid) throw new Error('No UID available for sync operation');
@@ -1974,7 +1977,7 @@ export async function syncRealmRowsToFirestore(
 // Database functions for Alerts //
 //////////////////////////////////////////
 
-export async function getNextActiveAlert(): Promise<any | null> {
+export async function getNextActiveAlert(): Promise<Record<string, unknown> | null> {
   const uid = await getUID();
   if (!uid) {
     throw new Error('No UID available for get next active alert operation');
@@ -1993,14 +1996,14 @@ export async function getNextActiveAlert(): Promise<any | null> {
   }
 }
 
-export async function addOrUpdateAlert(alertData: any): Promise<void> {
+export async function addOrUpdateAlert(alertData: Record<string, unknown>): Promise<void> {
   const uid = await getUID();
   if (!uid) {
     throw new Error('No UID available for add or update alert operation');
   }
   try {
-    const docRef = alertData._id
-      ? doc(db, 'Alert', alertData._id)
+    const docRef = (alertData._id as string)
+      ? doc(db, 'Alert', alertData._id as string)
       : doc(collection(db, 'Alert'));
     await setDoc(
       docRef,
@@ -2247,13 +2250,13 @@ export async function createRuleCandidate(data: {
 export async function updateRowIfNewer(
   tableName: string,
   rowId: string,
-  data: any
+  data: Record<string, unknown>
 ): Promise<boolean> {
   const uid = await getUID();
   if (!uid) throw new Error('No UID available');
   const docRef = doc(db, `Users/${uid}/${tableName}`, rowId);
   const docSnap = await getDoc(docRef);
-  const incomingTS = new Date(data.syncTimestamp).getTime();
+  const incomingTS = new Date(data.syncTimestamp as string | number | Date).getTime();
   if (docSnap.exists()) {
     const existingTS = docSnap.data().syncTimestamp
       ? new Date(docSnap.data().syncTimestamp).getTime()
@@ -2312,7 +2315,7 @@ export async function deleteRowIfNewer(
 export async function fetchTableUpdates(
   tableName: string,
   lastSyncTimestamp: Date
-): Promise<{ rows: any[] }> {
+): Promise<{ rows: Record<string, unknown>[] }> {
   const uid = await getUID();
   if (!uid) throw new Error('No UID available');
   const collectionRef = collection(db, `Users/${uid}/${tableName}`);
@@ -2338,20 +2341,21 @@ export async function fetchTableUpdates(
 }
 
 // Helper: convert Firestore Timestamp to JS Date if needed
-function ensureDateField(obj: any, field: string) {
+function ensureDateField(obj: Record<string, unknown>, field: string) {
   if (obj[field]) {
+    const fieldValue = obj[field] as Record<string, unknown>; // Firestore timestamp object
     // Firestore Timestamp object: { seconds, nanoseconds }
     if (
-      typeof obj[field] === 'object' &&
-      obj[field] !== null &&
-      typeof obj[field].seconds === 'number' &&
-      typeof obj[field].nanoseconds === 'number'
+      typeof fieldValue === 'object' &&
+      fieldValue !== null &&
+      typeof fieldValue.seconds === 'number' &&
+      typeof fieldValue.nanoseconds === 'number'
     ) {
       obj[field] = new Date(
-        obj[field].seconds * 1000 + Math.floor(obj[field].nanoseconds / 1e6)
+        fieldValue.seconds * 1000 + Math.floor(fieldValue.nanoseconds / 1e6)
       );
-    } else if (typeof obj[field].toDate === 'function') {
-      obj[field] = obj[field].toDate();
+    } else if (typeof (fieldValue as Record<string, unknown>).toDate === 'function') {
+      obj[field] = (fieldValue as { toDate: () => Date }).toDate();
     } else if (
       typeof obj[field] === 'number' ||
       typeof obj[field] === 'string'
@@ -2374,13 +2378,13 @@ export async function extractAndImportLegacyFirestoreData({
   if (!realm) throw new Error('Realm not initialized');
 
   // Helper: deduplicate by timestamp
-  function deduplicateByTimestamp<T extends { timestamp?: any }>(
+  function deduplicateByTimestamp<T extends { timestamp?: Date | string | number | Timestamp }>(
     rows: T[]
   ): T[] {
     const seen = new Set<number>();
     return rows.filter((row) => {
       let ts: number = 0;
-      if (row.timestamp?.toMillis) ts = row.timestamp.toMillis();
+      if ((row.timestamp as Timestamp)?.toMillis) ts = (row.timestamp as Timestamp).toMillis();
       else if (row.timestamp instanceof Date) ts = row.timestamp.getTime();
       else if (typeof row.timestamp === 'number') ts = row.timestamp;
       else if (typeof row.timestamp === 'string')
@@ -2392,8 +2396,8 @@ export async function extractAndImportLegacyFirestoreData({
   }
 
   // Helper: upsert to user-level Firestore
-  async function upsertToUserFirestore(tableName: string, row: any) {
-    const userDocRef = doc(db, `Users/${uid}/${tableName}`, row.id);
+  async function upsertToUserFirestore(tableName: string, row: Record<string, unknown>) {
+    const userDocRef = doc(db, `Users/${uid}/${tableName}`, row.id as string);
 
     // Remove Realm-specific fields that Firestore can't handle
     const cleanRow = { ...row };
@@ -2403,14 +2407,14 @@ export async function extractAndImportLegacyFirestoreData({
   }
 
   // Helper: upsert to Realm
-  function upsertToRealm(tableName: string, row: any) {
+  function upsertToRealm(tableName: string, row: Record<string, unknown>) {
     try {
       realm!.write(() => {
         realm!.create(tableName, { ...row }, Realm.UpdateMode.Modified);
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error(`[upsertToRealm] Error inserting ${tableName} row:`, {
-        error: error?.message || String(error),
+        error: (error as Error)?.message || String(error),
         rowId: row.id,
         rowData: JSON.stringify(row, null, 2),
       });
@@ -2419,11 +2423,11 @@ export async function extractAndImportLegacyFirestoreData({
   }
 
   // Helper: create changelog entry (local and remote)
-  async function createChangelog(tableName: string, row: any) {
+  async function createChangelog(tableName: string, row: Record<string, unknown>) {
     const ts = row.syncTimestamp
-      ? new Date(row.syncTimestamp)
+      ? new Date(row.syncTimestamp as string | number | Date)
       : row.timestamp
-      ? new Date(row.timestamp)
+      ? new Date(row.timestamp as string | number | Date)
       : undefined;
     if (!ts) {
       console.warn(
@@ -2441,7 +2445,7 @@ export async function extractAndImportLegacyFirestoreData({
   async function extractTable<
     T extends {
       id: string;
-      timestamp?: any;
+      timestamp?: Date | string | number;
       discussionId?: string;
       discussionID?: string;
       synced?: boolean;
@@ -2461,9 +2465,9 @@ export async function extractAndImportLegacyFirestoreData({
         row.discussionId = String(row.discussionId || row.id);
         row.synced = typeof row.synced === 'boolean' ? row.synced : false;
         row.cleared = typeof row.cleared === 'boolean' ? row.cleared : false;
-        (row as any).typeSay = String((row as any).typeSay || 'tell');
+        (row as Record<string, unknown>).typeSay = String((row as Record<string, unknown>).typeSay || 'tell');
         // Ensure description is a string
-        (row as any).description = String((row as any).description || '');
+        (row as Record<string, unknown>).description = String((row as Record<string, unknown>).description || '');
       } else if (tableName === 'ActivityLog') {
         // Ensure all required fields are strings and present
         row.discussionId = String(
@@ -2471,23 +2475,23 @@ export async function extractAndImportLegacyFirestoreData({
         );
         row.synced = typeof row.synced === 'boolean' ? row.synced : false;
         row.cleared = typeof row.cleared === 'boolean' ? row.cleared : false;
-        (row as any).responseType = String((row as any).responseType || 'tell');
+        (row as Record<string, unknown>).responseType = String((row as Record<string, unknown>).responseType || 'tell');
         // Ensure category and description are strings
-        (row as any).category = String((row as any).category || 'general');
-        (row as any).description = String((row as any).description || '');
+        (row as Record<string, unknown>).category = String((row as Record<string, unknown>).category || 'general');
+        (row as Record<string, unknown>).description = String((row as Record<string, unknown>).description || '');
       }
 
       // Ensure id is always a string
       row.id = String(row.id);
       // Convert Firestore Timestamp to JS Date ONLY if needed, but NEVER use current date as fallback
-      if (row.timestamp && typeof row.timestamp.toDate === 'function') {
-        row.timestamp = row.timestamp.toDate();
+      if (row.timestamp && typeof (row.timestamp as unknown as Timestamp).toDate === 'function') {
+        row.timestamp = (row.timestamp as unknown as Timestamp).toDate();
       } else if (
         row.timestamp &&
         typeof row.timestamp === 'object' &&
-        row.timestamp.seconds
+        (row.timestamp as unknown as { seconds: number }).seconds
       ) {
-        row.timestamp = new Date(row.timestamp.seconds * 1000);
+        row.timestamp = new Date((row.timestamp as unknown as { seconds: number }).seconds * 1000);
       } else if (
         typeof row.timestamp === 'string' ||
         typeof row.timestamp === 'number'
@@ -2549,14 +2553,14 @@ export async function readChangeLog({
   tableName,
 }: {
   tableName: string;
-}): Promise<any[]> {
+}): Promise<Record<string, unknown>[]> {
   // TODO: Implement remote changelog fetch logic
   return [];
 }
 
 export async function applyChangeLogOperation(
   tableName: string,
-  entry: any
+  entry: Record<string, unknown>
 ): Promise<void> {
   // TODO: Implement remote apply logic
 }
@@ -2566,7 +2570,7 @@ export async function addOrUpdateChangeLogEntry(
   rowId: string,
   operation: string,
   timestamp: Date,
-  data?: any
+  data?: Record<string, unknown>
 ): Promise<void> {
   // TODO: Implement remote add/update logic
 }
