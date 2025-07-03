@@ -3,11 +3,11 @@ import { useState, useEffect } from 'react';
 import { getDiscussions } from '../services/dbServices';
 
 interface Discussion {
-  id: number;
-  discussionId?: number;
+  id: string;
+  discussionId?: string;
   description: string;
   timestamp: Date | string;
-  typeSay?: string; // Changed from type to typeSay
+  typeSay?: string;
   cleared: boolean;
   uid?: string;
 }

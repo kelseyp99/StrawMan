@@ -1,12 +1,13 @@
 import { initializeApp } from "firebase/app";
-import { getAuth, initializeAuth, Auth } from "firebase/auth";
+import { initializeAuth } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 import Constants from "expo-constants";
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Declare getReactNativePersistence to fix TypeScript error
 declare module 'firebase/auth' {
-  export function getReactNativePersistence(storage: any): any;
+  // Use 'unknown' for better type safety
+  export function getReactNativePersistence(storage: unknown): unknown;
 }
 import { getReactNativePersistence } from 'firebase/auth';
 
@@ -30,14 +31,18 @@ if (ENABLE_FIREBASE) {
 }
 
 // Initialize Firebase only if enabled
-let app: any = null;
-let auth: any = null;
-let db: any = null;
+import type { FirebaseApp } from 'firebase/app';
+import type { Auth as FirebaseAuth, Persistence } from 'firebase/auth';
+import type { Firestore } from 'firebase/firestore';
+
+let app: FirebaseApp | null = null;
+let auth: FirebaseAuth | Partial<FirebaseAuth> | null = null;
+let db: Firestore | Record<string, unknown> | null = null;
 
 if (ENABLE_FIREBASE) {
   app = initializeApp(firebaseConfig);
   auth = initializeAuth(app, {
-    persistence: getReactNativePersistence(AsyncStorage)
+    persistence: getReactNativePersistence(AsyncStorage) as Persistence
   });
   
   if (ENABLE_FIRESTORE) {
@@ -71,7 +76,7 @@ if (ENABLE_FIREBASE) {
     signInWithEmailAndPassword: () => Promise.reject(new Error('Firebase disabled')),
     createUserWithEmailAndPassword: () => Promise.reject(new Error('Firebase disabled')),
     signOut: () => Promise.reject(new Error('Firebase disabled')),
-  };
+  } as Partial<FirebaseAuth>;
   db = {
     collection: () => ({ 
       doc: () => ({ 

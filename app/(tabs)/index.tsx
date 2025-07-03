@@ -32,11 +32,6 @@ import {
   deleteActivityLog,
   getActivityLogs,
   getDiscussions,
-  printAllRealmDataToTerminal,
-  importLegacyActivityLogs,
-  importLegacyDiscussions,
-  debugPrintAllActivityLogs,
-  debugPrintAllDiscussions,
 } from '../../src/services/dbServices';
 import { transformInput } from '../../src/services/phraseProcessor';
 // Firestore imports removed for offline-first operation
@@ -53,42 +48,34 @@ import * as DocumentPicker from 'expo-document-picker';
 import * as dbServices from '../../src/services/dbServices';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSync } from '../context/SyncContext';
-import { extractAndImportLegacyFirestoreData } from '../../src/services/dbServicesRemote';
+
 // IAP temporarily disabled
 // import { setPlanBySku, PLAN_SKUS } from '../../src/services/planManager';
 
-// App version from app.json
-const APP_VERSION = '1.1.0';
+
 
 // Log application load
 console.log('LifeLog init:', new Date().toISOString());
 
-interface ActivityLog {
-  id: string;
-  discussionId: string;
-  description: string;
-  category: string;
-  timestamp: any;
-  cleared: boolean;
-  uid: string;
-  lockedCategory?: boolean;
-  lockedDescription?: boolean;
-  attachedFile?: string | null;
-}
+
+
+
 
 interface Discussion {
   id: string;
   discussionId: string;
   description: string;
-  timestamp: any;
+  timestamp: Date | string;
   typeSay: string;
   cleared?: boolean;
   uid?: string;
 }
 
-const IndexScreen: React.FC<{
-  onApiKeyLoaded: (cachedApiKey: string | null) => void;
-}> = ({ onApiKeyLoaded }) => {
+interface IndexScreenProps {
+}
+
+const IndexScreen: React.FC<IndexScreenProps> = (props) => {
+  const { onApiKeyLoaded } = props;
   const [loading, setLoading] = useState(true);
   const { triggerSync } = useSync();
 
@@ -115,16 +102,47 @@ const IndexScreen: React.FC<{
 };
 
 export default function AskJanet() {
+
+  // All state hooks declared at the top for clarity and to avoid reference errors
+
+  // All state hooks declared at the top for clarity and to avoid reference errors
   const [apiKey, setApiKey] = useState<string | null>(null);
   const [input, setInput] = useState('');
   const [isQuestion, setIsQuestion] = useState(false);
-  const [inDJ_Mode, setInDJ_Mode] = useState(false);
   const [history, setHistory] = useState<
     { text: string; type: string; aiResponse?: string }[]
-  >([]);
+  >([
+    { text: "What is the weather like today?", type: "question", aiResponse: "I don't have access to current weather data." },
+    { text: "I had breakfast this morning", type: "fact" },
+    { text: "How can I improve my sleep?", type: "question", aiResponse: "Try maintaining a consistent sleep schedule." },
+    { text: "I went for a run", type: "fact" },
+    { text: "What exercises are good for beginners?", type: "question" },
+    { text: "I drank water", type: "fact" },
+    { text: "How much water should I drink daily?", type: "question" },
+    { text: "I read a book", type: "fact" },
+    { text: "What are good books for learning?", type: "question" },
+    { text: "I practiced meditation", type: "fact" },
+    { text: "How to start meditating?", type: "question" },
+    { text: "I had lunch", type: "fact" },
+    { text: "What are healthy lunch options?", type: "question" },
+    { text: "I called my family", type: "fact" },
+    { text: "How to maintain relationships?", type: "question" },
+    { text: "I worked on a project", type: "fact" },
+  ]);
   const [discussion, setDiscussion] = useState<Discussion | null>(null);
-  const router = useRouter();
-  const { isLogged, loading: authLoading, setIsLogged, setIsPaid } = useAuth(); // Use local auth context
+  const [discussionCounts, setDiscussionCounts] = useState<any[]>([]);
+  const [processedDiscussions, setProcessedDiscussions] = useState<string[]>([]);
+  const [destinationFolder, setDestinationFolder] = useState<string>('Downloads');
+  const [filePath, setFilePath] = useState<string>('');
+  const [currentDiscussion, setCurrentDiscussion] = useState<Discussion | null>(null);
+  const [dialogVisible, setDialogVisible] = useState(false);
+  const [dialogQuestion, setDialogQuestion] = useState('');
+  const [distinctCategories, setDistinctCategories] = useState<string[]>([]);
+  const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
+  const [selectedFile, setSelectedFile] = useState<DocumentPicker.DocumentPickerResult | null>(null);
+  const [activityLogEntries, setActivityLogEntries] = useState<string[]>([]);
+  const [isFetching, setIsFetching] = useState(false);
+  const [fetchAttempts, setFetchAttempts] = useState(0);
   const [responses, setResponses] = useState<
     { responseType: string; text: string }[]
   >([]);
@@ -132,35 +150,15 @@ export default function AskJanet() {
   const [userUID, setUserUID] = useState<string | null>(null);
   const [menuVisible, setMenuVisible] = useState(false);
   const [loadingAuth, setLoadingAuth] = useState(true);
-  const [discussionCounts, setDiscussionCounts] = useState<
-    {
-      discussionID: string;
-      activityLogId: string;
-      count: number;
-      description: string;
-    }[]
-  >([]);
-  const [dialogVisible, setDialogVisible] = useState(false);
-  const [dialogQuestion, setDialogQuestion] = useState('');
-  const [distinctCategories, setDistinctCategories] = useState<string[]>([]);
-  const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
-  const [filePath, setFilePath] = useState<string>('');
-  const [selectedFile, setSelectedFile] =
-    useState<DocumentPicker.DocumentPickerResult | null>(null);
-  const [currentDiscussion, setCurrentDiscussion] = useState<Discussion | null>(
-    null
-  );
-  const [processedDiscussions, setProcessedDiscussions] = useState<string[]>(
-    []
-  );
-  const [destinationFolder, setDestinationFolder] =
-    useState<string>('Downloads');
-  const [activityLogEntries, setActivityLogEntries] = useState<string[]>([]);
-  const [isFetching, setIsFetching] = useState(false);
+
+  const router = useRouter();
+  const { isLogged, loading: authLoading, setIsLogged } = useAuth(); // Use local auth context
+
+  // ...existing code...
+
   const dialogRef = useRef<View>(null);
-  const [fetchAttempts, setFetchAttempts] = useState(0);
   const MAX_FETCH_ATTEMPTS = 5;
-  const { lastSync, triggerSync } = useSync();
+  const { lastSync } = useSync();
 
   // Initialize user with Firebase auth (if available) or local auth system
   useEffect(() => {
@@ -304,7 +302,6 @@ export default function AskJanet() {
     if (!loadingAuth) {
       loadInitialData();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lastSync, loadingAuth]);
 
   async function loadInitialData() {
@@ -395,17 +392,29 @@ export default function AskJanet() {
 
       // Use local Realm database instead of Firestore
       const { snapshot, hasMore } = await getNextOpenDiscussion();
-      if (snapshot && snapshot.length > 0) {
-        console.log('Found discussions:', snapshot.length);
-        const discussionData = snapshot[0]; // Get first discussion from Realm results
-        const discussionTyped: Discussion = {
-          id: discussionData.id,
-          discussionId: discussionData.discussionId || discussionData.id,
-          description: discussionData.description || 'No description',
-          timestamp: discussionData.timestamp || new Date(),
-          typeSay: discussionData.typeSay || 'ask',
-          cleared: discussionData.cleared || false,
-        };
+      // Ensure snapshot is always an array and map to local Discussion type
+      const snapshotArr = Array.isArray(snapshot)
+        ? snapshot.map((d: {
+            id: string;
+            discussionId?: string;
+            description?: string;
+            timestamp?: Date | string;
+            typeSay?: string;
+            cleared?: boolean;
+            uid?: string;
+          }) => ({
+            id: d.id,
+            discussionId: d.discussionId ?? d.id,
+            description: d.description ?? 'No description',
+            timestamp: d.timestamp ?? new Date(),
+            typeSay: d.typeSay ?? 'ask',
+            cleared: d.cleared ?? false,
+            uid: d.uid,
+          }))
+        : [];
+      if (snapshotArr.length > 0) {
+        console.log('Found discussions:', snapshotArr.length);
+        const discussionTyped: Discussion = snapshotArr[0]; // Already mapped to correct type
         console.log('Processing discussion:', discussionTyped.description);
 
         setCurrentDiscussion(discussionTyped);
@@ -437,11 +446,11 @@ export default function AskJanet() {
   ) => {
     try {
       // Use dbServices broker instead of direct Firebase calls
+      // Remove extra argument to match function signature
       const isDuplicate = await findDuplicateActivityLog(
         discussionId,
         category,
-        description,
-        userUID || 'local-user'
+        description
       );
       return !isDuplicate; // Return true if unique (no duplicate found)
     } catch (error) {
@@ -800,101 +809,6 @@ export default function AskJanet() {
     }
   }
 
-  const handleDialogConfirm = async () => {
-    if (!currentDiscussion) {
-      console.error('No discussion.');
-      setDialogVisible(false);
-      setCurrentDiscussion(null);
-      setResponses([]);
-      setProcessedDiscussions([]);
-      return;
-    }
-
-    try {
-      console.log('Confirm:', currentDiscussion.id);
-      const isUnique = await checkUniqueActivityLog(
-        currentDiscussion.id,
-        selectedCategories.join(', ') || 'uncategorized',
-        dialogQuestion || 'No question'
-      );
-      if (!isUnique) {
-        Alert.alert('Error', 'Duplicate.');
-        await markDiscussionAsCleared(currentDiscussion.id);
-        setDialogVisible(false);
-        setCurrentDiscussion(null);
-        setResponses([]);
-        setProcessedDiscussions([]);
-        return;
-      }
-
-      if (currentDiscussion.typeSay === 'ask') {
-        const gptResponseId = await addQuestionDiscussion(
-          input,
-          currentDiscussion.id
-        );
-        const parsedResponses = await disperseQuestion(
-          currentDiscussion.id,
-          gptResponseId
-        );
-        if (parsedResponses) {
-          const newResponses = parsedResponses.map((response) => ({
-            responseType: 'gpt response',
-            text: response.toString(),
-          }));
-          setHistory((prev) => [
-            ...prev,
-            ...newResponses.map((response) => ({
-              text: response.text,
-              type: 'answer',
-            })),
-          ]);
-          setResponses(newResponses);
-          console.log('Resp:', newResponses);
-        }
-        await markDiscussionAsCleared(currentDiscussion.id);
-      } else if (currentDiscussion.typeSay === 'tell') {
-        const category = selectedCategories.join(', ') || 'uncategorized';
-        const description = dialogQuestion || 'No question';
-
-        // Use dbServices to create activity log for 'tell' type
-        const activityLogEntry = {
-          discussionId: currentDiscussion.id,
-          description,
-          category,
-          timestamp: new Date(),
-          cleared: false,
-          uid: userUID || 'local-user',
-          lockedCategory: false,
-          lockedDescription: false,
-          attachedFile:
-            selectedFile?.assets && selectedFile?.assets[0]?.uri
-              ? selectedFile?.assets[0]?.uri
-              : null,
-        };
-
-        const newActivityLogId = await createActivityLog(activityLogEntry);
-        console.log(
-          'ActivityLog added for tell via dbServices:',
-          newActivityLogId
-        );
-      }
-
-      await markDiscussionAsCleared(currentDiscussion.id);
-      setDialogVisible(false);
-      setCurrentDiscussion(null);
-      setResponses([]);
-      setProcessedDiscussions([]);
-      fetchDiscussions();
-    } catch (error) {
-      console.error('Confirm err:', error);
-      await markDiscussionAsCleared(currentDiscussion.id);
-      setDialogVisible(false);
-      setCurrentDiscussion(null);
-      setResponses([]);
-      setProcessedDiscussions([]);
-      fetchDiscussions();
-    }
-  };
 
   const handleDialogCancel = async () => {
     console.log('Cancel dialog, marking as cleared');
@@ -915,7 +829,7 @@ export default function AskJanet() {
     );
   };
 
-  const findExistingDiscussion = async (description: string, uid: string) => {
+  const findExistingDiscussion = async (description: string) => {
     try {
       console.log('Searching for existing discussion:', description);
       // Use dbServices to get discussions and filter locally
@@ -1029,7 +943,7 @@ export default function AskJanet() {
         await processPendingTells();
       }
       console.log('Submission complete:', transformedInput);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Submit err:', error);
     }
   };
@@ -1215,6 +1129,13 @@ export default function AskJanet() {
         contentContainerStyle={styles.historyContentContainer}
         showsVerticalScrollIndicator={true}
         scrollEnabled={true}
+        bounces={true}
+        removeClippedSubviews={false}
+        keyboardShouldPersistTaps="handled"
+        scrollEventThrottle={16}
+        onScrollBeginDrag={() => {}}
+        onScrollEndDrag={() => {}}
+        scrollsToTop={false}
         renderItem={({ item }) => (
           <TouchableOpacity
             style={[
@@ -1398,10 +1319,9 @@ const styles = StyleSheet.create({
   },
   historyList: {
     flex: 1,
-    marginBottom: 80, // Space for bottom container
   },
   historyContentContainer: {
-    paddingBottom: 20,
+    paddingBottom: 100, // Add padding to account for bottom container
     flexGrow: 1,
   },
   bottomContainer: {
@@ -1413,7 +1333,10 @@ const styles = StyleSheet.create({
     position: 'absolute',
     bottom: 0,
     left: 0,
+    right: 0,
     backgroundColor: '#f5f5f5',
+    borderTopWidth: 1,
+    borderTopColor: '#e0e0e0',
   },
   hamburger: {
     padding: 10,

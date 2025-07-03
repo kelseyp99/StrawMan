@@ -218,17 +218,27 @@ export async function fetchInitialDiscussion(): Promise<Discussion | null> {
   }
 }
 
-export async function getNextOpenDiscussion(lastVisibleId?: string): Promise<{
-  snapshot: unknown[] | unknown;
+export async function getNextOpenDiscussion(lastVisibleDoc?: unknown): Promise<{
+  snapshot: Discussion[];
   hasMore: boolean;
   lastVisibleDoc: unknown | null;
 }> {
-  console.log('getNextOpenDiscussion called with:', lastVisibleId);
+  console.log('getNextOpenDiscussion called with:', lastVisibleDoc);
   try {
+    // Pass the correct Firestore document snapshot or undefined
     const result = (await shouldUseRemote())
-      ? await remote.getNextOpenDiscussion(lastVisibleId)
-      : await local.getNextOpenDiscussion(lastVisibleId); // pass string
-    return result;
+      ? await remote.getNextOpenDiscussion(
+          lastVisibleDoc as import('firebase/firestore').QueryDocumentSnapshot<
+            import('firebase/firestore').DocumentData,
+            import('firebase/firestore').DocumentData
+          > | undefined
+        )
+      : await local.getNextOpenDiscussion(lastVisibleDoc as string | undefined);
+    // Ensure snapshot is always Discussion[]
+    return {
+      ...result,
+      snapshot: Array.isArray(result.snapshot) ? result.snapshot as Discussion[] : [],
+    };
   } catch (error) {
     console.error('Error in getNextOpenDiscussion:', error);
     return { snapshot: [], hasMore: false, lastVisibleDoc: null };
@@ -1634,32 +1644,35 @@ export async function syncBidirectionalChangeLog() {
       (entry: Record<string, unknown>) => !entry.synced
     );
     for (const remoteEntry of unsyncedRemoteChangeLog) {
-      const localEntry = localChangeLogMap.get(remoteEntry.rowId);
+      const rowId = typeof remoteEntry.rowId === 'string' ? remoteEntry.rowId : String(remoteEntry.rowId ?? '');
+      const localEntry = localChangeLogMap.get(rowId);
+      const remoteTimestamp = remoteEntry.timestamp as string | number | Date;
+      const localTimestamp = localEntry?.timestamp as string | number | Date;
       if (!localEntry) {
         // No local entry: apply remote to local
         await local.applyChangeLogOperation(tableName, remoteEntry);
         await local.addOrUpdateChangeLogEntry(
           tableName,
-          remoteEntry.rowId,
-          remoteEntry.operation,
-          remoteEntry.timestamp,
-          remoteEntry.data
+          rowId,
+          remoteEntry.operation as string,
+          new Date(remoteTimestamp),
+          remoteEntry.data as Record<string, unknown>
         );
       } else if (
-        new Date(remoteEntry.timestamp) > new Date(localEntry.timestamp)
+        new Date(remoteTimestamp) > new Date(localTimestamp)
       ) {
         // Remote is newer: apply to local
         await local.applyChangeLogOperation(tableName, remoteEntry);
         await local.addOrUpdateChangeLogEntry(
           tableName,
-          remoteEntry.rowId,
-          remoteEntry.operation,
-          remoteEntry.timestamp,
-          remoteEntry.data
+          rowId,
+          remoteEntry.operation as string,
+          new Date(remoteTimestamp),
+          remoteEntry.data as Record<string, unknown>
         );
       }
       // Mark remote entry as synced
-      await remote.markChangeLogEntrySynced(tableName, remoteEntry.rowId);
+      await remote.markChangeLogEntrySynced(tableName, rowId);
     }
   }
   console.log('[SYNC] Bi-directional change log sync complete.');
