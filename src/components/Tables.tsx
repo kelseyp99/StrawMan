@@ -372,6 +372,7 @@ const MainComponent: React.FC = () => {
       setLoading(true);
       // Fetch data with minimal processing
       const activityLogRaw = await getActivityLogs();
+      console.log('[DEBUG] Raw activity logs from Realm:', activityLogRaw);
       const activityLogData = (
         await Promise.all(
           activityLogRaw.map(async (log: any) => {
@@ -414,11 +415,8 @@ const MainComponent: React.FC = () => {
       );
 
       const discussionRaw = await getDiscussions();
-      console.log(
-        '[PERF] Fetched',
-        discussionRaw.length,
-        'discussions from local Realm'
-      );
+      console.log('[PERF] Fetched', discussionRaw.length, 'discussions from local Realm');
+      console.log('[DEBUG] Raw discussions from Realm:', discussionRaw);
       // Process discussions and add proper date sorting
       const discussionData = discussionRaw
         .map((discussion: any) => ({
@@ -441,11 +439,8 @@ const MainComponent: React.FC = () => {
 
       // Fetch categories
       const categoriesRaw = await getCategories();
-      console.log(
-        '[PERF] Fetched',
-        categoriesRaw.length,
-        'categories from local Realm'
-      );
+      console.log('[PERF] Fetched', categoriesRaw.length, 'categories from local Realm');
+      console.log('[DEBUG] Raw categories from Realm:', categoriesRaw);
       // Process categories data
       const categoriesData = categoriesRaw
         .map((category: any) => ({

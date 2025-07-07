@@ -1801,9 +1801,7 @@ export async function syncTableFromRemote(
           // Handle Category objects
           const existingById = realm?.objectForPrimaryKey<Category>('Category', row.id as string);
           const existingByName = realm?.objects<Category>('Category').filtered('name = $0', row.name);
-          
-          if (!existingById && existingByName?.length === 0) {
-            console.log(`[SYNC] Creating new Category: ${row.name} (${row.id})`);
+          if (!existingById && (!existingByName || existingByName.length === 0)) {
             realm?.create('Category', {
               id: row.id,
               name: row.name,
@@ -1813,17 +1811,62 @@ export async function syncTableFromRemote(
               synced: true, // Mark as synced since it came from remote
               uid: row.uid,
             });
+            console.log(`[SYNC] Created new Category: ${row.name} (${row.id})`);
           } else if (existingById) {
-            console.log(`[SYNC] Category ${row.name} already exists with ID ${row.id}, skipping`);
+            // Update if remote is newer
+            if (row.updatedAt && existingById.updatedAt && new Date(row.updatedAt as string | number | Date) > new Date(existingById.updatedAt)) {
+              existingById.name = row.name;
+              existingById.description = row.description;
+              existingById.updatedAt = new Date(row.updatedAt as string | number | Date);
+              existingById.synced = true;
+              existingById.uid = row.uid;
+              console.log(`[SYNC] Updated Category: ${row.name} (${row.id})`);
+            } else {
+              console.log(`[SYNC] Category ${row.name} already exists with ID ${row.id}, skipping`);
+            }
           } else {
             console.log(`[SYNC] Category with name "${row.name}" already exists with different ID, skipping duplicate`);
           }
         } else if (tableName === 'ActivityLog') {
-          // Handle ActivityLog objects (existing logic if needed)
-          console.log(`[SYNC] ActivityLog sync not implemented in this function`);
+          // Handle ActivityLog objects
+          const existing = realm?.objectForPrimaryKey<ActivityLog>('ActivityLog', row.id as string);
+          if (!existing) {
+            realm?.create('ActivityLog', {
+              ...row,
+              timestamp: row.timestamp ? new Date(row.timestamp as string | number | Date) : new Date(),
+              synced: true,
+            });
+            console.log(`[SYNC] Created new ActivityLog: ${row.id}`);
+          } else {
+            // Update if remote is newer
+            if (row.syncTimestamp && existing.syncTimestamp && new Date(row.syncTimestamp as string | number | Date) > new Date(existing.syncTimestamp)) {
+              Object.assign(existing, row);
+              existing.synced = true;
+              console.log(`[SYNC] Updated ActivityLog: ${row.id}`);
+            } else {
+              console.log(`[SYNC] ActivityLog ${row.id} already exists, skipping`);
+            }
+          }
         } else if (tableName === 'Discussion') {
-          // Handle Discussion objects (existing logic if needed)
-          console.log(`[SYNC] Discussion sync not implemented in this function`);
+          // Handle Discussion objects
+          const existing = realm?.objectForPrimaryKey<Discussion>('Discussion', row.id as string);
+          if (!existing) {
+            realm?.create('Discussion', {
+              ...row,
+              timestamp: row.timestamp ? new Date(row.timestamp as string | number | Date) : new Date(),
+              synced: true,
+            });
+            console.log(`[SYNC] Created new Discussion: ${row.id}`);
+          } else {
+            // Update if remote is newer
+            if (row.syncTimestamp && existing.syncTimestamp && new Date(row.syncTimestamp as string | number | Date) > new Date(existing.syncTimestamp)) {
+              Object.assign(existing, row);
+              existing.synced = true;
+              console.log(`[SYNC] Updated Discussion: ${row.id}`);
+            } else {
+              console.log(`[SYNC] Discussion ${row.id} already exists, skipping`);
+            }
+          }
         } else {
           console.warn(`[SYNC] Unknown table name: ${tableName}`);
         }
@@ -1837,31 +1880,82 @@ export async function syncTableFromRemote(
 }
 
 export function logChange(
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   tableName: string,
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   rowId: string,
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   operation: string
 ): void {
-  // TODO: Implement local log change logic
+  if (!realm) {
+    console.error('Failed to open Realm instance');
+    return;
+  }
+  try {
+    realm.write(() => {
+      realm.create(
+        'ChangeLog',
+        {
+          id: `${tableName}_${rowId}_${Date.now()}`,
+          tableName,
+          rowId,
+          operation,
+          timestamp: new Date(),
+          synced: false,
+        },
+        Realm.UpdateMode.Modified
+      );
+    });
+    console.log(`[ChangeLog] Logged change: ${operation} on ${tableName} row ${rowId}`);
+  } catch (error) {
+    console.error('Error logging change:', error);
+  }
 }
 
 export async function deleteAllLocalRows(): Promise<void> {
-  // TODO: Implement logic to delete all local rows
+  if (!realm) {
+    console.error('Failed to open Realm instance');
+    throw new Error('Failed to open Realm instance');
+  }
+  try {
+    realm.write(() => {
+      const tables = ['Discussion', 'ActivityLog', 'ChangeLog', 'Category', 'Document', 'Alert', 'User'];
+      for (const table of tables) {
+        const objects = realm.objects(table);
+        realm.delete(objects);
+      }
+    });
+    console.log('All local rows deleted from Realm.');
+  } catch (error) {
+    console.error('Error deleting all local rows:', error);
+    throw error;
+  }
 }
 
 export async function addChangeLogEntry(
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   tableName: string,
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   rowId: string,
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   operation: string,
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   timestamp: Date
 ): Promise<void> {
-  // TODO: Implement logic to add a change log entry
+  if (!realm) throw new Error('Realm not initialized');
+  try {
+    realm.write(() => {
+      realm.create(
+        'ChangeLog',
+        {
+          id: `${tableName}_${rowId}_${timestamp.getTime()}`,
+          tableName,
+          rowId,
+          operation,
+          timestamp: new Date(timestamp),
+          synced: false,
+        },
+        Realm.UpdateMode.Modified
+      );
+    });
+    console.log(`[ChangeLog] Added entry: ${operation} on ${tableName} row ${rowId} at ${timestamp}`);
+  } catch (error) {
+    console.error('Error adding change log entry:', error);
+    throw error;
+  }
 }
 export function fetchInitialDiscussion() {
   throw new Error('Function not implemented.');
