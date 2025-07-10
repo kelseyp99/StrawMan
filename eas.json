@@ -24,17 +24,13 @@
         "EXPO_PUBLIC_FIREBASE_APP_ID": "${env.EXPO_PUBLIC_FIREBASE_APP_ID}"
       }
     },
-    "preview": {
+    "production-apk": {
       "distribution": "internal",
-      "channel": "preview",
+      "channel": "production",
       "android": {
-        "buildType": "apk"
+        "buildType": "apk",
+        "autoIncrement": true
       },
-      "ios": {
-        "simulator": true
-      }
-    },
-    "production": {
       "env": {
         "EXPO_PUBLIC_GIT_BRANCH": "main",
         "EXPO_PUBLIC_ANDROID_ADMOB_APP_ID": "ca-app-pub-3940256099942544~3347511713",
@@ -44,15 +40,28 @@
         "EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET": "${env.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET}",
         "EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID": "${env.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID}",
         "EXPO_PUBLIC_FIREBASE_APP_ID": "${env.EXPO_PUBLIC_FIREBASE_APP_ID}"
-      },
+      }
+    },
+    "production": {
+      "distribution": "store",
       "channel": "production",
       "android": {
         "autoIncrement": true,
-        "buildType": "apk"
+        "buildType": "app-bundle"
       },
       "ios": {
         "autoIncrement": true,
         "simulator": false
+      },
+      "env": {
+        "EXPO_PUBLIC_GIT_BRANCH": "main",
+        "EXPO_PUBLIC_ANDROID_ADMOB_APP_ID": "ca-app-pub-3940256099942544~3347511713",
+        "EXPO_PUBLIC_FIREBASE_API_KEY": "${env.EXPO_PUBLIC_FIREBASE_API_KEY}",
+        "EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN": "${env.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN}",
+        "EXPO_PUBLIC_FIREBASE_PROJECT_ID": "${env.EXPO_PUBLIC_FIREBASE_PROJECT_ID}",
+        "EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET": "${env.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET}",
+        "EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID": "${env.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID}",
+        "EXPO_PUBLIC_FIREBASE_APP_ID": "${env.EXPO_PUBLIC_FIREBASE_APP_ID}"
       }
     },
     "beta": {
@@ -61,6 +70,20 @@
       "android": {
         "autoIncrement": true,
         "buildType": "app-bundle"
+      },
+      "ios": {
+        "autoIncrement": true,
+        "simulator": false
+      },
+      "env": {
+        "EXPO_PUBLIC_GIT_BRANCH": "main",
+        "EXPO_PUBLIC_ANDROID_ADMOB_APP_ID": "ca-app-pub-3940256099942544~3347511713",
+        "EXPO_PUBLIC_FIREBASE_API_KEY": "${env.EXPO_PUBLIC_FIREBASE_API_KEY}",
+        "EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN": "${env.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN}",
+        "EXPO_PUBLIC_FIREBASE_PROJECT_ID": "${env.EXPO_PUBLIC_FIREBASE_PROJECT_ID}",
+        "EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET": "${env.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET}",
+        "EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID": "${env.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID}",
+        "EXPO_PUBLIC_FIREBASE_APP_ID": "${env.EXPO_PUBLIC_FIREBASE_APP_ID}"
       }
     }
   },
