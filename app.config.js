@@ -11,7 +11,7 @@ module.exports = {
   },
   expo: {
     slug: 'LifeLog',
-    owner: 'kelseyp99',
+    owner: 'tinman42',
     scheme: 'lifelog',
     android: {
       package: 'com.anonymous.lifelog',
