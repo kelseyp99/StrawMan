@@ -16,48 +16,94 @@ const UID = 'qDgUmVxu2XWmCMwGjSgm0vIEZVR2';
 
 export const migrateLegacyDiscussions = onRequest(async (req, res) => {
   const db = admin.firestore();
-  const legacySnap = await db.collection('Discussion').get();
-
   let migrated = 0;
-  for (const doc of legacySnap.docs) {
-    const data = doc.data();
-    const ri = data.timestamp;
-    if (!ri) continue; // skip if no timestamp
-
-    // Check if the row already exists in the user-scoped collection
-    const targetDocRef = db
-      .collection(`Users/${UID}/Discussion`)
-      .doc(String(ri));
-    const targetDoc = await targetDocRef.get();
-
-    let operation: 'create' | 'update' | 'delete' = 'create';
-    if (targetDoc.exists) {
-      operation = 'update';
-    }
-    if (data.deleted) {
-      operation = 'delete';
-      // Actually delete the doc if it exists
-      if (targetDoc.exists) {
-        await targetDocRef.delete();
+  try {
+    // 1. Migrate from root /Discussion
+    const legacySnap = await db.collection('Discussion').get();
+    for (const doc of legacySnap.docs) {
+      const data = doc.data();
+      const ri = data.timestamp;
+      if (!ri) {
+        console.warn(`[MIGRATE] Skipping doc ${doc.id} (no timestamp)`);
+        continue;
       }
-    } else {
-      await targetDocRef.set(data, { merge: true });
+      try {
+        const targetDocRef = db
+          .collection(`Users/${UID}/Discussion`)
+          .doc(String(ri));
+        const targetDoc = await targetDocRef.get();
+        let operation: 'create' | 'update' | 'delete' = 'create';
+        if (targetDoc.exists) {
+          operation = 'update';
+        }
+        if (data.deleted) {
+          operation = 'delete';
+          if (targetDoc.exists) {
+            await targetDocRef.delete();
+            console.log(`[MIGRATE] Deleted doc for ri=${ri}`);
+          }
+        } else {
+          await targetDocRef.set(data, { merge: true });
+          console.log(`[MIGRATE] Set doc for ri=${ri}`);
+        }
+        await db.collection(`Users/${UID}/ChangeLog`).doc(String(ri)).set({
+          tableName: 'Discussion',
+          ri,
+          operation,
+          timestamp: admin.firestore.FieldValue.serverTimestamp(),
+          source: 'cloud-migration',
+          data,
+        });
+        migrated++;
+      } catch (err) {
+        console.error(`[MIGRATE] Error migrating doc ${doc.id}:`, err);
+      }
     }
 
-    // Always create or update the changelog entry, even for deletes
-    await db.collection(`Users/${UID}/ChangeLog`).doc(String(ri)).set({
-      tableName: 'Discussion',
-      ri,
-      operation,
-      timestamp: admin.firestore.FieldValue.serverTimestamp(),
-      source: 'cloud-migration',
-      data,
-    });
+    // 2. Migrate from /Users/{UID}/Discussions (note plural)
+    const discussionsSnap = await db.collection(`Users/${UID}/Discussions`).get();
+    for (const doc of discussionsSnap.docs) {
+      const data = doc.data();
+      // Use doc.id as the key for the new collection
+      const ri = doc.id;
+      try {
+        const targetDocRef = db
+          .collection(`Users/${UID}/Discussion`)
+          .doc(String(ri));
+        const targetDoc = await targetDocRef.get();
+        let operation: 'create' | 'update' | 'delete' = 'create';
+        if (targetDoc.exists) {
+          operation = 'update';
+        }
+        if (data.deleted) {
+          operation = 'delete';
+          if (targetDoc.exists) {
+            await targetDocRef.delete();
+            console.log(`[MIGRATE] Deleted doc for ri=${ri} (from /Discussions)`);
+          }
+        } else {
+          await targetDocRef.set(data, { merge: true });
+          console.log(`[MIGRATE] Set doc for ri=${ri} (from /Discussions)`);
+        }
+        await db.collection(`Users/${UID}/ChangeLog`).doc(String(ri)).set({
+          tableName: 'Discussion',
+          ri,
+          operation,
+          timestamp: admin.firestore.FieldValue.serverTimestamp(),
+          source: 'cloud-migration-Discussions',
+          data,
+        });
+        migrated++;
+      } catch (err) {
+        console.error(`[MIGRATE] Error migrating doc ${doc.id} from /Discussions:`, err);
+      }
+    }
 
-    migrated++;
+    res.send(`Migrated ${migrated} legacy discussions (including /Discussions) with change log entries.`);
+  } catch (err) {
+    console.error('[MIGRATE] Migration failed:', err);
+    res.status(500).send('Migration failed: ' + (err && err.message ? err.message : err));
   }
-
-  res.send(`Migrated ${migrated} legacy discussions with change log entries.`);
 });
 
 // Start writing functions
