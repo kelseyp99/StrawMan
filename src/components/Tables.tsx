@@ -1020,12 +1020,21 @@ const MainComponent: React.FC = () => {
     async (categoryName: string) => {
       if (selectedActivityLogId) {
         try {
-          // Update the category for the selected ActivityLog
+          // Update the category for the selected ActivityLog in Realm
+          await updateActivityLogCategory(selectedActivityLogId, categoryName);
+          // Update local state for UI
           setActivityLogCategories((prev) => ({
             ...prev,
             [selectedActivityLogId]: categoryName,
           }));
-
+          // Also update relatedActivityLogs array
+          setRelatedActivityLogs((prev) =>
+            prev.map((log) =>
+              log.id === selectedActivityLogId
+                ? { ...log, category: categoryName }
+                : log
+            )
+          );
           // Close the modal
           setCategoryModalVisible(false);
           setSelectedActivityLogId(null);
@@ -1523,7 +1532,7 @@ const MainComponent: React.FC = () => {
             <View style={styles.modalOverlay}>
               <ScrollView style={styles.modalContainer}>
                 <Text style={styles.modalTitle}>
-                  Edit {typeof editTableName === 'string' ? editTableName : '[INVALID TABLE NAME]'} Entry
+                  Edit {typeof editTableName === 'string' && editTableName.trim().length > 0 ? editTableName : 'Entry'} Entry
                 </Text>
                 <Text style={styles.modalSubtitle}>Discussion Details</Text>
                 <TextInput
@@ -1610,20 +1619,7 @@ const MainComponent: React.FC = () => {
                   />
                 )}
                 <View style={styles.switchContainer}>
-                  <Text style={styles.modalLabel}>Category:</Text>
-                  <TouchableOpacity
-                    style={styles.categorySelectButton}
-                    onPress={() => {
-                      setSelectedActivityLogId(editItemId);
-                      setCategoryModalVisible(true);
-                    }}
-                  >
-                    <Text style={styles.categoryText}>
-                      {typeof activityLogCategories[editItemId] === 'string'
-                        ? activityLogCategories[editItemId]
-                        : 'uncategorized'}
-                    </Text>
-                  </TouchableOpacity>
+                {/* Removed category label and section from upper part */}
                 </View>
                 {/* Always show related Activity Log entries if any */}
                 {relatedActivityLogs.length > 0 && (
@@ -1632,22 +1628,32 @@ const MainComponent: React.FC = () => {
                       Related Activity Log Entries
                     </Text>
                     {relatedActivityLogs.slice(0, 5).map((item) => (
-                      <RelatedLogEntry
-                        key={item.id}
-                        log={item}
-                        description={activityLogDescriptions[item.id] || ''}
-                        onDescriptionChange={(id, text) =>
-                          setActivityLogDescriptions((prev) => ({
-                            ...prev,
-                            [id]: text,
-                          }))
-                        }
-                        onCategoryChange={(id) => {
-                          setSelectedActivityLogId(id);
-                          setCategoryModalVisible(true);
-                        }}
-                        onDelete={handleDeleteActivityLog}
-                      />
+                      <View key={item.id} style={styles.relatedLogEntry}>
+                        <TouchableOpacity
+                          style={styles.categorySelectButton}
+                          onPress={() => {
+                            setSelectedActivityLogId(item.id);
+                            setCategoryModalVisible(true);
+                          }}
+                        >
+                          <Text style={styles.categoryText}>Change Category ({item.category || 'uncategorized'})</Text>
+                        </TouchableOpacity>
+                        <RelatedLogEntry
+                          log={item}
+                          description={activityLogDescriptions[item.id] || ''}
+                          onDescriptionChange={(id, text) =>
+                            setActivityLogDescriptions((prev) => ({
+                              ...prev,
+                              [id]: text,
+                            }))
+                          }
+                          onCategoryChange={(id) => {
+                            setSelectedActivityLogId(id);
+                            setCategoryModalVisible(true);
+                          }}
+                          onDelete={handleDeleteActivityLog}
+                        />
+                      </View>
                     ))}
                   </View>
                 )}
