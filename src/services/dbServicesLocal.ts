@@ -445,7 +445,30 @@ export async function synchronizeActivityLog(
   }
   try {
     console.log(`Synchronizing ActivityLog`);
-    // Example: Just log, as  logic is removed
+    // Fetch from cloud API
+    const backendService = (await import('./syncService')).default;
+    const remoteLogs = await backendService.getAllActivityLogs();
+    realm.write(() => {
+      remoteLogs.forEach((log) => {
+        const l: any = log;
+        realm.create('ActivityLog', {
+          id: l.id,
+          discussionId: l.discussionId || '',
+          categoryId: l.categoryId || '',
+          category: l.category || '',
+          description: l.description || '',
+          timestamp: l.timestamp ? new Date(l.timestamp) : new Date(),
+          cleared: l.cleared ?? false,
+          responseType: l.responseType ?? '',
+          synced: true,
+          syncTimestamp: new Date(),
+          uid: l.uid || 'local_user',
+          lockedCategory: l.lockedCategory ?? false,
+          lockedDescription: l.lockedDescription ?? false,
+          attachedFile: l.attachedFile ?? '',
+        }, UpdateMode.Modified);
+      });
+    });
     console.log('ActivityLog synchronization completed.');
   } catch (error) {
     console.error('Error synchronizing ActivityLog:', error);
@@ -1838,41 +1861,63 @@ export async function syncTableFromRemote(
         } else if (tableName === 'ActivityLog') {
           // Handle ActivityLog objects
           const existing = realm?.objectForPrimaryKey<ActivityLog>('ActivityLog', row.id as string);
+          // Provide defaults for all required fields
+          const safeRow = {
+            id: row.id || Date.now().toString(),
+            discussionId: row.discussionId || '',
+            categoryId: row.categoryId || '',
+            category: row.category || 'uncategorized',
+            description: row.description || '',
+            timestamp: row.timestamp ? new Date(row.timestamp as string | number | Date) : new Date(),
+            cleared: typeof row.cleared === 'boolean' ? row.cleared : false,
+            responseType: row.responseType || '',
+            synced: true,
+            syncTimestamp: row.syncTimestamp ? new Date(row.syncTimestamp as string | number | Date) : new Date(),
+            uid: row.uid || 'remote_user',
+            lockedCategory: typeof row.lockedCategory === 'boolean' ? row.lockedCategory : false,
+            lockedDescription: typeof row.lockedDescription === 'boolean' ? row.lockedDescription : false,
+            attachedFile: row.attachedFile || '',
+          };
           if (!existing) {
-            realm?.create('ActivityLog', {
-              ...row,
-              timestamp: row.timestamp ? new Date(row.timestamp as string | number | Date) : new Date(),
-              synced: true,
-            });
-            console.log(`[SYNC] Created new ActivityLog: ${row.id}`);
+            realm?.create('ActivityLog', safeRow);
+            console.log(`[SYNC] Created new ActivityLog: ${safeRow.id}`);
           } else {
             // Update if remote is newer
             if (row.syncTimestamp && existing.syncTimestamp && new Date(row.syncTimestamp as string | number | Date) > new Date(existing.syncTimestamp)) {
-              Object.assign(existing, row);
+              Object.assign(existing, safeRow);
               existing.synced = true;
-              console.log(`[SYNC] Updated ActivityLog: ${row.id}`);
+              console.log(`[SYNC] Updated ActivityLog: ${safeRow.id}`);
             } else {
-              console.log(`[SYNC] ActivityLog ${row.id} already exists, skipping`);
+              console.log(`[SYNC] ActivityLog ${safeRow.id} already exists, skipping`);
             }
           }
         } else if (tableName === 'Discussion') {
           // Handle Discussion objects
-          const existing = realm?.objectForPrimaryKey<Discussion>('Discussion', row.id as string);
+          const existing = realm?.objectForPrimaryKey<Discussion>('Discussion', String(row.id));
+          // Coerce all required string fields to string
+          const safeRow = {
+            id: String(row.id || Date.now()),
+            discussionId: String(row.discussionId || row.id || ''),
+            description: String(row.description || ''),
+            timestamp: row.timestamp ? new Date(row.timestamp as string | number | Date) : new Date(),
+            typeSay: String(row.typeSay || 'tell'),
+            cleared: typeof row.cleared === 'boolean' ? row.cleared : false,
+            synced: true,
+            syncTimestamp: row.syncTimestamp ? new Date(row.syncTimestamp as string | number | Date) : new Date(),
+            uid: row.uid ? String(row.uid) : 'remote_user',
+            activityLogs: [],
+          };
           if (!existing) {
-            realm?.create('Discussion', {
-              ...row,
-              timestamp: row.timestamp ? new Date(row.timestamp as string | number | Date) : new Date(),
-              synced: true,
-            });
-            console.log(`[SYNC] Created new Discussion: ${row.id}`);
+            realm?.create('Discussion', safeRow);
+            console.log(`[SYNC] Created new Discussion: ${safeRow.id}`);
           } else {
             // Update if remote is newer
             if (row.syncTimestamp && existing.syncTimestamp && new Date(row.syncTimestamp as string | number | Date) > new Date(existing.syncTimestamp)) {
-              Object.assign(existing, row);
+              Object.assign(existing, safeRow);
               existing.synced = true;
-              console.log(`[SYNC] Updated Discussion: ${row.id}`);
+              console.log(`[SYNC] Updated Discussion: ${safeRow.id}`);
             } else {
-              console.log(`[SYNC] Discussion ${row.id} already exists, skipping`);
+              console.log(`[SYNC] Discussion ${safeRow.id} already exists, skipping`);
             }
           }
         } else {

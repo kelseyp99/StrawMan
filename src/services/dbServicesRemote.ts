@@ -1,9 +1,13 @@
+function assertDb(db: any) {
+  if (!db) throw new Error('Firestore db is not initialized');
+}
 // CHANGELOG (2025-06-02):
 // - Added syncRealmRowsToFirestore(tableName: string, realmRows: any[]): Promise<string[]> to upload only new/unsynced Realm rows to Firestore (Users/{uid}/{tableName}).
 //   This function does not perform any download or update from Firestore to Realm, and is not related to previous .NET API or bidirectional sync logic.
 //   Use this for one-way upload of new Realm data to Firestore only.
 
 import { db } from '../firebaseConfig';
+import type { Firestore } from 'firebase/firestore';
 import { realm } from '../realmConfig';
 import {
   collection,
@@ -106,8 +110,9 @@ export const findDuplicateActivityLog = async (
   uid: string
 ): Promise<ActivityLog | null> => {
   // Use user-level collection instead of root collection
+  assertDb(db);
   const q = query(
-    collection(db, `Users/${uid}/ActivityLog`),
+    collection(db as Firestore, `Users/${uid}/ActivityLog`),
     where('discussionId', '==', discussionId),
     where('category', '==', category),
     where('description', '==', description),
@@ -124,7 +129,8 @@ export const findDuplicateActivityLog = async (
 
 const getDiscussionCountsQuery = async () => {
   const uid = await getUID();
-  return query(collection(db, `Users/${uid}/DiscussionCounts`));
+  assertDb(db);
+  return query(collection(db as Firestore, `Users/${uid}/DiscussionCounts`));
 };
 
 // Existing functions (from previous response, abbreviated)
@@ -133,8 +139,9 @@ export async function initializeUser(): Promise<void> {
   if (!uid) throw new Error('No user signed in');
   try {
     console.log(`Initializing user for UID: ${uid}`);
+    assertDb(db);
     await setDoc(
-      doc(db, `Users/${uid}`),
+      doc(db as Firestore, `Users/${uid}`),
       {
         id: uid,
         appVersion: '1.1.0',
@@ -161,8 +168,9 @@ export async function addOrUpdateDiscussion(
   if (!uid) throw new Error('No UID available');
   try {
     const discussionId = id || Date.now().toString();
+    assertDb(db);
     await setDoc(
-      doc(db, `Users/${uid}/Discussion`, discussionId),
+      doc(db as Firestore, `Users/${uid}/Discussion`, discussionId),
       {
         id: discussionId,
         discussionId: discussionId,
@@ -234,7 +242,8 @@ export async function getActivityLogs(): Promise<ActivityLog[]> {
   const uid = await getUID();
   if (!uid) throw new Error('No UID available');
   try {
-    const snapshot = await getDocs(collection(db, `Users/${uid}/ActivityLog`));
+    assertDb(db);
+    const snapshot = await getDocs(collection(db as Firestore, `Users/${uid}/ActivityLog`));
     return snapshot.docs.map((doc) => ({
       id: doc.id,
       discussionId: doc.data().discussionId,
@@ -259,7 +268,8 @@ export async function getParameters(): Promise<Parameters[]> {
   const uid = await getUID();
   if (!uid) throw new Error('No UID available');
   try {
-    const snapshot = await getDocs(collection(db, `Users/${uid}/Parameters`));
+    assertDb(db);
+    const snapshot = await getDocs(collection(db as Firestore, `Users/${uid}/Parameters`));
     return snapshot.docs.map((doc) => ({
       parameterName: doc.data().parameterName,
       parameterValue: doc.data().parameterValue,
@@ -276,8 +286,9 @@ export async function getDescriptionsWithTimestamps(
   const uid = await getUID();
   if (!uid) throw new Error('No UID available');
   try {
+    assertDb(db);
     const q = query(
-      collection(db, `Users/${uid}/ActivityLog`),
+      collection(db as Firestore, `Users/${uid}/ActivityLog`),
       where(
         'category',
         'in',
@@ -302,7 +313,8 @@ export const createDocument = async (data: Record<string, unknown>) => {
     throw new Error('No UID available for create operation');
   }
   try {
-    const docRef = await addDoc(collection(db, `Users/${uid}/Documents`), {
+    assertDb(db);
+    const docRef = await addDoc(collection(db as Firestore, `Users/${uid}/Documents`), {
       ...data,
       uid,
       timestamp: new Date(),
