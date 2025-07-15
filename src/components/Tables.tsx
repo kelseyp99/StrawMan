@@ -344,6 +344,13 @@ const MainComponent: React.FC = () => {
   const [mergeTargetName, setMergeTargetName] = useState('');
   const [showMergeOption, setShowMergeOption] = useState(false);
   const [existingCategories, setExistingCategories] = useState<string[]>([]); // Fetch UID once on mount
+
+  // Always reload categories from Realm when modal opens
+  useEffect(() => {
+    if (categoryModalVisible) {
+      loadCategories();
+    }
+  }, [categoryModalVisible, loadCategories]);
   useEffect(() => {
     const fetchUid = async () => {
       let userId = await getUID();
@@ -1000,7 +1007,8 @@ const MainComponent: React.FC = () => {
   // Function to load categories for the modal
   const loadCategories = useCallback(async () => {
     try {
-      const categoryNames = await getCategoryNames();
+      const categories = await getCategories();
+      const categoryNames = categories.map((cat) => cat.name);
       setAllCategories(categoryNames);
     } catch (error) {
       console.error('Error loading categories:', error);

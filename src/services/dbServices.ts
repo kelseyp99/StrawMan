@@ -972,11 +972,7 @@ export async function synchronizeCategories(appVersion: string): Promise<void> {
 export async function getCategories(): Promise<Category[]> {
   console.log('getCategories called');
   try {
-    if (await shouldUseRemoteForCategories()) {
-      return await remote.getCategories();
-    } else {
-      return await local.getCategories();
-    }
+    return await local.getCategories();
   } catch (error) {
     console.error('Error in getCategories:', error);
     throw error;
