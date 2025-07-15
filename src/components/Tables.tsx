@@ -1724,7 +1724,6 @@ const MainComponent: React.FC = () => {
                     style={[styles.modalButton, styles.saveButton]}
                     onPress={handleAddNewCategory}
                   >
-                    {' '}
                     <Text style={styles.modalButtonText}>Add New</Text>
                   </TouchableOpacity>
                 </View>
@@ -1761,7 +1760,7 @@ const MainComponent: React.FC = () => {
                   onChangeText={setEditCategoryDescription}
                   multiline
                   placeholder="Enter category description"
-                />{' '}
+                />
                 <View style={styles.modalButtons}>
                   <TouchableOpacity
                     style={styles.modalButton}
