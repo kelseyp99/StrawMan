@@ -1829,34 +1829,44 @@ export async function syncTableFromRemote(
     realm.write(() => {
       for (const row of newRows) {
         if (tableName === 'Category') {
-          // Handle Category objects
-          const existingById = realm?.objectForPrimaryKey<Category>('Category', row.id as string);
-          const existingByName = realm?.objects<Category>('Category').filtered('name = $0', row.name);
+          // Handle Category objects with safe defaults and type coercion
+          // Convert Firestore Timestamp objects to JS Date if needed
+          function toDateSafe(val: any): Date {
+            if (!val) return new Date();
+            if (val instanceof Date) return val;
+            if (typeof val === 'object' && typeof val.toDate === 'function') return val.toDate();
+            if (typeof val === 'number') return new Date(Math.trunc(val));
+            if (typeof val === 'string') return new Date(val);
+            return new Date();
+          }
+          const safeRow = {
+            id: String(row.id || Date.now()),
+            name: String(row.name || ''),
+            description: String(row.description || ''),
+            createdAt: toDateSafe(row.createdAt),
+            updatedAt: toDateSafe(row.updatedAt),
+            synced: true, // Mark as synced since it came from remote
+            uid: row.uid ? String(row.uid) : 'remote_user',
+          };
+          const existingById = realm?.objectForPrimaryKey<Category>('Category', safeRow.id);
+          const existingByName = realm?.objects<Category>('Category').filtered('name = $0', safeRow.name);
           if (!existingById && (!existingByName || existingByName.length === 0)) {
-            realm?.create('Category', {
-              id: row.id,
-              name: row.name,
-              description: row.description || '',
-              createdAt: row.createdAt ? new Date(row.createdAt as string | number | Date) : new Date(),
-              updatedAt: row.updatedAt ? new Date(row.updatedAt as string | number | Date) : new Date(),
-              synced: true, // Mark as synced since it came from remote
-              uid: row.uid,
-            });
-            console.log(`[SYNC] Created new Category: ${row.name} (${row.id})`);
+            realm?.create('Category', safeRow);
+            console.log(`[SYNC] Created new Category: ${safeRow.name} (${safeRow.id})`);
           } else if (existingById) {
             // Update if remote is newer
             if (row.updatedAt && existingById.updatedAt && new Date(row.updatedAt as string | number | Date) > new Date(existingById.updatedAt)) {
-              existingById.name = row.name;
-              existingById.description = row.description;
-              existingById.updatedAt = new Date(row.updatedAt as string | number | Date);
+              existingById.name = safeRow.name;
+              existingById.description = safeRow.description;
+              existingById.updatedAt = safeRow.updatedAt;
               existingById.synced = true;
-              existingById.uid = row.uid;
-              console.log(`[SYNC] Updated Category: ${row.name} (${row.id})`);
+              existingById.uid = safeRow.uid;
+              console.log(`[SYNC] Updated Category: ${safeRow.name} (${safeRow.id})`);
             } else {
-              console.log(`[SYNC] Category ${row.name} already exists with ID ${row.id}, skipping`);
+              console.log(`[SYNC] Category ${safeRow.name} already exists with ID ${safeRow.id}, skipping`);
             }
           } else {
-            console.log(`[SYNC] Category with name "${row.name}" already exists with different ID, skipping duplicate`);
+            console.log(`[SYNC] Category with name "${safeRow.name}" already exists with different ID, skipping duplicate`);
           }
         } else if (tableName === 'ActivityLog') {
           // Handle ActivityLog objects
