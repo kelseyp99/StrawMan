@@ -1025,7 +1025,13 @@ export async function deleteDiscussion(id: string): Promise<void> {
 
 export const fetchInitialDiscussion = async () => {
   const uid = await getUID();
+  const TEST_UID = 'qDgUmVxu2XWmCMwGjSgm0vIEZVR2';
+  if (uid !== TEST_UID) {
+    // MVP user: do not connect to Firestore, just return null
+    return null;
+  }
   if (!uid) {
+    // Only show error for test user
     throw new Error('No UID available for fetch initial discussion operation');
   }
   try {
@@ -1051,6 +1057,7 @@ export const fetchInitialDiscussion = async () => {
     }
     return null;
   } catch (error) {
+    // Only log error for test user
     console.error('🔥 Error fetching discussion:', error);
     return null;
   }

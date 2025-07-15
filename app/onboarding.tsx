@@ -8,15 +8,8 @@ export default function Onboarding() {
 
   const finishOnboarding = async () => {
     await AsyncStorage.setItem('hasOnboarded', 'true');
-    // TODO: Replace this with your real paid customer check
-    const isPaidCustomer = false; // Set this based on your logic
-    if (isPaidCustomer) {
-      router.replace('/(tabs)/(profile)/login');
-    } else {
-      // Show a paywall, message, or handle non-paid users here
-      // For now, do nothing or add your paywall navigation
-      // Example: router.replace('/paywall');
-    }
+    // Always navigate to main tabs after onboarding
+    router.replace('/tabs');
   };
 
   return (

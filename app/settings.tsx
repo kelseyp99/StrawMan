@@ -36,6 +36,31 @@ export default function SettingsScreen() {
   const [daysLeft, setDaysLeft] = useState<number>(0);
   const router = useRouter();
   const { isLogged, setIsLogged, setIsPaid } = useAuth();
+  const TEST_UID = 'qDgUmVxu2XWmCMwGjSgm0vIEZVR2';
+  const [tapCount, setTapCount] = useState(0);
+  const [isTestUser, setIsTestUser] = useState(false);
+
+  // Easter egg: tap app version 5 times to unlock test mode
+  const handleVersionTap = async () => {
+    setTapCount((prev) => {
+      const next = prev + 1;
+      if (next >= 5) {
+        AsyncStorage.setItem('userUID', TEST_UID);
+        setIsTestUser(true);
+        setIsPaid(true);
+        AsyncStorage.setItem('isPaidUser', 'true');
+        Alert.alert('Test Mode Activated', 'You are now the test user. Paid/sync features unlocked.');
+      }
+      return next;
+    });
+  };
+
+  useEffect(() => {
+    (async () => {
+      const uid = await AsyncStorage.getItem('userUID');
+      setIsTestUser(uid === TEST_UID);
+    })();
+  }, []);
 
   useEffect(() => {
     (async () => {
@@ -295,8 +320,12 @@ export default function SettingsScreen() {
           </View>
         </Modal>
         
-        {/* Debug button for testing sync functionality */}
-        <DebugSyncButton />
+      {/* Only show paid/sync UI if test user */}
+      {isTestUser && <DebugSyncButton />}
+      {/* Hidden easter egg: tap app version 5 times to unlock test mode */}
+      <TouchableOpacity onPress={handleVersionTap} style={{ alignSelf: 'center', marginTop: 40 }}>
+        <Text style={{ color: '#888', fontSize: 12 }}>App Version 1.0.0</Text>
+      </TouchableOpacity>
       </View>
     </SettingsContext.Provider>
   );

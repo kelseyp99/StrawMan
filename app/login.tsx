@@ -72,51 +72,58 @@ export default function Login() {
     loadUID();
 
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      if (user) {
-        console.log('User logged in:', user.uid);
-        console.log('Setting isLogged to true in AuthContext');
-        setUserEmail(user.email);
-        setUserUID(user.uid);
-        setUID(user.uid);
-        
-        // Persist user data to AsyncStorage for next session
-        await AsyncStorage.multiSet([
-          ['userEmail', user.email || ''],
-          ['userUID', user.uid],
-          ['isPaidUser', 'true'],
-        ]);
-        console.log('User data persisted to AsyncStorage');
-        
-        // Update AuthContext state
-        setIsLogged(true);
-        
-        // Set as paid user when successfully logged in with Firebase
-        setIsPaid(true);
-        console.log('User marked as paid customer after Firebase login');
-        
-        // Initialize user data
-        initializeUser().catch((error) =>
-          console.error('Error initializing user:', error)
-        );
-      } else {
-        console.log('No user authenticated');
-        console.log('Setting isLogged to false in AuthContext');
-        setUserEmail(null);
-        setUserUID(null);
-        clearUID();
-        removeUID();
-        
-        // Clear persisted user data
-        await AsyncStorage.multiRemove([
-          'userEmail',
-          'userUID',
-          'isPaidUser',
-          'syncWithCloud',
-          'userPlan'
-        ]);
-        console.log('User data cleared from AsyncStorage');
-        
-        setIsLogged(false); // Ensure AuthContext is updated
+      console.log('[AAB DEBUG] onAuthStateChanged fired. user:', user);
+      try {
+        if (user) {
+          console.log('[AAB DEBUG] User logged in:', user.uid, '| email:', user.email);
+          setUserEmail(user.email);
+          setUserUID(user.uid);
+          await setUID(user.uid);
+          // Check AsyncStorage after setUID
+          const storedUID = await AsyncStorage.getItem('userUID');
+          console.log('[AAB DEBUG] UID written to AsyncStorage:', storedUID);
+          // Persist user data to AsyncStorage for next session
+          await AsyncStorage.multiSet([
+            ['userEmail', user.email || ''],
+            ['userUID', user.uid],
+            ['isPaidUser', 'true'],
+          ]);
+          const [isLoggedVal, isPaidVal] = await Promise.all([
+            AsyncStorage.getItem('isLogged'),
+            AsyncStorage.getItem('isPaidUser'),
+          ]);
+          console.log('[AAB DEBUG] isLogged in AsyncStorage:', isLoggedVal, '| isPaidUser:', isPaidVal);
+          // Update AuthContext state
+          setIsLogged(true);
+          setIsPaid(true);
+          console.log('[AAB DEBUG] AuthContext setIsLogged(true), setIsPaid(true)');
+          // Initialize user data
+          initializeUser().catch((error) =>
+            console.error('[AAB DEBUG] Error initializing user:', error)
+          );
+        } else {
+          console.log('[AAB DEBUG] No user authenticated');
+          setUserEmail(null);
+          setUserUID(null);
+          clearUID();
+          removeUID();
+          // Clear persisted user data
+          await AsyncStorage.multiRemove([
+            'userEmail',
+            'userUID',
+            'isPaidUser',
+            'syncWithCloud',
+            'userPlan'
+          ]);
+          const [isLoggedVal, isPaidVal] = await Promise.all([
+            AsyncStorage.getItem('isLogged'),
+            AsyncStorage.getItem('isPaidUser'),
+          ]);
+          console.log('[AAB DEBUG] After logout, isLogged:', isLoggedVal, '| isPaidUser:', isPaidVal);
+          setIsLogged(false);
+        }
+      } catch (err) {
+        console.error('[AAB DEBUG] Error in onAuthStateChanged:', err);
       }
     });
     return unsubscribe;
