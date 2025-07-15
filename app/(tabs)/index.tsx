@@ -1208,18 +1208,22 @@ export default function AskJanet() {
       >
         <View style={styles.modalOverlay}>
           <View ref={dialogRef} style={styles.dialogContainer}>
+            {/* Debug log for dialogQuestion */}
+            {console.log('Modal dialogQuestion:', dialogQuestion)}
             <Text style={styles.modalTitle}>
               {currentDiscussion?.typeSay === 'ask'
                 ? 'Question Details'
                 : 'Fact Details'}
             </Text>
             <Text style={styles.modalLabel}>
-              Question: {dialogQuestion || 'None'}
+              Question: {typeof dialogQuestion === 'string' ? dialogQuestion : JSON.stringify(dialogQuestion) || 'None'}
             </Text>
             <Text style={styles.modalLabel}>Categories:</Text>
+            {/* Debug log for distinctCategories */}
+            {console.log('Modal distinctCategories:', distinctCategories)}
             <FlatList
               data={distinctCategories}
-              keyExtractor={(item) => item}
+              keyExtractor={(item) => String(item)}
               style={styles.categoryList}
               contentContainerStyle={styles.categoryContentContainer}
               showsVerticalScrollIndicator={true}
@@ -1228,10 +1232,11 @@ export default function AskJanet() {
               renderItem={({ item }) => (
                 <TouchableOpacity
                   style={styles.categoryItem}
-                  onPress={() => toggleCategory(item)}
+                  onPress={() => toggleCategory(String(item))}
                 >
-                  <Text style={styles.categoryText}>{item}</Text>
-                  <Text>{selectedCategories.includes(item) ? '✔' : '⬜'}</Text>
+                  {console.log('Modal category item:', item)}
+                  <Text style={styles.categoryText}>{typeof item === 'string' ? item : JSON.stringify(item)}</Text>
+                  <Text>{selectedCategories.includes(String(item)) ? '✔' : '⬜'}</Text>
                 </TouchableOpacity>
               )}
               ListEmptyComponent={
@@ -1239,22 +1244,33 @@ export default function AskJanet() {
               }
             />
             <Text style={styles.modalLabel}>Activity Log Entries:</Text>
+            {/* Debug log for activityLogEntries */}
+            {console.log('Modal activityLogEntries:', activityLogEntries)}
             <FlatList
               data={activityLogEntries}
-              keyExtractor={(item, index) => `${item}-${index}`}
+              keyExtractor={(item, index) => `${String(item)}-${index}`}
               style={styles.activityLogList}
               contentContainerStyle={styles.activityLogContentContainer}
               showsVerticalScrollIndicator={true}
               scrollEnabled={true}
               nestedScrollEnabled={true}
               renderItem={({ item }) => (
-                <Text style={styles.modalLabel}>{item}</Text>
+                <>
+                  {console.log('Modal activityLogEntry item:', item)}
+                  <Text style={styles.modalLabel}>{typeof item === 'string' ? item : JSON.stringify(item)}</Text>
+                </>
               )}
               ListEmptyComponent={<Text style={styles.modalLabel}>None</Text>}
             />
+            {/* Debug log for selectedFile */}
+            {console.log('Modal selectedFile:', selectedFile)}
             <Text style={styles.modalLabel}>
               File:{' '}
-              {selectedFile?.assets ? selectedFile.assets[0]?.name : 'None'}
+              {selectedFile?.assets && typeof selectedFile.assets[0]?.name === 'string'
+                ? selectedFile.assets[0].name
+                : selectedFile?.assets && selectedFile.assets[0]?.name
+                  ? JSON.stringify(selectedFile.assets[0].name)
+                  : 'None'}
             </Text>
             <TouchableOpacity
               style={styles.saveButton}

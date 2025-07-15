@@ -166,13 +166,17 @@ const RelatedLogEntry = memo(
     //console.log(`Rendering RelatedLogEntry for ID: ${log.id}`);
     return (
       <View style={styles.relatedLogEntry}>
-        <Text style={styles.modalLabel}>ID: {log.id}</Text>
+        <Text style={styles.modalLabel}>
+          ID: {typeof log.id === 'string' || typeof log.id === 'number' ? String(log.id) : '[INVALID ID]'}
+        </Text>
         <TouchableOpacity onPress={() => onCategoryChange(log.id)}>
-          <Text style={styles.modalLabel}>Category: {log.category}</Text>
+          <Text style={styles.modalLabel}>
+            Category: {typeof log.category === 'string' ? log.category : '[INVALID CATEGORY]'}
+          </Text>
         </TouchableOpacity>
         <TextInput
           style={styles.modalInput}
-          value={description}
+          value={typeof description === 'string' ? description : ''}
           onChangeText={(text) => onDescriptionChange(log.id, text)}
           multiline
           placeholder="Edit Activity Log description"
@@ -1511,19 +1515,19 @@ const MainComponent: React.FC = () => {
             <View style={styles.modalOverlay}>
               <ScrollView style={styles.modalContainer}>
                 <Text style={styles.modalTitle}>
-                  Edit {editTableName} Entry
+                  Edit {typeof editTableName === 'string' ? editTableName : '[INVALID TABLE NAME]'} Entry
                 </Text>
                 <Text style={styles.modalSubtitle}>Discussion Details</Text>
                 <TextInput
                   style={styles.modalInput}
-                  value={editDesc}
+                  value={typeof editDesc === 'string' ? editDesc : ''}
                   onChangeText={setEditDesc}
                   multiline
                   placeholder="Enter discussion description"
                 />
                 <View style={styles.switchContainer}>
                   <Text style={styles.modalLabel}>Cleared:</Text>
-                  <Switch value={editCleared} onValueChange={setEditCleared} />
+                  <Switch value={!!editCleared} onValueChange={setEditCleared} />
                 </View>
                 {editTableName === 'Discussion Data' && (
                   <View style={styles.switchContainer}>
@@ -1537,13 +1541,13 @@ const MainComponent: React.FC = () => {
                       }
                     />
                   </View>
-                )}{' '}
+                )}
                 {editTableName === 'Categories' && (
                   <View>
                     <Text style={styles.modalLabel}>Category Name:</Text>
                     <TextInput
                       style={styles.modalInput}
-                      value={editTypeSay}
+                      value={typeof editTypeSay === 'string' ? editTypeSay : ''}
                       onChangeText={(text) =>
                         setEditTypeSay(text as 'tell' | 'ask')
                       }
@@ -1555,7 +1559,7 @@ const MainComponent: React.FC = () => {
                   <Text style={styles.modalLabel}>Date:</Text>
                   <TouchableOpacity onPress={() => setShowDatePicker(true)}>
                     <Text>
-                      {editTimestamp
+                      {editTimestamp instanceof Date && !isNaN(editTimestamp.getTime())
                         ? format(editTimestamp, 'M/d/yy')
                         : 'Select Date'}
                     </Text>
@@ -1578,7 +1582,7 @@ const MainComponent: React.FC = () => {
                   <Text style={styles.modalLabel}>Time:</Text>
                   <TouchableOpacity onPress={() => setShowTimePicker(true)}>
                     <Text>
-                      {editTimestamp
+                      {editTimestamp instanceof Date && !isNaN(editTimestamp.getTime())
                         ? format(editTimestamp, 'h:mm a')
                         : 'Select Time'}
                     </Text>
@@ -1607,7 +1611,9 @@ const MainComponent: React.FC = () => {
                     }}
                   >
                     <Text style={styles.categoryText}>
-                      {activityLogCategories[editItemId] || 'uncategorized'}
+                      {typeof activityLogCategories[editItemId] === 'string'
+                        ? activityLogCategories[editItemId]
+                        : 'uncategorized'}
                     </Text>
                   </TouchableOpacity>
                 </View>

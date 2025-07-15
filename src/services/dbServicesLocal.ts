@@ -602,8 +602,16 @@ export async function getCategoryNames(): Promise<string[]> {
   }
   try {
     const categories = realm.objects<Category>('Category');
-    const categoryNames = Array.from(categories).map((cat) => cat.name);
-    
+    const categoryNames = Array.from(categories)
+      .map((cat) => cat.name)
+      .filter(
+        (name) =>
+          typeof name === 'string' &&
+          name.trim().length > 1 &&
+          name.trim().toLowerCase() !== 'the' &&
+          name.trim().toLowerCase() !== 'null' &&
+          name.trim().toLowerCase() !== 'undefined'
+      );
     // Remove duplicates using Set
     return Array.from(new Set(categoryNames));
   } catch (error) {
