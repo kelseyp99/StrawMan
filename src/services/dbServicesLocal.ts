@@ -1,3 +1,36 @@
+// Initialize default categories if none exist
+export async function initializeDefaultCategories() {
+  if (!realm) return;
+  const existing = realm.objects('Category');
+  if (existing.length > 0) return;
+  const defaults = [
+    { name: 'Diet', description: 'Food and nutrition' },
+    { name: 'Mood', description: 'Emotional state' },
+    { name: 'Metabolism', description: 'Metabolic health' },
+    { name: 'Exercise', description: 'Physical activity' },
+    { name: 'Sleep', description: 'Sleep patterns' },
+    { name: 'Hydration', description: 'Water intake' },
+    { name: 'Stress', description: 'Stress levels' },
+    { name: 'Medication', description: 'Medications taken' },
+    { name: 'Weight', description: 'Body weight' },
+    { name: 'Blood Pressure', description: 'Blood pressure readings' },
+  ];
+  const uid = await getUID();
+  realm.write(() => {
+    defaults.forEach((cat) => {
+      realm.create('Category', {
+        id: `${cat.name.toLowerCase()}_${Date.now()}`,
+        name: cat.name,
+        description: cat.description,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        synced: false,
+        syncTimestamp: null,
+        uid: uid || 'local',
+      });
+    });
+  });
+}
 import Realm, { UpdateMode } from 'realm';
 import { realm } from '../realmConfig';
 import { getUID } from '../utils/uidManager';
@@ -68,12 +101,6 @@ export const findDuplicateActivityLog = (
   description: string
 ): ActivityLog | null => {
   if (!realm) throw new Error('Realm not initialized');
-  console.log(
-    `Checking for duplicate ActivityLog: ${discussionId}, ${category}, ${description.substring(
-      0,
-      50
-    )}...`
-  );
 
   try {
     // First check for exact matches
@@ -88,7 +115,6 @@ export const findDuplicateActivityLog = (
 
     if (logs && logs.length > 0) {
       const log = logs[0];
-      console.log(`Found exact duplicate ActivityLog: ${log.id}`);
       return {
         id: log.id,
         discussionId: log.discussionId,
@@ -125,11 +151,6 @@ export const findDuplicateActivityLog = (
           description
         );
         if (similarity > 0.8) {
-          console.log(
-            `Found similar recent ActivityLog (${Math.round(
-              similarity * 100
-            )}% similar): ${log.id}`
-          );
           return {
             id: log.id,
             discussionId: log.discussionId,
@@ -149,10 +170,9 @@ export const findDuplicateActivityLog = (
       }
     }
 
-    console.log('No duplicate ActivityLog found');
     return null;
   } catch (error) {
-    console.error('Error finding duplicate ActivityLog:', error);
+  // Error finding duplicate ActivityLog
     throw error;
   }
 };
@@ -231,9 +251,9 @@ export async function logSyncEntry(entry: SyncEntry): Promise<void> {
         UpdateMode.Modified
       ); // Use UpdateMode.Modified to update existing entries
     });
-    console.log('Logged SyncEntry to Realm:', entry);
+    // SyncEntry logged
   } catch (error) {
-    console.error('Error logging SyncEntry to Realm:', error);
+    // Error logging SyncEntry to Realm
     throw error;
   }
 }
@@ -257,7 +277,7 @@ export async function initializeUser(): Promise<void> {
       };
       const existingUser = realm?.objects<User>('User')[0];
       if (existingUser) {
-        console.log('User already initialized');
+  // User already initialized
         // Only update non-primary key fields
         existingUser.appVersion = userData.appVersion;
         existingUser.appId = userData.appId;
@@ -266,13 +286,13 @@ export async function initializeUser(): Promise<void> {
         existingUser.subscriptionStartDate = userData.subscriptionStartDate;
         existingUser.subscriptionExpiryDate = userData.subscriptionExpiryDate;
       } else {
-        console.log('Initializing user');
+  // Initializing user
         realm?.create('User', userData);
       }
     });
-    console.log('User initialized successfully');
+    // User initialized successfully
   } catch (error) {
-    console.error('Error initializing user:', error);
+    // Error initializing user
     throw error;
   }
 }
@@ -289,10 +309,9 @@ export async function createDocument(data: Record<string, unknown>): Promise<str
         synced: false,
       });
     });
-    console.log('Document created with ID:', id);
     return id;
   } catch (error) {
-    console.error('Error creating document:', error);
+  // Error creating document
     throw error;
   }
 }
@@ -305,10 +324,9 @@ export async function readDocuments(): Promise<Record<string, unknown>[]> {
   try {
     const documents =
       realm?.objects('Document')?.map((doc) => ({ id: doc.id, ...doc })) ?? [];
-    console.log('Documents retrieved:', documents);
     return documents;
   } catch (error) {
-    console.error('Error reading documents:', error);
+  // Error reading documents
     throw error;
   }
 }
@@ -323,11 +341,10 @@ export async function updateDocument(docId: string, data: Record<string, unknown
       const doc = realm?.objectForPrimaryKey('Document', docId);
       if (doc) {
         Object.assign(doc, { ...data, synced: false });
-        console.log('Document updated with ID:', docId);
       }
     });
   } catch (error) {
-    console.error('Error updating document:', error);
+  // Error updating document
     throw error;
   }
 }
@@ -342,19 +359,18 @@ export async function deleteDocument(docId: string): Promise<void> {
       const doc = realm?.objectForPrimaryKey('Document', docId);
       if (doc) {
         realm?.delete(doc);
-        console.log('Document deleted with ID:', docId);
+  // Document deleted
       }
     });
   } catch (error) {
-    console.error('Error deleting document:', error);
+  // Error deleting document
     throw error;
   }
 }
 
 export async function getDistinctCategories(): Promise<string[]> {
-  // console.log('Getting distinct categories...');
   if (!realm) {
-    console.error('Failed to open Realm instance');
+  // Error: Failed to open Realm instance
     throw new Error('Failed to open Realm instance');
   }
   try {
@@ -366,10 +382,9 @@ export async function getDistinctCategories(): Promise<string[]> {
     if (categories.length === 0) {
       categories.push('diet');
     }
-    // console.log('Categories:', categories);
     return categories;
   } catch (error) {
-    console.error('Error getting distinct categories:', error);
+  // Error getting distinct categories
     return [];
   }
 }
@@ -926,12 +941,17 @@ export async function deleteActivityLog(activityLogId: string): Promise<void> {
     throw new Error('Failed to open Realm instance');
   }
   try {
+    console.log('[DEBUG] Attempting to delete ActivityLog with id:', activityLogId);
     realm.write(() => {
       const log = realm?.objectForPrimaryKey('ActivityLog', activityLogId);
       if (log) {
         realm?.delete(log);
+        console.log('[DEBUG] Deleted ActivityLog:', activityLogId);
+      } else {
+        console.warn('[DEBUG] No ActivityLog found with id:', activityLogId);
       }
     });
+  // ...existing code...
   } catch (error) {
     console.error('Error deleting activity log:', error);
     throw error;
