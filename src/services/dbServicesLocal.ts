@@ -849,6 +849,7 @@ export async function addOrUpdateDiscussion(
           typeSay,
           cleared: false,
           uid: 'local_user',
+          synced: false,
         });
       }
     });
@@ -1397,6 +1398,7 @@ export async function importLegacyDiscussions(
           typeSay: discussion.typeSay || 'tell',
           cleared: discussion.cleared || false,
           uid: discussion.uid || 'legacy_user',
+          synced: false,
         });
         count++;
       });
