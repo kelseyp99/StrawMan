@@ -1203,8 +1203,25 @@ const MainComponent: React.FC = () => {
 
   // Save function for general edits
   const saveEdit = useCallback(async () => {
-    // Implementation for saving edits
-    console.log('Save edit called - implementation needed');
+    try {
+      if (editTableName === 'Discussions' || editTableName === 'Discussion Data') {
+        // Update a Discussion entry (correct signature)
+        await addOrUpdateDiscussion(editDesc, editTypeSay, editItemId);
+        await fetchData();
+        setEditModalVisible(false);
+        Alert.alert('Success', 'Discussion updated successfully.');
+      } else if (editTableName === 'Activities' || editTableName === 'Activity Log Data') {
+        // Update an ActivityLog entry
+        // NOTE: addOrUpdateActivityLog() does not accept arguments and updates all pending logs.
+        // If you want to update a single log, use a different function or implement update logic here.
+        Alert.alert('Error', 'Direct ActivityLog editing is not implemented.');
+        // Example: You might want to call a custom updateActivityLog function here.
+        // await updateActivityLog(editItemId, { description: editDesc, ... });
+      }
+    } catch (error) {
+      console.error('Error saving edit:', error);
+      Alert.alert('Error', 'Failed to save changes.');
+    }
   }, []); // Create category handler
   const handleCreateCategory = () => {
     setEditCategoryId(null);
