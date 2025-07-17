@@ -1,3 +1,43 @@
+import RNFS from 'react-native-fs';
+// Initialize default categories if none exist
+// Export all Realm data to a JSON file in the Downloads directory
+export async function exportRealmDataToFile(filename: string = 'lifelog_backup.json'): Promise<string> {
+  if (!realm) {
+  throw new Error('Realm not initialized');
+  }
+  try {
+  // Gather all data from main tables
+  const schemaNames = [
+  'Discussion',
+  'ActivityLog',
+  'Category',
+  'GPTResponse',
+  'Alert',
+  'User',
+  ];
+  const data: Record<string, unknown> = {};
+  for (const tableName of schemaNames) {
+  try {
+          const objects = realm.objects(tableName);
+          data[tableName] = Array.from(objects).map((obj: Record<string, unknown>) => ({ ...obj }));
+  } catch (error) {
+          // Table may not exist, skip
+  }
+  }
+  // Serialize to JSON
+  const json = JSON.stringify(data, null, 2);
+  // Get Downloads directory path
+  const downloadsDir = RNFS.DownloadDirectoryPath || RNFS.ExternalStorageDirectoryPath;
+  const filePath = `${downloadsDir}/${filename}`;
+  // Write file
+  await RNFS.writeFile(filePath, json, 'utf8');
+  console.log(`Exported Realm data to file: ${filePath}`);
+  return filePath;
+  } catch (error) {
+  console.error('Error exporting Realm data to file:', error);
+  throw error;
+  }
+}
 // Initialize default categories if none exist
 export async function initializeDefaultCategories() {
   if (!realm) return;
@@ -952,6 +992,8 @@ export async function deleteActivityLog(activityLogId: string): Promise<void> {
       }
     });
   // ...existing code...
+
+// ...existing code...
   } catch (error) {
     console.error('Error deleting activity log:', error);
     throw error;
