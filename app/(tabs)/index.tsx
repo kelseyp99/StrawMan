@@ -49,6 +49,7 @@ import * as dbServices from '../../src/services/dbServices';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSync } from '../context/SyncContext';
 import { exportRealmDataToFile } from '../../src/services/dbServicesLocal';
+import Share from 'react-native-share';
 
 // IAP temporarily disabled
 // import { setPlanBySku, PLAN_SKUS } from '../../src/services/planManager';
@@ -603,15 +604,14 @@ export default function AskJanet() {
   };
 
   const handleSaveTxt = async () => {
-    Alert.alert('DEBUG', 'TXT button pressed!');
-    // Original TXT export logic
-    if (!currentDiscussion) {
-      console.error('No discussion.');
-      setFilePath('Error');
-      Alert.alert('Error', 'No discussion.');
-      return;
-    }
-    const saveFile = async (folder: string) => {
+    // Prompt user for destination folder
+    selectDestinationFolder(async (folder) => {
+      if (!currentDiscussion) {
+        console.error('No discussion.');
+        setFilePath('Error');
+        Alert.alert('Error', 'No discussion.');
+        return;
+      }
       let tempPath: string = '';
       let content: string = '';
       try {
@@ -646,26 +646,6 @@ export default function AskJanet() {
               ? activityLogEntries.join('\n')
               : 'None'
           }`;
-        tempPath = `${FileSystem.documentDirectory}${fileName}`;
-        await FileSystem.writeAsStringAsync(tempPath, content || '');
-        if (
-          !permissionGranted ||
-          (Platform.OS === 'android' && Platform.Version >= 30)
-        ) {
-          setFilePath(tempPath);
-          Clipboard.setString(`Question: ${dialogQuestion}\nPath: ${tempPath}`);
-          Alert.alert(
-            'Saved',
-            `Saved to app storage: ${tempPath}\nPath copied to clipboard.`
-          );
-          // Also trigger share dialog
-          try {
-            await exportRealmDataToFile('lifelog_backup.json', true);
-          } catch (err) {
-            console.error('Export/share failed:', err);
-          }
-          return;
-        }
         let destPath: string;
         if (folder === 'Downloads') {
           destPath = `${RNFS.DownloadDirectoryPath}/${fileName}`;
@@ -675,56 +655,34 @@ export default function AskJanet() {
           destPath = `${RNFS.ExternalDirectoryPath}/${folder}/${fileName}`;
           await RNFS.mkdir(`${RNFS.ExternalDirectoryPath}/${folder}`);
         }
-        try {
-          await RNFS.moveFile(tempPath, destPath);
-        } catch (moveError) {
-          destPath = `${RNFS.ExternalStorageDirectoryPath}/Download/${fileName}`;
-          await RNFS.mkdir(`${RNFS.ExternalStorageDirectoryPath}/Download`);
-          await RNFS.moveFile(tempPath, destPath);
-        }
+        await RNFS.writeFile(destPath, content, 'utf8');
         setFilePath(destPath);
         Clipboard.setString(`Question: ${dialogQuestion}\nPath: ${destPath}`);
         Alert.alert(
           'Success',
           `Saved to ${folder} as ${fileName}\nPath copied to clipboard.`
         );
+        // Share the TXT file
         try {
-          await FileSystem.deleteAsync(tempPath);
-        } catch (e) {}
-        // Also trigger share dialog
-        try {
-          await exportRealmDataToFile('lifelog_backup.json', true);
-        } catch (err) {
-          console.error('Export/share failed:', err);
+          await Share.open({
+            url: 'file://' + destPath,
+            type: 'text/plain',
+            showAppsToView: true,
+            failOnCancel: false,
+          });
+        } catch (shareError) {
+          console.error('Error sharing TXT file:', shareError);
         }
       } catch (error) {
-        try {
-          await FileSystem.writeAsStringAsync(tempPath, content || '');
-          setFilePath(tempPath);
-          Clipboard.setString(`Question: ${dialogQuestion}\nPath: ${tempPath}`);
-          Alert.alert(
-            'Error',
-            `Failed to save to folder. Saved to app storage: ${tempPath}\nPath copied.`
-          );
-          // Also trigger share dialog
-          try {
-            await exportRealmDataToFile('lifelog_backup.json', true);
-          } catch (err) {
-            console.error('Export/share failed:', err);
-          }
-        } catch (fallbackError) {
-          setFilePath('Error');
-          Alert.alert(
-            'Error',
-            `Failed to save: ${
-              error instanceof Error ? error.message : String(error)
-            }`
-          );
-        }
+        setFilePath('Error');
+        Alert.alert(
+          'Error',
+          `Failed to save: ${
+            error instanceof Error ? error.message : String(error)
+          }`
+        );
       }
-    };
-    // Default to Downloads folder
-    await saveFile('Downloads');
+    });
   };
 
   const handlePickFile = async () => {
