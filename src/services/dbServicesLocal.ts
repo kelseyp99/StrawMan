@@ -1,7 +1,8 @@
 import RNFS from 'react-native-fs';
+import Share from 'react-native-share';
 // Initialize default categories if none exist
 // Export all Realm data to a JSON file in the Downloads directory
-export async function exportRealmDataToFile(filename: string = 'lifelog_backup.json'): Promise<string> {
+export async function exportRealmDataToFile(filename: string = 'lifelog_backup.json', shareAfterExport: boolean = false): Promise<string> {
   if (!realm) {
   throw new Error('Realm not initialized');
   }
@@ -32,6 +33,18 @@ export async function exportRealmDataToFile(filename: string = 'lifelog_backup.j
   // Write file
   await RNFS.writeFile(filePath, json, 'utf8');
   console.log(`Exported Realm data to file: ${filePath}`);
+  if (shareAfterExport) {
+    try {
+      await Share.open({
+        url: 'file://' + filePath,
+        type: 'application/json',
+        showAppsToView: true,
+        failOnCancel: false,
+      });
+    } catch (shareError) {
+      console.error('Error sharing exported file:', shareError);
+    }
+  }
   return filePath;
   } catch (error) {
   console.error('Error exporting Realm data to file:', error);
@@ -2084,7 +2097,9 @@ export async function addChangeLogEntry(
     throw error;
   }
 }
-export function fetchInitialDiscussion() {
-  throw new Error('Function not implemented.');
+
+export async function fetchInitialDiscussion(): Promise<Discussion | null> {
+  // Local implementation: return null (no local discussion)
+  return null;
 }
 

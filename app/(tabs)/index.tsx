@@ -48,6 +48,7 @@ import * as DocumentPicker from 'expo-document-picker';
 import * as dbServices from '../../src/services/dbServices';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSync } from '../context/SyncContext';
+import { exportRealmDataToFile } from '../../src/services/dbServicesLocal';
 
 // IAP temporarily disabled
 // import { setPlanBySku, PLAN_SKUS } from '../../src/services/planManager';
@@ -602,13 +603,14 @@ export default function AskJanet() {
   };
 
   const handleSaveTxt = async () => {
+    Alert.alert('DEBUG', 'TXT button pressed!');
+    // Original TXT export logic
     if (!currentDiscussion) {
       console.error('No discussion.');
       setFilePath('Error');
       Alert.alert('Error', 'No discussion.');
       return;
     }
-
     const saveFile = async (folder: string) => {
       let tempPath: string = '';
       let content: string = '';
@@ -620,20 +622,15 @@ export default function AskJanet() {
         let permissionGranted = true;
         if (permission) {
           const result = await check(permission);
-          console.log('Permission check:', result);
           if (result !== RESULTS.GRANTED) {
             const requestResult = await request(permission);
-            console.log('Permission request:', result);
             if (requestResult !== RESULTS.GRANTED) {
               permissionGranted = false;
-              console.warn('Storage permission denied.');
             }
           }
         }
-
         const fileName = `question_${currentDiscussion.id}_${Date.now()}.txt`;
         const activityLogEntries = await getActivityLogEntries();
-        console.log('ActivityLog entries:', activityLogEntries);
         content =
           `Question: ${dialogQuestion}\n` +
           `Categories: ${
@@ -650,10 +647,7 @@ export default function AskJanet() {
               : 'None'
           }`;
         tempPath = `${FileSystem.documentDirectory}${fileName}`;
-
         await FileSystem.writeAsStringAsync(tempPath, content || '');
-        console.log('Temp saved:', tempPath);
-
         if (
           !permissionGranted ||
           (Platform.OS === 'android' && Platform.Version >= 30)
@@ -664,9 +658,14 @@ export default function AskJanet() {
             'Saved',
             `Saved to app storage: ${tempPath}\nPath copied to clipboard.`
           );
+          // Also trigger share dialog
+          try {
+            await exportRealmDataToFile('lifelog_backup.json', true);
+          } catch (err) {
+            console.error('Export/share failed:', err);
+          }
           return;
         }
-
         let destPath: string;
         if (folder === 'Downloads') {
           destPath = `${RNFS.DownloadDirectoryPath}/${fileName}`;
@@ -676,42 +675,44 @@ export default function AskJanet() {
           destPath = `${RNFS.ExternalDirectoryPath}/${folder}/${fileName}`;
           await RNFS.mkdir(`${RNFS.ExternalDirectoryPath}/${folder}`);
         }
-
         try {
           await RNFS.moveFile(tempPath, destPath);
-          console.log('Saved:', destPath);
         } catch (moveError) {
-          console.warn('Move failed, retrying:', moveError);
           destPath = `${RNFS.ExternalStorageDirectoryPath}/Download/${fileName}`;
           await RNFS.mkdir(`${RNFS.ExternalStorageDirectoryPath}/Download`);
           await RNFS.moveFile(tempPath, destPath);
-          console.log('Saved after retry:', destPath);
         }
-
         setFilePath(destPath);
         Clipboard.setString(`Question: ${dialogQuestion}\nPath: ${destPath}`);
         Alert.alert(
           'Success',
           `Saved to ${folder} as ${fileName}\nPath copied to clipboard.`
         );
-
         try {
           await FileSystem.deleteAsync(tempPath);
-        } catch (e) {
-          console.warn('Temp cleanup failed:', e);
+        } catch (e) {}
+        // Also trigger share dialog
+        try {
+          await exportRealmDataToFile('lifelog_backup.json', true);
+        } catch (err) {
+          console.error('Export/share failed:', err);
         }
       } catch (error) {
-        console.error('Save TXT err:', error);
         try {
           await FileSystem.writeAsStringAsync(tempPath, content || '');
           setFilePath(tempPath);
           Clipboard.setString(`Question: ${dialogQuestion}\nPath: ${tempPath}`);
           Alert.alert(
             'Error',
-            `Failed to save to ${folder}. Saved to app storage: ${tempPath}\nPath copied.`
+            `Failed to save to folder. Saved to app storage: ${tempPath}\nPath copied.`
           );
+          // Also trigger share dialog
+          try {
+            await exportRealmDataToFile('lifelog_backup.json', true);
+          } catch (err) {
+            console.error('Export/share failed:', err);
+          }
         } catch (fallbackError) {
-          console.error('Fallback save err:', fallbackError);
           setFilePath('Error');
           Alert.alert(
             'Error',
@@ -722,8 +723,8 @@ export default function AskJanet() {
         }
       }
     };
-
-    selectDestinationFolder(saveFile);
+    // Default to Downloads folder
+    await saveFile('Downloads');
   };
 
   const handlePickFile = async () => {
