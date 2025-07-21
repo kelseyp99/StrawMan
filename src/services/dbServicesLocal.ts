@@ -1925,29 +1925,31 @@ export async function syncTableFromRemote(
             synced: true, // Mark as synced since it came from remote
             uid: row.uid ? String(row.uid) : 'remote_user',
           };
-          const existingById = realm?.objectForPrimaryKey<Category>('Category', safeRow.id);
           const existingByName = realm?.objects<Category>('Category').filtered('name = $0', safeRow.name);
-          if (!existingById && (!existingByName || existingByName.length === 0)) {
+          if (!existingByName || existingByName.length === 0) {
             realm?.create('Category', safeRow);
+            logChange('Category', safeRow.id, 'insert');
             console.log(`[SYNC] Created new Category: ${safeRow.name} (${safeRow.id})`);
-          } else if (existingById) {
-            // Update if remote is newer
-            if (row.updatedAt && existingById.updatedAt && new Date(row.updatedAt as string | number | Date) > new Date(existingById.updatedAt)) {
-              existingById.name = safeRow.name;
-              existingById.description = safeRow.description;
-              existingById.updatedAt = safeRow.updatedAt;
-              existingById.synced = true;
-              existingById.uid = safeRow.uid;
-              console.log(`[SYNC] Updated Category: ${safeRow.name} (${safeRow.id})`);
-            } else {
-              console.log(`[SYNC] Category ${safeRow.name} already exists with ID ${safeRow.id}, skipping`);
-            }
           } else {
-            console.log(`[SYNC] Category with name "${safeRow.name}" already exists with different ID, skipping duplicate`);
+            // Update if remote is newer
+            const existing = existingByName[0];
+            if (row.updatedAt && existing.updatedAt && new Date(row.updatedAt as string | number | Date) > new Date(existing.updatedAt)) {
+              existing.description = safeRow.description;
+              existing.updatedAt = safeRow.updatedAt;
+              existing.synced = true;
+              existing.uid = safeRow.uid;
+              console.log(`[SYNC] Updated Category: ${safeRow.name}`);
+            } else {
+              console.log(`[SYNC] Category ${safeRow.name} already exists, skipping`);
+            }
           }
         } else if (tableName === 'ActivityLog') {
           // Handle ActivityLog objects
-          const existing = realm?.objectForPrimaryKey<ActivityLog>('ActivityLog', row.id as string);
+          let existing: ActivityLog | null = null;
+          if (realm) {
+            const found = realm.objects<ActivityLog>('ActivityLog').filtered('timestamp = $0', safeRow.timestamp);
+            existing = found.length > 0 ? found[0] : null;
+          }
           // Provide defaults for all required fields
           const safeRow = {
             id: row.id || Date.now().toString(),
@@ -1966,8 +1968,11 @@ export async function syncTableFromRemote(
             attachedFile: row.attachedFile || '',
           };
           if (!existing) {
-            realm?.create('ActivityLog', safeRow);
-            console.log(`[SYNC] Created new ActivityLog: ${safeRow.id}`);
+            if (realm) {
+              realm.create('ActivityLog', safeRow);
+              logChange('ActivityLog', String(safeRow.id), 'insert');
+              console.log(`[SYNC] Created new ActivityLog: ${safeRow.id}`);
+            }
           } else {
             // Update if remote is newer
             if (row.syncTimestamp && existing.syncTimestamp && new Date(row.syncTimestamp as string | number | Date) > new Date(existing.syncTimestamp)) {
@@ -1980,7 +1985,11 @@ export async function syncTableFromRemote(
           }
         } else if (tableName === 'Discussion') {
           // Handle Discussion objects
-          const existing = realm?.objectForPrimaryKey<Discussion>('Discussion', String(row.id));
+          let existingDiscussion: Discussion | null = null;
+          if (realm) {
+            const found = realm.objects<Discussion>('Discussion').filtered('timestamp = $0', safeRow.timestamp);
+            existingDiscussion = found.length > 0 ? found[0] : null;
+          }
           // Coerce all required string fields to string
           const safeRow = {
             id: String(row.id || Date.now()),
@@ -1994,14 +2003,17 @@ export async function syncTableFromRemote(
             uid: row.uid ? String(row.uid) : 'remote_user',
             activityLogs: [],
           };
-          if (!existing) {
-            realm?.create('Discussion', safeRow);
-            console.log(`[SYNC] Created new Discussion: ${safeRow.id}`);
+          if (!existingDiscussion) {
+            if (realm) {
+              realm.create('Discussion', safeRow);
+              logChange('Discussion', String(safeRow.id), 'insert');
+              console.log(`[SYNC] Created new Discussion: ${safeRow.id}`);
+            }
           } else {
             // Update if remote is newer
-            if (row.syncTimestamp && existing.syncTimestamp && new Date(row.syncTimestamp as string | number | Date) > new Date(existing.syncTimestamp)) {
-              Object.assign(existing, safeRow);
-              existing.synced = true;
+            if (row.syncTimestamp && existingDiscussion.syncTimestamp && new Date(row.syncTimestamp as string | number | Date) > new Date(existingDiscussion.syncTimestamp)) {
+              Object.assign(existingDiscussion, safeRow);
+              existingDiscussion.synced = true;
               console.log(`[SYNC] Updated Discussion: ${safeRow.id}`);
             } else {
               console.log(`[SYNC] Discussion ${safeRow.id} already exists, skipping`);

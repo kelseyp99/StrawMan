@@ -30,9 +30,9 @@ import {
   findDuplicateActivityLog,
   createActivityLog,
   deleteActivityLog,
-  getActivityLogs,
   getDiscussions,
 } from '../../src/services/dbServices';
+import { getActivityLogs as getActivityLogsLocal } from '../../src/services/dbServicesLocal';
 import { transformInput } from '../../src/services/phraseProcessor';
 // Firestore imports removed for offline-first operation
 import Header from '../../src/components/Header';
@@ -740,12 +740,12 @@ export default function AskJanet() {
         return [];
       }
 
-      // Use dbServices to get activity logs
-      const activityLogs = await getActivityLogs();
+  // Use local dbServicesLocal to get activity logs
+  const activityLogs = await getActivityLogsLocal();
 
       return activityLogs
-        .filter((log) => selectedCategories.includes(log.category))
-        .map((data) => {
+        .filter((log: any) => selectedCategories.includes(log.category))
+        .map((data: any) => {
           if (
             data.description === dialogQuestion &&
             data.discussionId === currentDiscussion?.id
@@ -759,9 +759,23 @@ export default function AskJanet() {
             .getMinutes()
             .toString()
             .padStart(2, '0')}`;
-          return `${formattedTimestamp} ${data.description}`;
+          // Export all main fields for each row
+          return [
+            `Timestamp: ${formattedTimestamp}`,
+            `Category: ${data.category}`,
+            `Description: ${data.description}`,
+            `DiscussionId: ${data.discussionId}`,
+            `Cleared: ${data.cleared}`,
+            `ResponseType: ${data.responseType}`,
+            `Synced: ${data.synced}`,
+            `SyncTimestamp: ${data.syncTimestamp}`,
+            `CategoryId: ${data.categoryId}`,
+            `Uid: ${data.uid}`,
+            `LockedCategory: ${data.lockedCategory}`,
+            `LockedDescription: ${data.lockedDescription}`
+          ].join(' | ');
         })
-        .filter((entry): entry is string => entry !== null);
+        .filter((entry: string | null): entry is string => entry !== null);
     } catch (error) {
       console.error('Error fetching ActivityLog entries:', error);
       return [];

@@ -1,3 +1,28 @@
+
+
+// ...existing imports...
+// ...existing imports...
+      {/* Force Import ActivityLog button for new installs/testing */}
+      <TouchableOpacity
+        style={{
+          backgroundColor: '#e67e22',
+          padding: 12,
+          borderRadius: 8,
+          marginVertical: 8,
+          alignItems: 'center',
+        }}
+        onPress={async () => {
+          try {
+            await AsyncStorage.removeItem('activityLogImportCompleted');
+            await synchronizeActivityLog('MVP-ForceImport');
+            Alert.alert('Force Import', 'Remote ActivityLog import triggered.');
+          } catch (error) {
+            Alert.alert('Error', 'Failed to force import: ' + String(error));
+          }
+        }}
+      >
+        <Text style={{ color: 'white', fontWeight: 'bold', fontSize: 16 }}>🔄 Force Import ActivityLog (Remote)</Text>
+      </TouchableOpacity>
 import React, { useState } from 'react';
 import { View, StyleSheet, Alert, TouchableOpacity, Text } from 'react-native';
 import { useAuth } from '../context/AuthContext';
@@ -6,7 +31,28 @@ import {
   UpgradePromptModal,
   PlanModal,
 } from '../../src/components/UpgradeModals';
-import { synchronizeCategories, cleanupDuplicateCategories } from '../../src/services/dbServices';
+import { synchronizeCategories, cleanupDuplicateCategories, synchronizeActivityLog, synchronizeDiscussions } from '../../src/services/dbServices';
+import { initializeDefaultCategories } from '../../src/services/dbServicesLocal';
+      {/* Manual initialize default categories button for MVP/testing */}
+      <TouchableOpacity
+        style={{
+          backgroundColor: '#4a90e2',
+          padding: 12,
+          borderRadius: 8,
+          marginVertical: 8,
+          alignItems: 'center',
+        }}
+        onPress={async () => {
+          try {
+            await initializeDefaultCategories();
+            Alert.alert('Categories Initialized', 'Default categories have been created in the local database.');
+          } catch (error) {
+            Alert.alert('Error', 'Failed to initialize default categories: ' + String(error));
+          }
+        }}
+      >
+        <Text style={{ color: 'white', fontWeight: 'bold', fontSize: 16 }}>🗂️ Initialize Default Categories (Local)</Text>
+      </TouchableOpacity>
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export default function ToolsScreen() {
@@ -45,35 +91,59 @@ export default function ToolsScreen() {
           {isSyncing ? 'Syncing...' : 'Sync Now'}
         </Text>
       </TouchableOpacity>
-      
-      {/* Debug sync button moved from index */}
+
+      {/* Force Import Discussion button */}
       <TouchableOpacity
-        style={styles.debugButton}
+        style={{
+          backgroundColor: '#4e8cff',
+          padding: 12,
+          borderRadius: 8,
+          marginBottom: 12,
+        }}
         onPress={async () => {
-          try {
-            console.log('🔧 [DEBUG] Setting up paid user and sync...');
-            await AsyncStorage.setItem('isPaidUser', 'true');
-            await AsyncStorage.setItem('syncWithCloud', 'true');
-            await AsyncStorage.setItem('userPlan', 'premium');
-            
-            console.log('🔧 [DEBUG] Triggering manual sync...');
-            await triggerSync();
-            
-            console.log('🔧 [DEBUG] Also manually calling synchronizeCategories...');
-            await synchronizeCategories('1.1.0');
-            
-            console.log('🔧 [DEBUG] Manual sync complete');
-            
-            Alert.alert('Debug', 'Sync triggered with paid user settings + category sync');
-          } catch (error) {
-            console.error('🔧 [DEBUG] Error:', error);
-            Alert.alert('Debug Error', String(error));
-          }
+          await AsyncStorage.removeItem('discussionImportCompleted');
+          await synchronizeDiscussions('MVP-ForceImport');
+          Alert.alert('Force Import', 'Remote Discussion import triggered.');
         }}
       >
-        <Text style={styles.debugButtonText}>🔧 Enable Sync & Test Categories</Text>
+        <Text style={{ color: 'white', fontWeight: 'bold', fontSize: 16 }}>🔄 Force Import Discussion (Remote)</Text>
       </TouchableOpacity>
-      
+
+
+      {/* Force Import Category button for new installs/testing */}
+      <TouchableOpacity
+        style={{
+          backgroundColor: '#4e8cff',
+          padding: 12,
+          borderRadius: 8,
+          marginBottom: 12,
+        }}
+        onPress={async () => {
+          await AsyncStorage.removeItem('categoryImportCompleted');
+          await synchronizeCategories('MVP-ForceImport');
+          Alert.alert('Force Import', 'Remote Category import triggered.');
+        }}
+      >
+        <Text style={{ color: 'white', fontWeight: 'bold', fontSize: 16 }}>🔄 Force Import Category (Remote)</Text>
+      </TouchableOpacity>
+
+      {/* Force Import ActivityLog button for new installs/testing */}
+      <TouchableOpacity
+        style={{
+          backgroundColor: '#4e8cff',
+          padding: 12,
+          borderRadius: 8,
+          marginBottom: 12,
+        }}
+        onPress={async () => {
+          await AsyncStorage.removeItem('activityLogImportCompleted');
+          await synchronizeActivityLog('MVP-ForceImport');
+          Alert.alert('Force Import', 'Remote ActivityLog import triggered.');
+        }}
+      >
+        <Text style={{ color: 'white', fontWeight: 'bold', fontSize: 16 }}>🔄 Force Import ActivityLog (Remote)</Text>
+      </TouchableOpacity>
+
       {/* Category cleanup button */}
       <TouchableOpacity
         style={styles.cleanupButton}
@@ -90,7 +160,7 @@ export default function ToolsScreen() {
       >
         <Text style={styles.cleanupButtonText}>🧹 Clean Duplicate Categories</Text>
       </TouchableOpacity>
-      
+
       {!isPaid && (
         <TouchableOpacity
           style={styles.upgradeButton}
