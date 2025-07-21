@@ -11,6 +11,9 @@ service cloud.firestore {
     match /ActivityLog/{document=**} {
       allow read, write: if true;
     }
+    match /Categories/{document=**} {
+      allow read, write: if true;
+    }
     // Legacy: users/{userId} for older app
     match /users/{userId} {
       allow create: if request.auth != null && request.auth.uid == userId;
