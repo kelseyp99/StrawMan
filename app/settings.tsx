@@ -199,82 +199,6 @@ export default function SettingsScreen() {
             </Text>
           </View>
         )}
-        {/* Developer/Testing Section */}
-        <View
-          style={{
-            borderTopWidth: 1,
-            borderTopColor: '#eee',
-            paddingTop: 15,
-            marginTop: 15,
-            marginBottom: 15,
-          }}
-        >
-          <Text
-            style={{
-              fontSize: 16,
-              fontWeight: 'bold',
-              marginBottom: 10,
-              color: '#666',
-            }}
-          >
-            Developer Options
-          </Text>
-        </View>
-        <View
-          style={{
-            flexDirection: 'row',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            marginBottom: 15,
-          }}
-        >
-          <View style={{ flex: 1 }}>
-            <Text>Enable Paid Features</Text>
-            <Text style={{ fontSize: 12, color: '#666' }}>
-              Toggle to access sync & premium features
-            </Text>
-          </View>
-          <Switch
-            value={isPaidCustomer}
-            onValueChange={async (value) => {
-              if (value && !isLogged) {
-                // Enabling paid features requires Firebase login
-                Alert.alert(
-                  'Login Required',
-                  'To enable paid features, you need to log in with your Firebase account. You will be redirected to the login screen.',
-                  [
-                    { text: 'Cancel', style: 'cancel' },
-                    {
-                      text: 'Login',
-                      onPress: () => router.push('/login'),
-                    },
-                  ]
-                );
-                return;
-              }
-
-              if (!value) {
-                // Disabling paid features - switch to local mode
-                setIsPaid(false);
-                await AsyncStorage.setItem('isPaidUser', 'false');
-                Alert.alert(
-                  'Switched to Local Mode',
-                  'You are now using local-only mode. Your data will be stored locally only.'
-                );
-              } else {
-                // Enable paid features (user is already logged in)
-                setIsPaid(true);
-                await AsyncStorage.setItem('isPaidUser', 'true');
-                Alert.alert(
-                  'Paid Features Enabled',
-                  'You can now enable cloud sync and access premium features.'
-                );
-              }
-
-              setIsPaidCustomer(value);
-            }}
-          />
-        </View>
         <Modal
           visible={showUpgradeModal}
           transparent
@@ -320,8 +244,6 @@ export default function SettingsScreen() {
           </View>
         </Modal>
         
-      {/* Only show paid/sync UI if test user */}
-      {isTestUser && <DebugSyncButton />}
       {/* Hidden easter egg: tap app version 5 times to unlock test mode */}
       <TouchableOpacity onPress={handleVersionTap} style={{ alignSelf: 'center', marginTop: 40 }}>
         <Text style={{ color: '#888', fontSize: 12 }}>App Version 1.0.0</Text>
