@@ -13,6 +13,7 @@ module.exports = {
     slug: 'LifeLog',
     owner: 'tinman42',
     scheme: 'lifelog',
+    icon: './assets/images/ask-janet-icon2.png',
     android: {
       package: 'com.anonymous.lifelog',
     },
