@@ -577,29 +577,7 @@ export default function AskJanet() {
           await callback('Downloads');
         },
       },
-      {
-        text: 'Pictures',
-        onPress: async () => {
-          setDestinationFolder('Pictures');
-          await callback('Pictures');
-        },
-      },
-      {
-        text: 'Custom',
-        onPress: () => {
-          Alert.prompt(
-            'Custom Folder',
-            'Enter folder name:',
-            async (folderName) => {
-              if (folderName) {
-                setDestinationFolder(folderName);
-                await callback(folderName);
-              }
-            }
-          );
-        },
-      },
-      { text: 'Cancel', style: 'cancel' },
+      { text: 'Cancel', style: 'destructive' },
     ]);
   };
 
@@ -1235,62 +1213,19 @@ export default function AskJanet() {
               )}
               ListEmptyComponent={<Text style={styles.modalLabel}>None</Text>}
             />
-            {/* Debug log for selectedFile */}
-            {console.log('Modal selectedFile:', selectedFile)}
-            <Text style={styles.modalLabel}>
-              File:{' '}
-              {selectedFile?.assets && typeof selectedFile.assets[0]?.name === 'string'
-                ? selectedFile.assets[0].name
-                : selectedFile?.assets && selectedFile.assets[0]?.name
-                  ? JSON.stringify(selectedFile.assets[0].name)
-                  : 'None'}
-            </Text>
-            <TouchableOpacity
-              style={styles.saveButton}
-              onPress={handlePickFile}
-            >
-              <Text style={styles.saveButtonText}>Pick File</Text>
-            </TouchableOpacity>
-            <View style={styles.saveButtons}>
-              <TouchableOpacity
-                style={styles.saveButton}
-                onPress={handleSaveTxt}
-              >
-                <Text style={styles.saveButtonText}>TXT</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.saveButton}
-                onPress={() => handleSaveImage('png')}
-              >
-                <Text style={styles.saveButtonText}>PNG</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.saveButton}
-                onPress={() => handleSaveImage('jpg')}
-              >
-                <Text style={styles.saveButtonText}>JPG</Text>
-              </TouchableOpacity>
-            </View>
             <View style={styles.modalButtons}>
               <TouchableOpacity
-                style={styles.modalButton}
+                style={[styles.modalButton, styles.cancelButton]}
                 onPress={handleDialogCancel}
               >
                 <Text style={styles.modalButtonText}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[styles.modalButton, styles.deleteButton]}
-                onPress={handleDeleteActivityLog}
+                style={[styles.modalButton, styles.okButton]}
+                onPress={handleSaveTxt}
               >
-                <Text style={styles.modalButtonText}>Delete</Text>
+                <Text style={styles.modalButtonText}>OK</Text>
               </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.modalButton, styles.addButton]}
-                onPress={handleAddActivityLog}
-              >
-                <Text style={styles.modalButtonText}>Add</Text>
-              </TouchableOpacity>
-              {/* Confirm button removed */}
             </View>
           </View>
         </View>
@@ -1415,8 +1350,15 @@ const styles = StyleSheet.create({
     padding: 10,
     borderRadius: 5,
     backgroundColor: '#ddd',
-    width: '22%',
+    width: '48%',
     alignItems: 'center',
+    marginHorizontal: 2,
+  },
+  okButton: {
+    backgroundColor: '#28a745',
+  },
+  cancelButton: {
+    backgroundColor: '#111',
   },
   confirmButton: {
     backgroundColor: '#007bff',
