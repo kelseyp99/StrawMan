@@ -973,11 +973,13 @@ export async function createActivityLog(
     const id = `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
     realm.write(() => {
-      realm?.create('ActivityLog', {
+      const logData = {
         id,
         ...activityLog,
         synced: false,
-      });
+        categoryId: activityLog.categoryId ?? null,
+      };
+      realm?.create('ActivityLog', logData);
     });
 
     console.log(`Created new ActivityLog with ID: ${id}`);

@@ -113,24 +113,7 @@ export default function AskJanet() {
   const [isQuestion, setIsQuestion] = useState(false);
   const [history, setHistory] = useState<
     { text: string; type: string; aiResponse?: string }[]
-  >([
-    { text: "What is the weather like today?", type: "question", aiResponse: "I don't have access to current weather data." },
-    { text: "I had breakfast this morning", type: "fact" },
-    { text: "How can I improve my sleep?", type: "question", aiResponse: "Try maintaining a consistent sleep schedule." },
-    { text: "I went for a run", type: "fact" },
-    { text: "What exercises are good for beginners?", type: "question" },
-    { text: "I drank water", type: "fact" },
-    { text: "How much water should I drink daily?", type: "question" },
-    { text: "I read a book", type: "fact" },
-    { text: "What are good books for learning?", type: "question" },
-    { text: "I practiced meditation", type: "fact" },
-    { text: "How to start meditating?", type: "question" },
-    { text: "I had lunch", type: "fact" },
-    { text: "What are healthy lunch options?", type: "question" },
-    { text: "I called my family", type: "fact" },
-    { text: "How to maintain relationships?", type: "question" },
-    { text: "I worked on a project", type: "fact" },
-  ]);
+  >([]);
   const [discussion, setDiscussion] = useState<Discussion | null>(null);
   const [discussionCounts, setDiscussionCounts] = useState<any[]>([]);
   const [processedDiscussions, setProcessedDiscussions] = useState<string[]>([]);
@@ -647,6 +630,7 @@ export default function AskJanet() {
             type: 'text/plain',
             showAppsToView: true,
             failOnCancel: false,
+            message: `Question: ${dialogQuestion}\nFile path: ${destPath}`,
           });
         } catch (shareError) {
           console.error('Error sharing TXT file:', shareError);

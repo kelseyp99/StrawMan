@@ -43,10 +43,10 @@ export const processPhrase = async (
       setDiscussionCounts(updatedCounts.sort((a, b) => b.count - a.count));
 
       // Return a default response for now
-      return {
-        category: 'general',
-        parsedDescription: description,
-      };
+        return {
+          category: 'uncategorized',
+          parsedDescription: description,
+        };
     }
   }
 
@@ -170,7 +170,7 @@ export async function applyRules(
   const category = categorizeDescription(discussion, distinctCategories);
 
   return {
-    category: category || 'general',
+    category: category || 'uncategorized',
     parsedDescription: discussion,
   };
 }
@@ -251,6 +251,6 @@ function categorizeDescription(
     }
   }
 
-  // If no specific category found, return the first available category or 'general'
-  return distinctCategories.length > 0 ? distinctCategories[0] : 'general';
+  // If no specific category found, return the first available category or 'uncategorized'
+  return distinctCategories.length > 0 ? distinctCategories[0] : 'uncategorized';
 }
