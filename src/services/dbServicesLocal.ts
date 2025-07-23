@@ -977,7 +977,7 @@ export async function createActivityLog(
         id,
         ...activityLog,
         synced: false,
-        categoryId: activityLog.categoryId ?? null,
+        categoryId: typeof activityLog.categoryId === 'string' ? activityLog.categoryId : '',
       };
       realm?.create('ActivityLog', logData);
     });
