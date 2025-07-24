@@ -24,32 +24,27 @@ import {
   markDiscussionAsCleared,
   createActivityLog,
   updateActivityLogCategory,
-  createRuleCandidate,
   deleteActivityLog,
   deleteDiscussion,
   addOrUpdateDiscussion,
   deleteAllLocalAndRemoteRows,
   insertTestRowsAndExit,
-  runAllSyncFunctions,
   addOrUpdateGPTResponse,
   addOrUpdateActivityLog,
   getCategories,
   addOrUpdateCategory,
   deleteCategory,
-  createCategoriesFromActivityLogs,
   getCategoryById,
   getCategoryNames,
-  checkCategoryReferences,
   findCategoryByName,
   mergeCategoryReferences,
-  syncToCloud,
 } from '../services/dbServices';
 import { extractAndImportLegacyFirestoreData } from '../services/dbServicesRemote';
 import { findDuplicateActivityLog } from '../services/phraseProcessor';
 import { useSync } from '../../app/context/SyncContext';
-import RNFS from 'react-native-fs';
 import { UpgradePromptModal } from './UpgradeModals';
 import { useAuth } from '../../app/context/AuthContext';
+import { useFocusEffect } from '@react-navigation/native';
 
 // Temporarily commented out Firebase imports to prevent lockup
 // import { db } from '../firebaseConfig';
@@ -346,11 +341,7 @@ const MainComponent: React.FC = () => {
   const [existingCategories, setExistingCategories] = useState<string[]>([]); // Fetch UID once on mount
 
   // Always reload categories from Realm when modal opens
-  useEffect(() => {
-    if (categoryModalVisible) {
-      loadCategories();
-    }
-  }, [categoryModalVisible, loadCategories]);
+  // (Moved after loadCategories declaration to fix variable usage error)
   useEffect(() => {
     const fetchUid = async () => {
       let userId = await getUID();
@@ -1006,6 +997,12 @@ const MainComponent: React.FC = () => {
 
   // Function to load categories for the modal
   const loadCategories = useCallback(async () => {
+  // Always reload categories from Realm when modal opens
+  useEffect(() => {
+    if (categoryModalVisible) {
+      loadCategories();
+    }
+  }, [categoryModalVisible, loadCategories]);
     try {
       const categories = await getCategories();
       const categoryNames = categories.map((cat) => cat.name);
@@ -1014,6 +1011,13 @@ const MainComponent: React.FC = () => {
       console.error('Error loading categories:', error);
     }
   }, []);
+
+  // Refresh categories when screen regains focus
+  useFocusEffect(
+    React.useCallback(() => {
+      loadCategories();
+    }, [loadCategories])
+  );
 
   // Handler for category selection in the modal
   const handleCategorySelect = useCallback(
@@ -1128,32 +1132,16 @@ const MainComponent: React.FC = () => {
 
   // Handler for deleting categories with FK checks
   const handleDeleteCategory = useCallback(
-    async (categoryId: string, categoryName: string) => {
+    async (categoryId: string) => {
       try {
-        // Check if category has references
-        const refCheck = await checkCategoryReferences(categoryId);
-
-        setCategoryToDelete({ id: categoryId, name: categoryName });
-        setHasReferences(refCheck.hasReferences);
-        setReferenceCount(refCheck.referenceCount);
-        setMergeTargetName('');
-        setShowMergeOption(false);
-
-        if (refCheck.hasReferences) {
-          // Load existing categories for merge dropdown
-          const categories = await getCategoryNames();
-          setExistingCategories(
-            categories.filter((cat) => cat !== categoryName)
-          );
-        }
-
-        setDeleteModalVisible(true);
+        await deleteCategory(categoryId);
+        await loadCategories(); // Refresh after delete
+        Alert.alert('Success', 'Category deleted successfully.');
       } catch (error) {
-        console.error('Error checking category references:', error);
-        Alert.alert('Error', 'Failed to check category references.');
+        console.error('Error deleting category:', error);
+        Alert.alert('Error', 'Failed to delete category.');
       }
-    },
-    []
+    }, [loadCategories]
   );
 
   // Handler for confirming category deletion
@@ -1334,8 +1322,8 @@ const MainComponent: React.FC = () => {
       <TouchableOpacity
         style={styles.deleteButton}
         onPress={() => {
-          if (tableName === 'Categories' && itemData) {
-            handleDeleteCategory(itemId, itemData.name);
+          if (tableName === 'Categories') {
+            handleDeleteCategory(itemId);
           } else {
             handleDelete(tableName, itemId);
           }
