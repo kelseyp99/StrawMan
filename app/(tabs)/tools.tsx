@@ -1,28 +1,4 @@
 
-
-// ...existing imports...
-// ...existing imports...
-      {/* Force Import ActivityLog button for new installs/testing */}
-      <TouchableOpacity
-        style={{
-          backgroundColor: '#e67e22',
-          padding: 12,
-          borderRadius: 8,
-          marginVertical: 8,
-          alignItems: 'center',
-        }}
-        onPress={async () => {
-          try {
-            await AsyncStorage.removeItem('activityLogImportCompleted');
-            await synchronizeActivityLog('MVP-ForceImport');
-            Alert.alert('Force Import', 'Remote ActivityLog import triggered.');
-          } catch (error) {
-            Alert.alert('Error', 'Failed to force import: ' + String(error));
-          }
-        }}
-      >
-        <Text style={{ color: 'white', fontWeight: 'bold', fontSize: 16 }}>🔄 Force Import ActivityLog (Remote)</Text>
-      </TouchableOpacity>
 import React, { useState } from 'react';
 import { View, StyleSheet, Alert, TouchableOpacity, Text } from 'react-native';
 import { useAuth } from '../context/AuthContext';
@@ -33,33 +9,18 @@ import {
 } from '../../src/components/UpgradeModals';
 import { synchronizeCategories, cleanupDuplicateCategories, synchronizeActivityLog, synchronizeDiscussions } from '../../src/services/dbServices';
 import { initializeDefaultCategories } from '../../src/services/dbServicesLocal';
-      {/* Manual initialize default categories button for MVP/testing */}
-      <TouchableOpacity
-        style={{
-          backgroundColor: '#4a90e2',
-          padding: 12,
-          borderRadius: 8,
-          marginVertical: 8,
-          alignItems: 'center',
-        }}
-        onPress={async () => {
-          try {
-            await initializeDefaultCategories();
-            Alert.alert('Categories Initialized', 'Default categories have been created in the local database.');
-          } catch (error) {
-            Alert.alert('Error', 'Failed to initialize default categories: ' + String(error));
-          }
-        }}
-      >
-        <Text style={{ color: 'white', fontWeight: 'bold', fontSize: 16 }}>🗂️ Initialize Default Categories (Local)</Text>
-      </TouchableOpacity>
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export default function ToolsScreen() {
+  // Default upgrade handler
+  const handleUpgrade = () => {
+    Alert.alert('Upgrade', 'Upgrade action triggered.');
+  };
   const { isLogged, isPaid } = useAuth();
   const { isSyncing, triggerSync } = useSync();
   const [showUpgrade, setShowUpgrade] = useState(false);
   const [showPlans, setShowPlans] = useState(false);
+
 
   const handleManualSync = async () => {
     try {
@@ -69,17 +30,6 @@ export default function ToolsScreen() {
       Alert.alert('Sync Failed', 'Could not sync data.');
     }
   };
-
-  const handleUpgrade = () => {
-    setShowUpgrade(false);
-    setShowPlans(true);
-  };
-
-  if (!isLogged && isPaid) {
-    // Not logged in, but paid: show login
-    return null;
-  }
-
   return (
     <View style={styles.container}>
       <TouchableOpacity
@@ -91,7 +41,6 @@ export default function ToolsScreen() {
           {isSyncing ? 'Syncing...' : 'Sync Now'}
         </Text>
       </TouchableOpacity>
-
       {/* Force Import Discussion button */}
       <TouchableOpacity
         style={{
@@ -108,8 +57,6 @@ export default function ToolsScreen() {
       >
         <Text style={{ color: 'white', fontWeight: 'bold', fontSize: 16 }}>🔄 Force Import Discussion (Remote)</Text>
       </TouchableOpacity>
-
-
       {/* Force Import Category button for new installs/testing */}
       <TouchableOpacity
         style={{
@@ -126,7 +73,6 @@ export default function ToolsScreen() {
       >
         <Text style={{ color: 'white', fontWeight: 'bold', fontSize: 16 }}>🔄 Force Import Category (Remote)</Text>
       </TouchableOpacity>
-
       {/* Force Import ActivityLog button for new installs/testing */}
       <TouchableOpacity
         style={{
@@ -143,7 +89,6 @@ export default function ToolsScreen() {
       >
         <Text style={{ color: 'white', fontWeight: 'bold', fontSize: 16 }}>🔄 Force Import ActivityLog (Remote)</Text>
       </TouchableOpacity>
-
       {/* Category cleanup button */}
       <TouchableOpacity
         style={styles.cleanupButton}
@@ -160,7 +105,6 @@ export default function ToolsScreen() {
       >
         <Text style={styles.cleanupButtonText}>🧹 Clean Duplicate Categories</Text>
       </TouchableOpacity>
-
       {!isPaid && (
         <TouchableOpacity
           style={styles.upgradeButton}
