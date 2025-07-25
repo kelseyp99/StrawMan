@@ -41,54 +41,60 @@ export default function ToolsScreen() {
           {isSyncing ? 'Syncing...' : 'Sync Now'}
         </Text>
       </TouchableOpacity>
-      {/* Force Import Discussion button */}
-      <TouchableOpacity
-        style={{
-          backgroundColor: '#4e8cff',
-          padding: 12,
-          borderRadius: 8,
-          marginBottom: 12,
-        }}
-        onPress={async () => {
-          await AsyncStorage.removeItem('discussionImportCompleted');
-          await synchronizeDiscussions('MVP-ForceImport');
-          Alert.alert('Force Import', 'Remote Discussion import triggered.');
-        }}
-      >
-        <Text style={{ color: 'white', fontWeight: 'bold', fontSize: 16 }}>🔄 Force Import Discussion (Remote)</Text>
-      </TouchableOpacity>
-      {/* Force Import Category button for new installs/testing */}
-      <TouchableOpacity
-        style={{
-          backgroundColor: '#4e8cff',
-          padding: 12,
-          borderRadius: 8,
-          marginBottom: 12,
-        }}
-        onPress={async () => {
-          await AsyncStorage.removeItem('categoryImportCompleted');
-          await synchronizeCategories('MVP-ForceImport');
-          Alert.alert('Force Import', 'Remote Category import triggered.');
-        }}
-      >
-        <Text style={{ color: 'white', fontWeight: 'bold', fontSize: 16 }}>🔄 Force Import Category (Remote)</Text>
-      </TouchableOpacity>
-      {/* Force Import ActivityLog button for new installs/testing */}
-      <TouchableOpacity
-        style={{
-          backgroundColor: '#4e8cff',
-          padding: 12,
-          borderRadius: 8,
-          marginBottom: 12,
-        }}
-        onPress={async () => {
-          await AsyncStorage.removeItem('activityLogImportCompleted');
-          await synchronizeActivityLog('MVP-ForceImport');
-          Alert.alert('Force Import', 'Remote ActivityLog import triggered.');
-        }}
-      >
-        <Text style={{ color: 'white', fontWeight: 'bold', fontSize: 16 }}>🔄 Force Import ActivityLog (Remote)</Text>
-      </TouchableOpacity>
+      {/* Force Import Discussion button: only show if in testing mode and isPaid user */}
+      {(process.env.EXPO_PUBLIC_TESTING === 'true' && isPaid) && (
+        <TouchableOpacity
+          style={{
+            backgroundColor: '#4e8cff',
+            padding: 12,
+            borderRadius: 8,
+            marginBottom: 12,
+          }}
+          onPress={async () => {
+            await AsyncStorage.removeItem('discussionImportCompleted');
+            await synchronizeDiscussions('MVP-ForceImport');
+            Alert.alert('Force Import', 'Remote Discussion import triggered.');
+          }}
+        >
+          <Text style={{ color: 'white', fontWeight: 'bold', fontSize: 16 }}>🔄 Force Import Discussion (Remote)</Text>
+        </TouchableOpacity>
+      )}
+      {/* Force Import Category button: only show if in testing mode and isPaid user */}
+      {(process.env.EXPO_PUBLIC_TESTING === 'true' && isPaid) && (
+        <TouchableOpacity
+          style={{
+            backgroundColor: '#4e8cff',
+            padding: 12,
+            borderRadius: 8,
+            marginBottom: 12,
+          }}
+          onPress={async () => {
+            await AsyncStorage.removeItem('categoryImportCompleted');
+            await synchronizeCategories('MVP-ForceImport');
+            Alert.alert('Force Import', 'Remote Category import triggered.');
+          }}
+        >
+          <Text style={{ color: 'white', fontWeight: 'bold', fontSize: 16 }}>🔄 Force Import Category (Remote)</Text>
+        </TouchableOpacity>
+      )}
+      {/* Force Import ActivityLog button: only show if in testing mode and isPaid user */}
+      {(process.env.EXPO_PUBLIC_TESTING === 'true' && isPaid) && (
+        <TouchableOpacity
+          style={{
+            backgroundColor: '#4e8cff',
+            padding: 12,
+            borderRadius: 8,
+            marginBottom: 12,
+          }}
+          onPress={async () => {
+            await AsyncStorage.removeItem('activityLogImportCompleted');
+            await synchronizeActivityLog('MVP-ForceImport');
+            Alert.alert('Force Import', 'Remote ActivityLog import triggered.');
+          }}
+        >
+          <Text style={{ color: 'white', fontWeight: 'bold', fontSize: 16 }}>🔄 Force Import ActivityLog (Remote)</Text>
+        </TouchableOpacity>
+      )}
       {/* Category cleanup button: only show if in testing mode and isPaid user */}
       {(process.env.EXPO_PUBLIC_TESTING === 'true' && isPaid) && (
         <TouchableOpacity
