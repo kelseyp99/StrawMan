@@ -134,6 +134,8 @@ export default function AskJanet() {
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [userUID, setUserUID] = useState<string | null>(null);
   const [menuVisible, setMenuVisible] = useState(false);
+  const [hamburgerUnlocked, setHamburgerUnlocked] = useState(false);
+  const [versionTapCount, setVersionTapCount] = useState(0);
   const [loadingAuth, setLoadingAuth] = useState(true);
 
   const router = useRouter();
@@ -1109,8 +1111,24 @@ export default function AskJanet() {
         )}
       />
       <View style={styles.bottomContainer}>
-        <Pressable onPress={toggleMenu} style={styles.hamburger}>
-          <Icon name="menu" size={24} color="#333" />
+        {hamburgerUnlocked && (
+          <Pressable onPress={toggleMenu} style={styles.hamburger}>
+            <Icon name="menu" size={24} color="#333" />
+          </Pressable>
+        )}
+        <Pressable
+          onPress={() => {
+            setVersionTapCount((count) => {
+              const newCount = count + 1;
+              if (newCount >= 5) {
+                setHamburgerUnlocked(true);
+              }
+              return newCount;
+            });
+          }}
+          style={{ padding: 10 }}
+        >
+          <Text style={{ color: '#888', fontSize: 12 }}>v{process.env.EXPO_PUBLIC_APP_VERSION || '1.0.0'}</Text>
         </Pressable>
         <SettingsButton />
       </View>
