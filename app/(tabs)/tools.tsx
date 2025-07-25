@@ -89,22 +89,24 @@ export default function ToolsScreen() {
       >
         <Text style={{ color: 'white', fontWeight: 'bold', fontSize: 16 }}>🔄 Force Import ActivityLog (Remote)</Text>
       </TouchableOpacity>
-      {/* Category cleanup button */}
-      <TouchableOpacity
-        style={styles.cleanupButton}
-        onPress={async () => {
-          try {
-            console.log('🧹 [CLEANUP] Starting category duplicate cleanup...');
-            await cleanupDuplicateCategories();
-            Alert.alert('Cleanup Complete', 'Duplicate categories have been removed.');
-          } catch (error) {
-            console.error('🧹 [CLEANUP] Error:', error);
-            Alert.alert('Cleanup Error', String(error));
-          }
-        }}
-      >
-        <Text style={styles.cleanupButtonText}>🧹 Clean Duplicate Categories</Text>
-      </TouchableOpacity>
+      {/* Category cleanup button: only show if in testing mode and isPaid user */}
+      {(process.env.EXPO_PUBLIC_TESTING === 'true' && isPaid) && (
+        <TouchableOpacity
+          style={styles.cleanupButton}
+          onPress={async () => {
+            try {
+              console.log('🧹 [CLEANUP] Starting category duplicate cleanup...');
+              await cleanupDuplicateCategories();
+              Alert.alert('Cleanup Complete', 'Duplicate categories have been removed.');
+            } catch (error) {
+              console.error('🧹 [CLEANUP] Error:', error);
+              Alert.alert('Cleanup Error', String(error));
+            }
+          }}
+        >
+          <Text style={styles.cleanupButtonText}>🧹 Clean Duplicate Categories</Text>
+        </TouchableOpacity>
+      )}
       {!isPaid && (
         <TouchableOpacity
           style={styles.upgradeButton}
