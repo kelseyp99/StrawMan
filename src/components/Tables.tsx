@@ -1099,7 +1099,18 @@ const MainComponent: React.FC = () => {
       Alert.alert('Success', 'Category created and assigned successfully.');
     } catch (error) {
       console.error('Error creating category:', error);
-      Alert.alert('Error', 'Failed to create category.');
+      // Check if the category was saved locally despite the error
+      try {
+        const categories = await getCategories();
+        const exists = categories.some(cat => cat.name === newCategory.trim());
+        if (exists) {
+          Alert.alert('Warning', 'Category saved locally but not synced to cloud.');
+        } else {
+          Alert.alert('Error', 'Failed to create category.');
+        }
+      } catch (checkErr) {
+        Alert.alert('Error', 'Failed to create category.');
+      }
     }
   }, [newCategory, selectedActivityLogId, loadCategories, allCategories]);
 

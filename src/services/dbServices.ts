@@ -1038,14 +1038,25 @@ export async function addOrUpdateCategory(
   id?: string
 ): Promise<string> {
   console.log('addOrUpdateCategory called with:', { name, description, id });
+  let categoryId: string | undefined = undefined;
+  let localError: any = null;
+  let remoteError: any = null;
+  const uid = (await getUID()) || 'unknown';
+  // Try local first
   try {
-    let categoryId: string;
-    if (await shouldUseRemoteForCategories()) {
+    categoryId = await local.addOrUpdateCategory(name, description, id);
+  } catch (err) {
+    localError = err;
+  }
+  // Try remote if enabled
+  if (await shouldUseRemoteForCategories()) {
+    try {
       categoryId = await remote.addOrUpdateCategory(name, description, id);
-    } else {
-      categoryId = await local.addOrUpdateCategory(name, description, id);
+    } catch (err) {
+      remoteError = err;
     }
-    const uid = (await getUID()) || 'unknown';
+  }
+  if (categoryId) {
     await logSyncEntry({
       id: categoryId,
       tableName: 'Category',
@@ -1054,9 +1065,9 @@ export async function addOrUpdateCategory(
       uid,
     });
     return categoryId;
-  } catch (error) {
-    console.error('Error in addOrUpdateCategory:', error);
-    throw error;
+  } else {
+    console.error('Error in addOrUpdateCategory:', { localError, remoteError });
+    throw localError || remoteError || new Error('Failed to create or update category');
   }
 }
 

@@ -18,28 +18,22 @@ export function UpgradePromptModal({ visible, onClose, onUpgrade }: UpgradePromp
           <Text style={styles.text}>
             Unlock all features and remove ads by upgrading to a paid account.
           </Text>
-          {!unlocked ? (
-            <View style={{ alignItems: 'center' }}>
-              <Button title="Upgrade" onPress={onUpgrade} />
-              <Text
-                style={{ color: '#888', fontSize: 12, marginTop: 16 }}
-                onPress={() => {
-                  setTapCount((count) => {
-                    const newCount = count + 1;
-                    if (newCount >= 5) setUnlocked(true);
-                    return newCount;
-                  });
-                }}
-              >
-                v{process.env.EXPO_PUBLIC_APP_VERSION || '1.0.0'}
-              </Text>
-            </View>
-          ) : (
-            <View style={styles.buttonRow}>
-              <Button title="Not Now" onPress={onClose} />
-              <Button title="Upgrade" onPress={onUpgrade} />
-            </View>
-          )}
+          <View style={{ alignItems: 'center' }}>
+            <Button title="Upgrade" onPress={onUpgrade} />
+            <Button title="Not Now" onPress={onClose} />
+            <Text
+              style={{ color: '#888', fontSize: 12, marginTop: 16 }}
+              onPress={() => {
+                setTapCount((count) => {
+                  const newCount = count + 1;
+                  if (newCount >= 5) setUnlocked(true);
+                  return newCount;
+                });
+              }}
+            >
+              v{process.env.EXPO_PUBLIC_APP_VERSION || '1.0.0'}
+            </Text>
+          </View>
         </View>
       </View>
     </Modal>
