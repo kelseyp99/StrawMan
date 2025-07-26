@@ -95,7 +95,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     borderRadius: 12,
     padding: 24,
-    width: 320,
+    width: '100%',
+    height: '100%',
+    justifyContent: 'center',
     alignItems: 'center',
   },
   title: {

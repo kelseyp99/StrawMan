@@ -653,6 +653,7 @@ const MainComponent: React.FC = () => {
                       // Use router to update existing ActivityLog entry (calls all pending updates)
                       await addOrUpdateActivityLog(); // No parameters allowed
                       newActivityLogId = String(existingLog.id);
+                      await fetchData(); // Refresh after edit
                       // console.log(
                       //   `Updated existing ActivityLog entry ${existingLog.id} for discussionId ${discussionTyped.id}`
                       // );
@@ -673,6 +674,7 @@ const MainComponent: React.FC = () => {
                         synced: false,
                       };
                       newActivityLogId = await createActivityLog(newLog);
+                      await fetchData(); // Refresh after create
                       // console.log(
                       //   `Created new ActivityLog entry ${newActivityLogId} for discussionId ${discussionTyped.id}`
                       // );
@@ -929,6 +931,7 @@ const MainComponent: React.FC = () => {
                 // Use router to update existing ActivityLog entry (calls all pending updates)
                 await addOrUpdateActivityLog(); // No parameters allowed
                 newActivityLogId = String(existingLog.id);
+                await fetchData(); // Refresh after edit
                 // console.log(
                 //   `Updated existing ActivityLog entry ${existingLog.id} for discussionId ${discussionId}`
                 // );
@@ -948,6 +951,7 @@ const MainComponent: React.FC = () => {
                   typeSay: editTypeSay, // add typeSay to match ActivityLog shape if needed
                 };
                 newActivityLogId = await createActivityLog(newLog);
+                await fetchData(); // Refresh after create
                 console.log(
                   `Created new ActivityLog entry ${newActivityLogId} for discussionId ${discussionId}`
                 );
@@ -1124,6 +1128,8 @@ const MainComponent: React.FC = () => {
       setTimeout(() => {
         tryShowAd('action');
       }, 1500);
+    // Refresh table data after deletion
+    await fetchData();
     } catch (error) {
       console.error('Error deleting activity log:', error);
       Alert.alert('Error', 'Failed to delete activity log.');
