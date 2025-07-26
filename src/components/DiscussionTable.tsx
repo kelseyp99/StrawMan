@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { addOrUpdateDiscussion, getDiscussions } from '../services/dbServices';
+import { addOrUpdateDiscussion, getDiscussions, addDiscussionListener } from '../services/dbServices';
 import {
   Text,
   View,
@@ -28,17 +28,20 @@ const DiscussionTable = () => {
   const [discussions, setDiscussions] = useState<Discussion[]>([]);
 
   useEffect(() => {
+    let isMounted = true;
     const fetchDiscussions = async () => {
       try {
         const discussions = await getDiscussions();
-        setDiscussions(
-          discussions.map((d) => ({
-            ...d,
-            id: Number(d.id),
-            timestamp: new Date(d.timestamp),
-            cleared: d.cleared ?? false,
-          }))
-        );
+        if (isMounted) {
+          setDiscussions(
+            discussions.map((d) => ({
+              ...d,
+              id: Number(d.id),
+              timestamp: new Date(d.timestamp),
+              cleared: d.cleared ?? false,
+            }))
+          );
+        }
       } catch (error) {
         console.error('Error fetching discussions:', error);
       }
@@ -46,15 +49,26 @@ const DiscussionTable = () => {
 
     fetchDiscussions();
 
-    /*     // Listen for changes in the underlying Discussion table
+    // Listen for real-time discussion updates
     const subscription = addDiscussionListener((newDiscussion) => {
-      setDiscussions((prevDiscussions) => [...prevDiscussions, newDiscussion]);
+      setDiscussions((prevDiscussions) => {
+        // Avoid duplicates by id
+        if (prevDiscussions.some((d) => d.id === Number(newDiscussion.id))) {
+          return prevDiscussions;
+        }
+        return [...prevDiscussions, {
+          ...newDiscussion,
+          id: Number(newDiscussion.id),
+          timestamp: new Date(newDiscussion.timestamp),
+          cleared: newDiscussion.cleared ?? false,
+        }];
+      });
     });
 
     return () => {
+      isMounted = false;
       subscription.unsubscribe();
     };
- */
   }, []);
   const styles = StyleSheet.create({
     container: {

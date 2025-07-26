@@ -1,3 +1,26 @@
+// --- Event Emitter for Discussion Updates ---
+type DiscussionListener = (discussion: Discussion) => void;
+const discussionListeners: DiscussionListener[] = [];
+
+export function addDiscussionListener(listener: DiscussionListener) {
+  discussionListeners.push(listener);
+  return {
+    unsubscribe: () => {
+      const idx = discussionListeners.indexOf(listener);
+      if (idx !== -1) discussionListeners.splice(idx, 1);
+    },
+  };
+}
+
+function emitDiscussionUpdate(discussion: Discussion) {
+  discussionListeners.forEach((listener) => {
+    try {
+      listener(discussion);
+    } catch (e) {
+      console.warn('Error in discussion listener', e);
+    }
+  });
+}
 // src/services/dbServices.ts
 import * as remote from './dbServicesRemote';
 import * as local from './dbServicesLocal';
@@ -131,9 +154,24 @@ export async function addOrUpdateDiscussion(
 ): Promise<string> {
   const useRemote = await shouldUseRemote();
 
+
   // Always save locally first
   await local.initializeUser();
   const result = await local.addOrUpdateDiscussion(description, typeSay, id);
+
+  // Emit event for real-time update
+  try {
+    const discussionObj: Discussion = {
+      id: result,
+      description,
+      timestamp: new Date(),
+      typeSay,
+      cleared: false,
+    };
+    emitDiscussionUpdate(discussionObj);
+  } catch (e) {
+    // ignore
+  }
 
   // Only save remote if useRemote is true
   if (useRemote) {
