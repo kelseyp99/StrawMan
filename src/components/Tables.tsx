@@ -744,7 +744,7 @@ const MainComponent: React.FC = () => {
     });
   }, [sortBy, tables, currentTableIndex]);
   const filteredData = useCallback(() => {
-    // Simplified filtering for performance
+    // Improved filtering and deduplication logic
     if (tables.length === 0) return [];
 
     const sorted = sortedData();
@@ -755,8 +755,13 @@ const MainComponent: React.FC = () => {
     );
     if (!hasFilters) return sorted;
 
+    // Remove duplicates by id (for Activity Log Data)
+    const deduped = sorted.filter((row, idx, arr) =>
+      arr.findIndex((r) => r.id === row.id) === idx
+    );
+
     // Simple filtering
-    return sorted.filter((row) =>
+    return deduped.filter((row) =>
       Object.entries(filters).every(([column, value]) => {
         if (!value || !value.trim()) return true;
         const cellValue = String(row[column] || '').toLowerCase();
@@ -770,6 +775,8 @@ const MainComponent: React.FC = () => {
       try {
         if (tableName === 'Activity Log Data') {
           await deleteActivityLog(itemId);
+          // Debug log for orphaned activity log cleanup
+          console.log(`[DEBUG] Deleted Activity Log with id: ${itemId}`);
         } else if (tableName === 'Categories') {
           await deleteCategory(itemId);
         } else {
@@ -1000,13 +1007,8 @@ const MainComponent: React.FC = () => {
   );
 
   // Function to load categories for the modal
+
   const loadCategories = useCallback(async () => {
-  // Always reload categories from Realm when modal opens
-  useEffect(() => {
-    if (categoryModalVisible) {
-      loadCategories();
-    }
-  }, [categoryModalVisible, loadCategories]);
     try {
       const categories = await getCategories();
       const categoryNames = categories.map((cat) => cat.name);
@@ -1015,6 +1017,13 @@ const MainComponent: React.FC = () => {
       console.error('Error loading categories:', error);
     }
   }, []);
+
+  // Always reload categories from Realm when modal opens
+  useEffect(() => {
+    if (categoryModalVisible) {
+      loadCategories();
+    }
+  }, [categoryModalVisible, loadCategories]);
 
   // Refresh categories when screen regains focus
   useFocusEffect(
