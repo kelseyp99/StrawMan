@@ -8,13 +8,17 @@
  */
 
 import { onRequest } from 'firebase-functions/v2/https';
+import { onSchedule } from 'firebase-functions/v2/scheduler';
 import * as admin from 'firebase-admin';
 
 admin.initializeApp();
 
 const UID = 'qDgUmVxu2XWmCMwGjSgm0vIEZVR2';
 
-export const migrateLegacyDiscussions = onRequest(async (req, res) => {
+export const migrateLegacyDiscussions = onSchedule({
+  schedule: '0 0 * * *', // every day at midnight UTC
+  timeZone: 'America/New_York', // change to your preferred timezone
+}, async (event) => {
   const db = admin.firestore();
   let migrated = 0;
   try {
@@ -99,10 +103,9 @@ export const migrateLegacyDiscussions = onRequest(async (req, res) => {
       }
     }
 
-    res.send(`Migrated ${migrated} legacy discussions (including /Discussions) with change log entries.`);
+    console.log(`Migrated ${migrated} legacy discussions (including /Discussions) with change log entries.`);
   } catch (err) {
     console.error('[MIGRATE] Migration failed:', err);
-    res.status(500).send('Migration failed: ' + (err && err.message ? err.message : err));
   }
 });
 
