@@ -30,6 +30,7 @@
     "date-fns": "^4.1.0",
     "dotenv": "^16.4.7",
     "expo": "~52.0.47",
+    "expo-ads-admob": "^13.0.0",
     "expo-asset": "~11.0.5",
     "expo-auth-session": "~6.0.3",
     "expo-blur": "~14.0.3",
