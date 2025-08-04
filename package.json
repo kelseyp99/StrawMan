@@ -11,8 +11,7 @@
     "ios": "expo run:ios",
     "web": "expo start --web",
     "test": "jest --watchAll",
-    "lint": "eslint . --ext .ts,.tsx",
-    "firebase": "powershell -ExecutionPolicy Bypass -File .\\src\\utils\\scripts\\build.ps1 -Firebase"
+    "lint": "eslint . --ext .ts,.tsx"
   },
   "jest": {
     "preset": "jest-expo"
@@ -30,7 +29,6 @@
     "date-fns": "^4.1.0",
     "dotenv": "^16.4.7",
     "expo": "~52.0.47",
-    "expo-ads-admob": "^13.0.0",
     "expo-asset": "~11.0.5",
     "expo-auth-session": "~6.0.3",
     "expo-blur": "~14.0.3",
@@ -49,7 +47,6 @@
     "expo-splash-screen": "~0.29.24",
     "expo-status-bar": "~2.0.1",
     "expo-symbols": "~0.2.2",
-    "expo-system-ui": "~4.0.9",
     "expo-updates": "~0.27.4",
     "expo-web-browser": "~14.0.2",
     "firebase": "^11.8.1",
@@ -68,7 +65,7 @@
     "react-native-config": "^1.5.5",
     "react-native-document-picker": "^9.3.1",
     "react-native-gesture-handler": "~2.20.2",
-    "react-native-google-mobile-ads": "^13.6.0",
+    "react-native-google-mobile-ads": "^13.6.1",
     "react-native-paper": "^5.13.1",
     "react-native-permissions": "^5.4.0",
     "react-native-reanimated": "~3.16.1",

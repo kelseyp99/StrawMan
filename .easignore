@@ -1,0 +1,3 @@
+# Ignore android and ios folders for EAS Build with Prebuild
+/android/
+/ios/
