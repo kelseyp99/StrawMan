@@ -25,11 +25,12 @@ const InlineAd = () => {
 
   if (!AdMobBanner || !BannerAdSize || !TestIds) return null;
 
+  // Use a smaller top margin and enable adaptive banners for better fit
   return (
-    <View style={{ alignItems: "center", marginTop: 10 }}>
+    <View style={{ alignItems: "center", marginTop: 2 }}>
       <AdMobBanner
         unitId={__DEV__ ? TestIds.BANNER : testAdUnitId}
-        size={BannerAdSize.ADAPTIVE_BANNER}
+        size={BannerAdSize.ANCHORED_ADAPTIVE_BANNER}
         requestOptions={{ requestNonPersonalizedAdsOnly: true }}
         onAdLoaded={() => console.log("✅ Ad loaded")}
         onAdFailedToLoad={(err: any) => console.error("❌ Ad load failed", err)}
