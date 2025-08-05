@@ -1,3 +1,5 @@
+# Ignore APK build artifacts
+apk
 # Node modules
 node_modules/
 
