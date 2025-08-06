@@ -10,6 +10,9 @@ android/app/src/main/res/drawable-xhdpi/*
 android/app/src/main/res/drawable-xxhdpi/*
 android/app/src/main/res/drawable-xxxhdpi/*
 
+# Prevent .webp launcher icons from being added to the repo
+android/app/src/main/res/mipmap-*/ic_launcher*.webp
+
 
 # Logs
 logs.txt
