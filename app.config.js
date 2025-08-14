@@ -11,7 +11,7 @@ module.exports = {
   },
   expo: {
     slug: 'LifeLog',
-    owner: 'kelseyp99',
+    owner: 'tinman42',
     scheme: 'lifelog',
     icon: './assets/images/ask-janet-icon2.png',
     android: {
