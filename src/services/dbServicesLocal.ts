@@ -58,15 +58,8 @@ export async function initializeDefaultCategories() {
   if (existing.length > 0) return;
   const defaults = [
     { name: 'Diet', description: 'Food and nutrition' },
-    { name: 'Mood', description: 'Emotional state' },
-    { name: 'Metabolism', description: 'Metabolic health' },
     { name: 'Exercise', description: 'Physical activity' },
-    { name: 'Sleep', description: 'Sleep patterns' },
-    { name: 'Hydration', description: 'Water intake' },
-    { name: 'Stress', description: 'Stress levels' },
-    { name: 'Medication', description: 'Medications taken' },
-    { name: 'Weight', description: 'Body weight' },
-    { name: 'Blood Pressure', description: 'Blood pressure readings' },
+    { name: 'Mood', description: 'Emotional state' },
   ];
   const uid = await getUID();
   realm.write(() => {

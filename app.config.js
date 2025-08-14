@@ -9,7 +9,7 @@ module.exports = {
     android_app_id: 'ca-app-pub-3940256099942544~3347511713',
     googleMobileAdsJson: null,
   },
-  expo: {
+  jexpo: {
     slug: 'LifeLog',
     owner: 'tinman42',
     scheme: 'lifelog',
@@ -19,6 +19,11 @@ module.exports = {
     },
     ios: {
       bundleIdentifier: 'com.anonymous.lifelog',
+    },
+    updates: {
+      enabled: true,
+      fallbackToCacheTimeout: 0,
+      checkAutomatically: 'ON_LOAD',
     },
     extra: {
       EXPO_PUBLIC_IS_EXPO_GO: process.env.EXPO_PUBLIC_IS_EXPO_GO || 'true',
