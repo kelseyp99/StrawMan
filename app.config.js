@@ -6,7 +6,8 @@ require('dotenv').config();
 // Export a plain object instead of a function to ensure EAS/Metro always picks up the config
 module.exports = {
   'react-native-google-mobile-ads': {
-    android_app_id: 'ca-app-pub-3940256099942544~3347511713',
+  android_app_id: 'ca-app-pub-3940256099942544~3347511713',
+  ios_app_id: 'ca-app-pub-3940256099942544~1458002511',
     googleMobileAdsJson: null,
   },
   expo: {
