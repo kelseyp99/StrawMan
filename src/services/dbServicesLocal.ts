@@ -62,9 +62,9 @@ export async function initializeDefaultCategories() {
     { name: 'Mood', description: 'Emotional state' },
   ];
   const uid = await getUID();
-  realm.write(() => {
+  realm!.write(() => {
     defaults.forEach((cat) => {
-      realm.create('Category', {
+      realm!.create('Category', {
         id: `${cat.name.toLowerCase()}_${Date.now()}`,
         name: cat.name,
         description: cat.description,
@@ -507,12 +507,12 @@ export async function synchronizeActivityLog(
   try {
     console.log(`Synchronizing ActivityLog`);
     // Fetch from cloud API
-    const backendService = (await import('./syncService')).default;
+  const backendService = (require('./syncService')).default;
     const remoteLogs = await backendService.getAllActivityLogs();
     realm.write(() => {
-      remoteLogs.forEach((log) => {
+      remoteLogs.forEach((log: unknown) => {
         const l: any = log;
-        realm.create('ActivityLog', {
+  realm!.create('ActivityLog', {
           id: l.id,
           discussionId: l.discussionId || '',
           categoryId: l.categoryId || '',
@@ -651,8 +651,8 @@ export async function getCategories(): Promise<Category[]> {
     throw new Error('Failed to open Realm instance');
   }
   try {
-    const categories = realm.objects<Category>('Category');
-    const categoryArray = Array.from(categories).map((cat) => ({
+    let categories = realm.objects<Category>('Category');
+    let categoryArray = Array.from(categories).map((cat) => ({
       id: cat.id,
       name: cat.name,
       description: cat.description,
@@ -662,6 +662,26 @@ export async function getCategories(): Promise<Category[]> {
       syncTimestamp: cat.syncTimestamp,
       uid: cat.uid,
     }));
+
+    // If all categories were deleted, repopulate defaults and re-read
+    if (categoryArray.length === 0) {
+      try {
+        await initializeDefaultCategories();
+        categories = realm.objects<Category>('Category');
+        categoryArray = Array.from(categories).map((cat) => ({
+          id: cat.id,
+          name: cat.name,
+          description: cat.description,
+          createdAt: cat.createdAt,
+          updatedAt: cat.updatedAt,
+          synced: cat.synced,
+          syncTimestamp: cat.syncTimestamp,
+          uid: cat.uid,
+        }));
+      } catch (seedErr) {
+        console.warn('[CATEGORIES] Repopulate defaults failed/skipped:', seedErr);
+      }
+    }
 
     // Filter out duplicates by name, keeping the most recent one
     const uniqueCategories = new Map<string, Category>();
@@ -685,8 +705,8 @@ export async function getCategoryNames(): Promise<string[]> {
     throw new Error('Failed to open Realm instance');
   }
   try {
-    const categories = realm.objects<Category>('Category');
-    const categoryNames = Array.from(categories)
+    let categories = realm.objects<Category>('Category');
+    let categoryNames = Array.from(categories)
       .map((cat) => cat.name)
       .filter(
         (name) =>
@@ -696,6 +716,24 @@ export async function getCategoryNames(): Promise<string[]> {
           name.trim().toLowerCase() !== 'null' &&
           name.trim().toLowerCase() !== 'undefined'
       );
+    if (categoryNames.length === 0) {
+      try {
+        await initializeDefaultCategories();
+        categories = realm.objects<Category>('Category');
+        categoryNames = Array.from(categories)
+          .map((cat) => cat.name)
+          .filter(
+            (name) =>
+              typeof name === 'string' &&
+              name.trim().length > 1 &&
+              name.trim().toLowerCase() !== 'the' &&
+              name.trim().toLowerCase() !== 'null' &&
+              name.trim().toLowerCase() !== 'undefined'
+          );
+      } catch (seedErr) {
+        console.warn('[CATEGORIES] Repopulate names failed/skipped:', seedErr);
+      }
+    }
     // Remove duplicates using Set
     return Array.from(new Set(categoryNames));
   } catch (error) {
@@ -1940,11 +1978,6 @@ export async function syncTableFromRemote(
           }
         } else if (tableName === 'ActivityLog') {
           // Handle ActivityLog objects
-          let existing: ActivityLog | null = null;
-          if (realm) {
-            const found = realm.objects<ActivityLog>('ActivityLog').filtered('timestamp = $0', safeRow.timestamp);
-            existing = found.length > 0 ? found[0] : null;
-          }
           // Provide defaults for all required fields
           const safeRow = {
             id: row.id || Date.now().toString(),
@@ -1962,6 +1995,11 @@ export async function syncTableFromRemote(
             lockedDescription: typeof row.lockedDescription === 'boolean' ? row.lockedDescription : false,
             attachedFile: row.attachedFile || '',
           };
+          let existing: ActivityLog | null = null;
+          if (realm) {
+            const found = realm.objects<ActivityLog>('ActivityLog').filtered('timestamp = $0', safeRow.timestamp);
+            existing = found.length > 0 ? found[0] : null;
+          }
           if (!existing) {
             if (realm) {
               realm.create('ActivityLog', safeRow);
@@ -1980,11 +2018,6 @@ export async function syncTableFromRemote(
           }
         } else if (tableName === 'Discussion') {
           // Handle Discussion objects
-          let existingDiscussion: Discussion | null = null;
-          if (realm) {
-            const found = realm.objects<Discussion>('Discussion').filtered('timestamp = $0', safeRow.timestamp);
-            existingDiscussion = found.length > 0 ? found[0] : null;
-          }
           // Coerce all required string fields to string
           const safeRow = {
             id: String(row.id || Date.now()),
@@ -1998,6 +2031,11 @@ export async function syncTableFromRemote(
             uid: row.uid ? String(row.uid) : 'remote_user',
             activityLogs: [],
           };
+          let existingDiscussion: Discussion | null = null;
+          if (realm) {
+            const found = realm.objects<Discussion>('Discussion').filtered('timestamp = $0', safeRow.timestamp);
+            existingDiscussion = found.length > 0 ? found[0] : null;
+          }
           if (!existingDiscussion) {
             if (realm) {
               realm.create('Discussion', safeRow);
@@ -2037,7 +2075,7 @@ export function logChange(
   }
   try {
     realm.write(() => {
-      realm.create(
+  realm!.create(
         'ChangeLog',
         {
           id: `${tableName}_${rowId}_${Date.now()}`,
@@ -2065,8 +2103,8 @@ export async function deleteAllLocalRows(): Promise<void> {
     realm.write(() => {
       const tables = ['Discussion', 'ActivityLog', 'ChangeLog', 'Category', 'Document', 'Alert', 'User'];
       for (const table of tables) {
-        const objects = realm.objects(table);
-        realm.delete(objects);
+  const objects = realm!.objects(table);
+  realm!.delete(objects);
       }
     });
     console.log('All local rows deleted from Realm.');
@@ -2085,7 +2123,7 @@ export async function addChangeLogEntry(
   if (!realm) throw new Error('Realm not initialized');
   try {
     realm.write(() => {
-      realm.create(
+  realm!.create(
         'ChangeLog',
         {
           id: `${tableName}_${rowId}_${timestamp.getTime()}`,
