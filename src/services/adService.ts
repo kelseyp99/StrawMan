@@ -1,9 +1,14 @@
 import { InterstitialAd, AdEventType, TestIds } from 'react-native-google-mobile-ads';
+import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-// Always use test ad unit ID during development to avoid account issues
-// When ready for production, replace TestIds.INTERSTITIAL with your real ad unit ID
-const adUnitId = TestIds.INTERSTITIAL;
+// Select interstitial ad unit from env in production; default to Google test ID otherwise
+const isLive = process.env.AD_MOB_ENV === 'live';
+const liveInterstitialAndroid = process.env.EXPO_PUBLIC_ADMOB_INTERSTITIAL_ANDROID;
+const liveInterstitialIOS = process.env.EXPO_PUBLIC_ADMOB_INTERSTITIAL_IOS;
+const adUnitId = isLive
+  ? (Platform.OS === 'android' ? liveInterstitialAndroid : liveInterstitialIOS) || TestIds.INTERSTITIAL
+  : TestIds.INTERSTITIAL;
 
 class AdService {
   private interstitial: InterstitialAd | null = null;
