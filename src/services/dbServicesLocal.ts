@@ -1,4 +1,5 @@
 import RNFS from 'react-native-fs';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import Share from 'react-native-share';
 // Initialize default categories if none exist
 // Export all Realm data to a JSON file in the Downloads directory
@@ -76,6 +77,9 @@ export async function initializeDefaultCategories() {
       });
     });
   });
+  try {
+    await AsyncStorage.setItem('categoriesSeeded', 'true');
+  } catch {}
 }
 import Realm, { UpdateMode } from 'realm';
 import { realm } from '../realmConfig';
