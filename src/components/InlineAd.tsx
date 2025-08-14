@@ -5,9 +5,16 @@ import Constants from "expo-constants";
 
 const isExpoGo = Constants.expoConfig?.extra?.EXPO_PUBLIC_IS_EXPO_GO === "true";
 
-const testAdUnitId = Device.osName === "Android"
-  ? "ca-app-pub-3940256099942544/6300978111"
-  : "ca-app-pub-3940256099942544/2934735716";
+const isLive = process.env.AD_MOB_ENV === 'live';
+const liveBannerUnitIdAndroid = process.env.EXPO_PUBLIC_ADMOB_BANNER_ANDROID;
+const liveBannerUnitIdIOS = process.env.EXPO_PUBLIC_ADMOB_BANNER_IOS;
+const bannerUnitId = isLive
+  ? Device.osName === 'Android'
+    ? (liveBannerUnitIdAndroid || 'ca-app-pub-3940256099942544/6300978111')
+    : (liveBannerUnitIdIOS || 'ca-app-pub-3940256099942544/2934735716')
+  : Device.osName === 'Android'
+    ? 'ca-app-pub-3940256099942544/6300978111'
+    : 'ca-app-pub-3940256099942544/2934735716';
 
 const InlineAd = () => {
   const [AdMobBanner, setAdMobBanner] = useState<any>(null);
@@ -29,7 +36,7 @@ const InlineAd = () => {
   return (
     <View style={{ alignItems: "center", marginTop: 2 }}>
       <AdMobBanner
-        unitId={__DEV__ ? TestIds.BANNER : testAdUnitId}
+  unitId={__DEV__ ? TestIds.BANNER : bannerUnitId}
         size={BannerAdSize.ANCHORED_ADAPTIVE_BANNER}
         requestOptions={{ requestNonPersonalizedAdsOnly: true }}
         onAdLoaded={() => console.log("✅ Ad loaded")}
