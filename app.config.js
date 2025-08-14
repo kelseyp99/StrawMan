@@ -9,9 +9,9 @@ module.exports = {
     android_app_id: 'ca-app-pub-3940256099942544~3347511713',
     googleMobileAdsJson: null,
   },
-  jexpo: {
+  expo: {
     slug: 'LifeLog',
-    owner: 'tinman42',
+    owner: 'kelseyp99',
     scheme: 'lifelog',
     icon: './assets/images/ask-janet-icon2.png',
     android: {
@@ -29,7 +29,7 @@ module.exports = {
       EXPO_PUBLIC_IS_EXPO_GO: process.env.EXPO_PUBLIC_IS_EXPO_GO || 'true',
       googleClientIdAndroid: '341732508688-o2qbbr16g2qh3e8niofee9iv4tl6krhb.apps.googleusercontent.com',
       eas: {
-        projectId: '3c6117c9-d9c1-4987-ac99-a8441d077588',
+  projectId: 'a27bcb78-af2a-4ef8-adeb-7fae3e17731d',
       },
     },
     plugins: ['expo-asset'],
