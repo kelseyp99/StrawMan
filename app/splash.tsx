@@ -3,6 +3,7 @@ import { View, Text, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAuth } from './context/AuthContext';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { initializeDefaultCategories } from '../src/services/dbServicesLocal';
 
 export default function Splash() {
   const router = useRouter();
@@ -18,6 +19,13 @@ export default function Splash() {
         try {
           console.log('[SPLASH] Auth state - isLogged:', isLogged, 'loading:', loading);
           
+          // Ensure minimum categories exist even if onboarding was previously completed
+          try {
+            await initializeDefaultCategories();
+          } catch (seedErr) {
+            console.warn('[SPLASH] Category seeding skipped/failed:', seedErr);
+          }
+
           const hasOnboarded = await AsyncStorage.getItem('hasOnboarded');
           console.log('[SPLASH] Has onboarded:', hasOnboarded);
           
