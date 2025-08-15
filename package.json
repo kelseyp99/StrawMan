@@ -11,7 +11,8 @@
     "ios": "expo run:ios",
     "web": "expo start --web",
     "test": "jest --watchAll",
-    "lint": "eslint . --ext .ts,.tsx"
+  "lint": "eslint . --ext .ts,.tsx",
+  "eas-build-post-install": "node ./scripts/inject-admob-app-id.js"
   },
   "jest": {
     "preset": "jest-expo"
