@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Join the LifeLog – Ask Janet Open Beta</title>
+  <meta name="description" content="LifeLog – Your smart journal with AI-powered insights. Track health, sleep, mood, and diet. Ask Janet about your life and get intelligent summaries." />
+
+  <!-- Firebase SDKs: App + Analytics (Compat) -->
+  <script src="https://www.gstatic.com/firebasejs/9.24.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.24.0/firebase-analytics-compat.js"></script>
+  <script>
+    // TODO: Replace with your real Firebase project settings
+    const firebaseConfig = {
+      apiKey: "YOUR_API_KEY",
+      authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
+      projectId: "YOUR_PROJECT_ID",
+      storageBucket: "YOUR_PROJECT_ID.appspot.com",
+      messagingSenderId: "YOUR_SENDER_ID",
+      appId: "YOUR_APP_ID",
+      measurementId: "G-XXXXXXXXXX"
+    };
+
+    // Initialize Firebase and Analytics (Compat)
+    // eslint-disable-next-line no-undef
+    firebase.initializeApp(firebaseConfig);
+    // eslint-disable-next-line no-undef
+    const analytics = firebase.analytics();
+
+    function logJoinClick() {
+      // eslint-disable-next-line no-undef
+      firebase.analytics().logEvent('join_beta_click');
+    }
+  </script>
+
+  <style>
+    :root {
+      --bg: #0b1220;
+      --card: #121a2b;
+      --text: #e7eefc;
+      --muted: #9bb0d3;
+      --accent: #16a34a; /* green */
+      --accent-600: #15803d;
+      --ring: rgba(22, 163, 74, 0.35);
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      margin: 0;
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+      background: radial-gradient(1200px 800px at 20% -10%, #1b2640, transparent 60%),
+                  radial-gradient(900px 600px at 100% 0%, #1a2340, transparent 50%),
+                  var(--bg);
+      color: var(--text);
+      display: grid;
+      place-items: center;
+      padding: 24px;
+    }
+
+    .container {
+      width: min(960px, 100%);
+      background: linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.02));
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 16px;
+      padding: 32px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.04);
+      backdrop-filter: blur(8px);
+    }
+
+    header {
+      display: flex;
+      gap: 16px;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+    .logo {
+      width: 40px; height: 40px; border-radius: 10px;
+      background: linear-gradient(135deg, #34d399 0%, #16a34a 100%);
+      box-shadow: 0 10px 24px rgba(22, 163, 74, 0.35);
+    }
+    h1 { font-size: clamp(1.5rem, 2.2vw + 1rem, 2.25rem); margin: 0; }
+    p.tagline { margin: 0; color: var(--muted); font-size: 1.1rem; }
+
+    .grid {
+      margin-top: 24px;
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 24px;
+    }
+    @media (min-width: 820px) {
+      .grid { grid-template-columns: 1.2fr 1fr; }
+    }
+
+    .card {
+      background: var(--card);
+      border-radius: 14px;
+      border: 1px solid rgba(255,255,255,0.06);
+      padding: 20px 20px 24px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.35);
+    }
+
+    ul.features {
+      margin: 0; padding-left: 1.2rem; line-height: 1.7;
+    }
+    ul.features li { margin-bottom: 6px; }
+
+    .cta {
+      margin-top: 18px;
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      background: var(--accent);
+      color: white;
+      border: none;
+      border-radius: 12px;
+      padding: 14px 18px;
+      font-size: 1.05rem;
+      font-weight: 600;
+      cursor: pointer;
+      text-decoration: none;
+      box-shadow: 0 10px 24px var(--ring);
+      transition: transform 0.08s ease, box-shadow 0.2s ease, background 0.2s ease;
+    }
+    .cta:hover { background: var(--accent-600); box-shadow: 0 12px 28px var(--ring); }
+    .cta:active { transform: translateY(1px); }
+
+    footer {
+      margin-top: 28px; text-align: center; color: var(--muted);
+      font-size: 0.95rem;
+    }
+
+    .subtle {
+      color: var(--muted);
+    }
+  </style>
+</head>
+<body>
+  <main class="container">
+    <header>
+      <div class="logo" aria-hidden="true"></div>
+      <div>
+        <h1>Join the LifeLog – Ask Janet Open Beta</h1>
+        <p class="tagline">Your smart journal with AI-powered insights</p>
+      </div>
+    </header>
+
+    <section class="grid">
+      <div class="card">
+        <ul class="features">
+          <li>Track health, sleep, mood, and diet</li>
+          <li>Ask Janet questions about your life</li>
+          <li>Get intelligent summaries and trends</li>
+        </ul>
+
+        <a
+          id="joinBtn"
+          class="cta"
+          href="https://play.google.com/apps/testing/com.anonymous.lifelog"
+          target="_blank"
+          rel="noopener noreferrer"
+          onclick="logJoinClick()"
+        >
+          Join the Beta Now
+        </a>
+        <p class="subtle">Android closed testing via Google Play</p>
+      </div>
+
+      <div class="card">
+        <h3 style="margin-top: 0">About the Beta</h3>
+        <p>
+          This is an early access build. We’re testing core journaling, insights, and
+          AI-powered answers from Janet. Expect rapid updates and please share feedback.
+        </p>
+        <p class="subtle">No iOS build yet. Android only.</p>
+      </div>
+    </section>
+
+    <footer>
+      Open Beta · Early Access · Feedback Welcome
+    </footer>
+  </main>
+</body>
+</html>
