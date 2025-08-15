@@ -5,6 +5,27 @@ const path = require('path');
 require('dotenv').config({ path: path.resolve(__dirname, '../.env') });
 
 const manifestPath = path.resolve(__dirname, '../android/app/src/main/AndroidManifest.xml');
+
+// Remove duplicate PNG launcher icons if WebP exists to avoid resource merge conflicts
+const cleanDuplicateLauncherIcons = () => {
+  const densities = ['mdpi', 'hdpi', 'xhdpi', 'xxhdpi', 'xxxhdpi'];
+  let removed = 0;
+  for (const d of densities) {
+    const pngPath = path.resolve(__dirname, `../android/app/src/main/res/mipmap-${d}/ic_launcher.png`);
+    const webpPath = path.resolve(__dirname, `../android/app/src/main/res/mipmap-${d}/ic_launcher.webp`);
+    try {
+      if (fs.existsSync(pngPath) && fs.existsSync(webpPath)) {
+        fs.unlinkSync(pngPath);
+        removed++;
+      }
+    } catch (e) {
+      // ignore
+    }
+  }
+  if (removed > 0) {
+    console.log(`Removed ${removed} duplicate ic_launcher.png files (kept .webp)`);
+  }
+};
 const isLive = process.env.AD_MOB_ENV === 'live';
 const appId = isLive
   ? process.env.EXPO_PUBLIC_ANDROID_ADMOB_APP_ID_LIVE || process.env.EXPO_PUBLIC_ANDROID_ADMOB_APP_ID
@@ -14,6 +35,9 @@ if (!appId) {
   console.error('AdMob App ID not found in env (checked EXPO_PUBLIC_ANDROID_ADMOB_APP_ID[_LIVE])');
   process.exit(1);
 }
+
+// First, clean duplicates if present
+cleanDuplicateLauncherIcons();
 
 let manifest = fs.readFileSync(manifestPath, 'utf8');
 // Match existing AdMob meta-data (regardless of attributes order)
