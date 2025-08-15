@@ -16,13 +16,41 @@ if (!appId) {
 }
 
 let manifest = fs.readFileSync(manifestPath, 'utf8');
-const metaTagRegex = /(<meta-data android:name="com.google.android.gms.ads.APPLICATION_ID" android:value=")([^"]+)("\/>)/;
+// Match existing AdMob meta-data (regardless of attributes order)
+const metaTagRegex = /<meta-data\s+android:name="com.google.android.gms.ads.APPLICATION_ID"[^>]*>/g;
 
-if (!metaTagRegex.test(manifest)) {
-  console.error('Could not find AdMob meta-data tag in AndroidManifest.xml');
-  process.exit(1);
+// Ensure the manifest has the tools namespace so we can use tools:replace
+const ensureToolsNamespace = (xml) => {
+  if (/xmlns:tools=/.test(xml)) return xml;
+  return xml.replace(
+    /<manifest(\s[^>]*)?>/,
+    (match) => match.replace('>', ' xmlns:tools="http://schemas.android.com/tools">')
+  );
+};
+
+
+manifest = ensureToolsNamespace(manifest);
+
+const newMeta = `<meta-data android:name="com.google.android.gms.ads.APPLICATION_ID" android:value="${appId}" tools:replace="android:value" tools:node="replace"/>`;
+
+// Remove any existing AdMob meta-data entries in the app manifest to avoid duplicates
+manifest = manifest.replace(metaTagRegex, '');
+
+if (!/<meta-data\s+android:name="com.google.android.gms.ads.APPLICATION_ID"/.test(manifest)) {
+  // Insert meta-data tag inside <application>
+  const appTagRegex = /(<application[\s\S]*?>)/;
+  if (appTagRegex.test(manifest)) {
+    manifest = manifest.replace(appTagRegex, `$1\n    ${newMeta}`);
+    fs.writeFileSync(manifestPath, manifest, 'utf8');
+    console.log(`Created and injected AdMob App ID (${appId}) into AndroidManifest.xml with tools:replace`);
+    process.exit(0);
+  } else {
+    console.error('Could not find <application> tag in AndroidManifest.xml');
+    process.exit(1);
+  }
+} else {
+  // Replace the entire existing tag with a canonical tag that includes tools:replace
+  manifest = manifest.replace(metaTagRegex, newMeta);
+  fs.writeFileSync(manifestPath, manifest, 'utf8');
+  console.log(`Injected AdMob App ID (${appId}) into AndroidManifest.xml with tools:replace`);
 }
-
-manifest = manifest.replace(metaTagRegex, `$1${appId}$3`);
-fs.writeFileSync(manifestPath, manifest, 'utf8');
-console.log(`Injected AdMob App ID (${appId}) into AndroidManifest.xml`);
