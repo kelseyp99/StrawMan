@@ -7,16 +7,8 @@ require('dotenv').config();
 const isLive = process.env.AD_MOB_ENV === 'live';
 
 module.exports = {
-  'react-native-google-mobile-ads': {
-    // Use live App IDs when AD_MOB_ENV=live; otherwise fall back to Google test IDs
-    android_app_id:
-      (isLive && process.env.EXPO_PUBLIC_ANDROID_ADMOB_APP_ID_LIVE) ||
-      'ca-app-pub-3940256099942544~3347511713',
-    ios_app_id:
-      (isLive && process.env.EXPO_PUBLIC_IOS_ADMOB_APP_ID_LIVE) ||
-      'ca-app-pub-3940256099942544~1458002511',
-    googleMobileAdsJson: null,
-  },
+  // Note: Removed react-native-google-mobile-ads config plugin usage because the package
+  // doesn't ship a valid Expo config plugin. Ads still work in native with manual setup.
   expo: {
     slug: 'LifeLog',
     owner: 'tinman42',
@@ -40,6 +32,6 @@ module.exports = {
   projectId: 'a27bcb78-af2a-4ef8-adeb-7fae3e17731d',
       },
     },
-  plugins: ['expo-asset', 'react-native-google-mobile-ads'],
+  plugins: ['expo-asset'],
   },
 };
