@@ -10,9 +10,10 @@ module.exports = {
   // Note: Removed react-native-google-mobile-ads config plugin usage because the package
   // doesn't ship a valid Expo config plugin. Ads still work in native with manual setup.
   expo: {
-    slug: 'LifeLog',
+  // Use distinct slug to avoid confusion with original LifeLog project
+  slug: 'strawman',
     owner: 'tinman42',
-    scheme: 'lifelog',
+  scheme: 'strawman',
     icon: './assets/images/ask-janet-icon2.png',
     android: {
       package: 'com.smartcitiesfl.strawman',
@@ -34,5 +35,10 @@ module.exports = {
       },
     },
   plugins: ['expo-asset'],
+  },
+  // Provide top-level config for RNGoogleMobileAds build phase lookup (mirrors app.json)
+  'react-native-google-mobile-ads': {
+    android_app_id: 'ca-app-pub-3940256099942544~3347511713',
+    ios_app_id: 'ca-app-pub-3940256099942544~1458002511',
   },
 };
