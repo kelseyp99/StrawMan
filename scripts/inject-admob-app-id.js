@@ -1,10 +1,17 @@
-// Injects the AdMob App ID into AndroidManifest.xml for local/EAS builds
+// Injects the AdMob App ID into AndroidManifest.xml for local/EAS builds (Android only)
 const fs = require('fs');
 const path = require('path');
-// Optionally load local .env for dev; EAS will provide env at runtime
 require('dotenv').config({ path: path.resolve(__dirname, '../.env') });
-
+const isAndroidBuild = process.env.EAS_BUILD_PLATFORM === 'android' || process.env.RN_PLATFORM === 'android';
 const manifestPath = path.resolve(__dirname, '../android/app/src/main/AndroidManifest.xml');
+if (!isAndroidBuild) {
+  console.log('[inject-admob-app-id] Non-Android context, skipping.');
+  process.exit(0);
+}
+if (!fs.existsSync(manifestPath)) {
+  console.log('[inject-admob-app-id] AndroidManifest.xml missing, skipping injection.');
+  process.exit(0);
+}
 
 // Remove duplicate PNG launcher icons if WebP exists to avoid resource merge conflicts
 const cleanDuplicateLauncherIcons = () => {
@@ -32,8 +39,8 @@ const appId = isLive
   : process.env.EXPO_PUBLIC_ANDROID_ADMOB_APP_ID;
 
 if (!appId) {
-  console.error('AdMob App ID not found in env (checked EXPO_PUBLIC_ANDROID_ADMOB_APP_ID[_LIVE])');
-  process.exit(1);
+  console.warn('[inject-admob-app-id] AdMob App ID env missing; skipping.');
+  process.exit(0);
 }
 
 // First, clean duplicates if present

@@ -15,10 +15,11 @@ module.exports = {
     scheme: 'lifelog',
     icon: './assets/images/ask-janet-icon2.png',
     android: {
-      package: 'com.anonymous.lifelog',
+      package: 'com.smartcitiesfl.strawman',
     },
     ios: {
-      bundleIdentifier: 'com.anonymous.lifelog',
+      bundleIdentifier: 'com.smartcitiesfl.strawman',
+      infoPlist: { ITSAppUsesNonExemptEncryption: false },
     },
     updates: {
       enabled: true,
