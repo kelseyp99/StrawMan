@@ -204,6 +204,20 @@ const CandidateResultSchema = {
   },
 };
 
+// Historical record of every selection change
+const CandidateResultHistorySchema = {
+  name: 'CandidateResultHistory',
+  primaryKey: 'id',
+  properties: {
+    id: 'string', // unique id (timestamp based)
+    selectedId: 'string?',
+    timestamp: 'date',
+    uid: 'string?',
+    synced: 'bool',
+    syncTimestamp: 'date?',
+  },
+};
+
 const config: Configuration = {
   path: 'lifelog.realm', // Kept from first config
   schema: [
@@ -222,8 +236,9 @@ const config: Configuration = {
     ChangeLogSchema,
     CategorySchema,
     CandidateResultSchema,
+    CandidateResultHistorySchema,
   ],
-  schemaVersion: 15, // Bumped to 15 to add CandidateResultSchema
+  schemaVersion: 16, // Bumped to 16 to add CandidateResultHistorySchema
   onMigration: (oldRealm: Realm, newRealm: Realm) => {
     console.log(
       'Migrating Realm schema from version',
@@ -271,6 +286,10 @@ const config: Configuration = {
       console.log('[Migration] Adding CandidateResultSchema defaults');
       // No existing data to migrate; schema will initialize empty.
     }
+    if (oldRealm.schemaVersion < 16) {
+      console.log('[Migration] Adding CandidateResultHistorySchema');
+      // No data migration needed
+    }
   },
 };
 
@@ -299,4 +318,5 @@ export {
   ChangeLogSchema,
   CategorySchema,
   CandidateResultSchema,
+  CandidateResultHistorySchema,
 };

@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
-import { saveCandidateResult, getCandidateResult } from '../../services/dbServices';
+import { saveCandidateResult, getCandidateResult, appendCandidateResultHistory } from '../../services/dbServices';
 
 export interface CandidateOption { id: string; label: string }
 
@@ -34,7 +34,10 @@ export const MultiChoiceCandidates: React.FC<MultiChoiceCandidatesProps> = ({ op
       const next = prev === id ? null : id; // tap again clears selection
       onChange?.(next);
       // Fire and forget persistence
-      saveCandidateResult(next).catch(() => {});
+  // Persist current state
+  saveCandidateResult(next).catch(() => {});
+  // Append to history (fire & forget)
+  appendCandidateResultHistory(next).catch(() => {});
       return next;
     });
   }, [onChange]);

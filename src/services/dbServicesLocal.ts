@@ -1802,6 +1802,38 @@ export async function getCandidateResult(): Promise<CandidateResultRow | null> {
   }
 }
 
+export async function appendCandidateResultHistory(selectedId: string | null, uid?: string | null): Promise<string> {
+  if (!realm) throw new Error('Realm not initialized');
+  const id = `${Date.now()}_${Math.random().toString(36).slice(2,8)}`;
+  try {
+    realm.write(() => {
+      realm!.create('CandidateResultHistory', {
+        id,
+        selectedId: selectedId || null,
+        timestamp: new Date(),
+        uid: uid || 'local-user',
+        synced: false,
+        syncTimestamp: null,
+      });
+    });
+    return id;
+  } catch (e) {
+    console.error('Error appending CandidateResultHistory:', e);
+    throw e;
+  }
+}
+
+export async function getCandidateResultHistory(limit = 50): Promise<{ id: string; selectedId?: string | null; timestamp: Date }[]> {
+  if (!realm) throw new Error('Realm not initialized');
+  try {
+    const rows = realm.objects<any>('CandidateResultHistory').sorted('timestamp', true);
+    return Array.from(rows.slice(0, limit)).map(r => ({ id: r.id, selectedId: r.selectedId, timestamp: r.timestamp }));
+  } catch (e) {
+    console.error('Error reading CandidateResultHistory:', e);
+    return [];
+  }
+}
+
 export async function removeDuplicateActivityLogs(): Promise<{
   duplicatesFound: number;
   duplicatesRemoved: number;

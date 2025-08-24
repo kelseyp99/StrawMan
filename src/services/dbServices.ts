@@ -1588,6 +1588,25 @@ export async function getCandidateResult(): Promise<{ id: string; selectedId?: s
   }
 }
 
+export async function appendCandidateResultHistory(selectedId: string | null): Promise<string> {
+  try {
+    const uid = (await getUID()) || 'unknown';
+    return await local.appendCandidateResultHistory(selectedId, uid);
+  } catch (e) {
+    console.error('Error in appendCandidateResultHistory:', e);
+    throw e;
+  }
+}
+
+export async function getCandidateResultHistory(limit = 50): Promise<{ id: string; selectedId?: string | null; timestamp: Date }[]> {
+  try {
+    return await local.getCandidateResultHistory(limit);
+  } catch (e) {
+    console.error('Error in getCandidateResultHistory:', e);
+    return [];
+  }
+}
+
 export async function removeDuplicateActivityLogs(): Promise<{
   duplicatesFound: number;
   duplicatesRemoved: number;
