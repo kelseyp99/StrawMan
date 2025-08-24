@@ -15,13 +15,14 @@ import { getReactNativePersistence } from 'firebase/auth';
 const ENABLE_FIREBASE = true; // Enable for authentication
 const ENABLE_FIRESTORE = true; // Enable Firestore for paid users
 
+// Default to StrawMan project (override via env or expo.extra.firebase)
 const firebaseConfig = {
-  apiKey: Constants.expoConfig?.extra?.firebase?.apiKey || process.env.EXPO_PUBLIC_FIREBASE_API_KEY || "AIzaSyDba17ybV3s_h6gcZSP1-9nGgaALc1_2Pk",
-  authDomain: Constants.expoConfig?.extra?.firebase?.authDomain || process.env.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN || "lifelog-f2904.firebaseapp.com",
-  projectId: Constants.expoConfig?.extra?.firebase?.projectId || process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID || "lifelog-f2904",
-  storageBucket: Constants.expoConfig?.extra?.firebase?.storageBucket || process.env.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET || "lifelog-f2904.appspot.com",
-  messagingSenderId: Constants.expoConfig?.extra?.firebase?.messagingSenderId || process.env.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID || "341732508688",
-  appId: Constants.expoConfig?.extra?.firebase?.appId || process.env.EXPO_PUBLIC_FIREBASE_APP_ID || "1:341732508688:android:4063fe724164fa1c18f695"
+  apiKey: Constants.expoConfig?.extra?.firebase?.apiKey || process.env.EXPO_PUBLIC_FIREBASE_API_KEY || "AIzaSyC1dU8xLrg-c7qS_ALHBi3p1VuH049vePk", // strawman-42
+  authDomain: Constants.expoConfig?.extra?.firebase?.authDomain || process.env.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN || "strawman-42.firebaseapp.com",
+  projectId: Constants.expoConfig?.extra?.firebase?.projectId || process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID || "strawman-42",
+  storageBucket: Constants.expoConfig?.extra?.firebase?.storageBucket || process.env.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET || "strawman-42.firebasestorage.app",
+  messagingSenderId: Constants.expoConfig?.extra?.firebase?.messagingSenderId || process.env.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID || "894321564476",
+  appId: Constants.expoConfig?.extra?.firebase?.appId || process.env.EXPO_PUBLIC_FIREBASE_APP_ID || "1:894321564476:android:4845037cdd1169f2e25c39"
 };
 
 console.log("Firebase Enabled:", ENABLE_FIREBASE);

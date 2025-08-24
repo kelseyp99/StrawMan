@@ -25,6 +25,7 @@ import * as FileSystem from 'expo-file-system';
 import { setUID, clearUID } from '../src/utils/uidManager';
 import * as WebBrowser from 'expo-web-browser';
 import * as Google from 'expo-auth-session/providers/google';
+import { logFirebaseDiagnostics } from '../src/utils/firebaseDiagnostics';
 import Constants from 'expo-constants';
 import { initializeUser } from '../src/services/dbServices';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -47,15 +48,15 @@ export default function Login() {
   console.log('Expo Config:', JSON.stringify(Constants.expoConfig, null, 2));
 
   const [request, response, promptAsync] = Google.useIdTokenAuthRequest({
-    clientId:
-      Platform.OS === 'ios'
-        ? Constants.expoConfig?.extra?.googleClientIdIos
-        : Constants.expoConfig?.extra?.googleClientIdAndroid,
+    clientId: Platform.OS === 'ios'
+      ? (Constants.expoConfig?.extra as any)?.googleClientIdIos
+      : (Constants.expoConfig?.extra as any)?.googleClientIdAndroid,
     scopes: ['profile', 'email'],
   });
 
   useEffect(() => {
     const loadUID = async () => {
+      logFirebaseDiagnostics();
       try {
         const fileInfo = await FileSystem.getInfoAsync(STORAGE_FILE);
         if (fileInfo.exists) {
@@ -71,7 +72,11 @@ export default function Login() {
     };
     loadUID();
 
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+    if (!auth) {
+      console.warn('[Auth] Firebase auth not initialized');
+      return () => {};
+    }
+    const unsubscribe = onAuthStateChanged(auth as any, async (user) => {
       console.log('[AAB DEBUG] onAuthStateChanged fired. user:', user);
       try {
         if (user) {
@@ -135,11 +140,11 @@ export default function Login() {
       const credential = GoogleAuthProvider.credential(id_token);
 
       // Check if a user is currently signed in
-      const currentUser = auth.currentUser;
+  const currentUser = auth?.currentUser;
 
       if (currentUser) {
         // Link Google provider to the current user (e.g., email/password account)
-        linkWithCredential(currentUser, credential)
+  linkWithCredential(currentUser as any, credential)
           .then(async (userCredential) => {
             console.log(
               'Google provider linked to UID:',
@@ -154,7 +159,7 @@ export default function Login() {
           .catch((err) => {
             if (err.code === 'auth/credential-already-in-use') {
               // Google account is already linked to another user; sign in instead
-              signInWithCredential(auth, credential)
+              signInWithCredential(auth as any, credential)
                 .then(async (userCredential) => {
                   console.log(
                     'Signed in with Google UID:',
@@ -177,7 +182,7 @@ export default function Login() {
           });
       } else {
         // No current user; sign in with Google
-        signInWithCredential(auth, credential)
+  signInWithCredential(auth as any, credential)
           .then(async (userCredential) => {
             console.log('Google Sign-In UID:', userCredential.user.uid);
             setUserUID(userCredential.user.uid);
@@ -208,8 +213,9 @@ export default function Login() {
 
   const handleSignIn = async () => {
     try {
+      if (!auth) return;
       const userCredential = await signInWithEmailAndPassword(
-        auth,
+        auth as any,
         email,
         password
       );
@@ -226,8 +232,9 @@ export default function Login() {
 
   const handleSignUp = async () => {
     try {
+      if (!auth) return;
       const userCredential = await createUserWithEmailAndPassword(
-        auth,
+        auth as any,
         email,
         password
       );
@@ -244,7 +251,8 @@ export default function Login() {
 
   const handleSignOut = async () => {
     try {
-      await signOut(auth);
+  if (!auth) return;
+  await signOut(auth as any);
       console.log('User signed out');
       setEmail('');
       setPassword('');

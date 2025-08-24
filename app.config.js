@@ -30,7 +30,19 @@ module.exports = {
     },
     extra: {
       EXPO_PUBLIC_IS_EXPO_GO: process.env.EXPO_PUBLIC_IS_EXPO_GO || 'true',
-      googleClientIdAndroid: '341732508688-o2qbbr16g2qh3e8niofee9iv4tl6krhb.apps.googleusercontent.com',
+  // TODO: Replace these with the OAuth 2.0 Client IDs created for strawman-42 in Google Cloud Console
+  // Android: needs SHA-1 + SHA-256 fingerprints registered in Firebase to download a valid google-services.json
+  googleClientIdAndroid: process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID_ANDROID || 'REPLACE_ME_ANDROID_CLIENT_ID.apps.googleusercontent.com',
+  // iOS: create iOS OAuth client with bundle com.smartcitiesfl.strawman
+  googleClientIdIos: process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID_IOS || 'REPLACE_ME_IOS_CLIENT_ID.apps.googleusercontent.com',
+      firebase: {
+        apiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY || 'AIzaSyC1dU8xLrg-c7qS_ALHBi3p1VuH049vePk',
+        authDomain: process.env.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN || 'strawman-42.firebaseapp.com',
+        projectId: process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID || 'strawman-42',
+        storageBucket: process.env.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET || 'strawman-42.firebasestorage.app',
+        messagingSenderId: process.env.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID || '894321564476',
+        appId: process.env.EXPO_PUBLIC_FIREBASE_APP_ID || '1:894321564476:android:4845037cdd1169f2e25c39'
+      },
       eas: {
   projectId: 'a27bcb78-af2a-4ef8-adeb-7fae3e17731d',
       },
