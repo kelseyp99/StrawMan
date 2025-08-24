@@ -10,38 +10,37 @@ const DEFAULT_OPTIONS: CandidateOption[] = [
 
 interface MultiChoiceCandidatesProps {
   options?: CandidateOption[];
-  onChange?(selectedIds: string[]): void;
+  onChange?(selectedId: string | null): void;
 }
 
 export const MultiChoiceCandidates: React.FC<MultiChoiceCandidatesProps> = ({ options = DEFAULT_OPTIONS, onChange }) => {
-  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [selected, setSelected] = useState<string | null>(null);
 
-  const toggle = useCallback((id: string) => {
+  const choose = useCallback((id: string) => {
     setSelected(prev => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
-      onChange?.([...next]);
+      const next = prev === id ? null : id; // tap again clears selection
+      onChange?.(next);
       return next;
     });
   }, [onChange]);
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Select candidates:</Text>
+      <Text style={styles.title}>Pick one candidate:</Text>
       <View style={styles.list}>
         {options.map(o => {
-          const checked = selected.has(o.id);
+          const checked = selected === o.id;
           return (
             <Pressable
               key={o.id}
-              onPress={() => toggle(o.id)}
+              onPress={() => choose(o.id)}
               style={({ pressed }) => [styles.row, pressed && styles.pressed]}
-              accessibilityRole="checkbox"
-              accessibilityState={{ checked }}
+              accessibilityRole="radio"
+              accessibilityState={{ selected: checked }}
               accessibilityLabel={o.label}
             >
               <View style={[styles.checkbox, checked && styles.checkboxChecked]}>
-                {checked && <Text style={styles.mark}>✓</Text>}
+                {checked && <Text style={styles.mark}>●</Text>}
               </View>
               <Text style={styles.label}>{o.label}</Text>
             </Pressable>
@@ -50,14 +49,9 @@ export const MultiChoiceCandidates: React.FC<MultiChoiceCandidatesProps> = ({ op
       </View>
       <View style={styles.summary}>
         <Text style={styles.summaryTitle}>Selected:</Text>
-        {selected.size === 0 ? (
-          <Text style={styles.none}>None</Text>
-        ) : (
-          [...selected].map(id => {
-            const opt = options.find(o => o.id === id);
-            return <Text key={id} style={styles.selectedItem}>{opt?.label || id}</Text>;
-          })
-        )}
+        {selected ? (
+          <Text style={styles.selectedItem}>{options.find(o => o.id === selected)?.label || selected}</Text>
+        ) : <Text style={styles.none}>None</Text>}
       </View>
     </View>
   );
@@ -69,9 +63,9 @@ const styles = StyleSheet.create({
   list: { gap: 10 },
   row: { flexDirection: 'row', alignItems: 'center', paddingVertical: 6 },
   pressed: { opacity: 0.6 },
-  checkbox: { width: 26, height: 26, borderRadius: 6, borderWidth: 2, borderColor: '#aa2222', alignItems: 'center', justifyContent: 'center', marginRight: 12 },
+  checkbox: { width: 26, height: 26, borderRadius: 13, borderWidth: 2, borderColor: '#aa2222', alignItems: 'center', justifyContent: 'center', marginRight: 12 },
   checkboxChecked: { backgroundColor: '#aa2222' },
-  mark: { color: '#fff', fontWeight: 'bold' },
+  mark: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
   label: { fontSize: 16 },
   summary: { marginTop: 14, borderTopWidth: 1, borderTopColor: '#eee', paddingTop: 10 },
   summaryTitle: { fontWeight: '600', marginBottom: 4 },
