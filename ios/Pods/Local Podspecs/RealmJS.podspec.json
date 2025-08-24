@@ -1,0 +1,56 @@
+{
+  "name": "RealmJS",
+  "version": "20.1.0",
+  "summary": "Realm by MongoDB is an offline-first mobile database: an alternative to SQLite and key-value stores",
+  "license": "apache-2.0",
+  "authors": {
+    "name": "MongoDB",
+    "email": "help@realm.io",
+    "url": "https://www.mongodb.com/docs/realm/"
+  },
+  "homepage": "https://www.mongodb.com/docs/realm/",
+  "platforms": {
+    "ios": "9.0"
+  },
+  "source": {
+    "http": "https://github.com/realm/realm-js/blob/main/CONTRIBUTING.md#how-to-debug-react-native-podspec"
+  },
+  "source_files": [
+    "binding/jsi/*.cpp",
+    "binding/apple/*.mm",
+    "binding/*.h",
+    "binding/*.hpp",
+    "binding/apple/*.h",
+    "bindgen/src/*.h",
+    "binding/jsi/*.h",
+    "bindgen/vendor/realm-core/bindgen/src/*.h"
+  ],
+  "public_header_files": "binding/apple/*.h",
+  "resource_bundles": {
+    "RealmJS": [
+      "PrivacyInfo.xcprivacy"
+    ]
+  },
+  "frameworks": [],
+  "libraries": [
+    "c++",
+    "z",
+    "compression"
+  ],
+  "pod_target_xcconfig": {
+    "CLANG_CXX_LANGUAGE_STANDARD": "c++20",
+    "CLANG_CXX_LIBRARY": "libc++",
+    "GCC_SYMBOLS_PRIVATE_EXTERN": "YES",
+    "GCC_PREPROCESSOR_DEFINITIONS": "$(inherited) REALM_ENABLE_SYNC=1",
+    "HEADER_SEARCH_PATHS": [
+      "\"${PODS_TARGET_SRCROOT}/binding/apple/\"",
+      "\"${PODS_TARGET_SRCROOT}/binding/\"",
+      "\"${PODS_TARGET_SRCROOT}/bindgen/src/\"",
+      "\"${PODS_TARGET_SRCROOT}/bindgen/vendor/realm-core/bindgen/src/\""
+    ]
+  },
+  "vendored_frameworks": "prebuilds/apple/realm-core.xcframework",
+  "dependencies": {
+    "React": []
+  }
+}

@@ -1,0 +1,1 @@
+../../../../../node_modules/realm/binding/jsi/jsi_init.h

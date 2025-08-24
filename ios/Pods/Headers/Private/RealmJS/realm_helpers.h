@@ -1,0 +1,1 @@
+../../../../../node_modules/realm/bindgen/vendor/realm-core/bindgen/src/realm_helpers.h
