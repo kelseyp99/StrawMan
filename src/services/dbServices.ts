@@ -1607,6 +1607,24 @@ export async function getCandidateResultHistory(limit = 50): Promise<{ id: strin
   }
 }
 
+export async function clearCandidateResultHistory(): Promise<number> {
+  try {
+    return await local.clearCandidateResultHistory();
+  } catch (e) {
+    console.error('Error in clearCandidateResultHistory:', e);
+    throw e;
+  }
+}
+
+export async function pruneCandidateResultHistory(max: number): Promise<number> {
+  try {
+    return await local.pruneCandidateResultHistory(max);
+  } catch (e) {
+    console.error('Error in pruneCandidateResultHistory:', e);
+    throw e;
+  }
+}
+
 export async function removeDuplicateActivityLogs(): Promise<{
   duplicatesFound: number;
   duplicatesRemoved: number;

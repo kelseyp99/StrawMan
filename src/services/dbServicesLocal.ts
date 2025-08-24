@@ -1815,6 +1815,13 @@ export async function appendCandidateResultHistory(selectedId: string | null, ui
         synced: false,
         syncTimestamp: null,
       });
+      // Retention: keep only the newest 100 entries
+      const MAX_HISTORY = 100;
+  const all = realm!.objects<any>('CandidateResultHistory').sorted('timestamp', true); // newest first
+      if (all.length > MAX_HISTORY) {
+        const toDelete = Array.from(all.slice(MAX_HISTORY)); // oldest beyond cap
+  toDelete.forEach(r => realm!.delete(r));
+      }
     });
     return id;
   } catch (e) {
@@ -1831,6 +1838,41 @@ export async function getCandidateResultHistory(limit = 50): Promise<{ id: strin
   } catch (e) {
     console.error('Error reading CandidateResultHistory:', e);
     return [];
+  }
+}
+
+export async function clearCandidateResultHistory(): Promise<number> {
+  if (!realm) throw new Error('Realm not initialized');
+  try {
+    let count = 0;
+    realm.write(() => {
+  const rows = realm!.objects('CandidateResultHistory');
+      count = rows.length;
+  realm!.delete(rows);
+    });
+    return count;
+  } catch (e) {
+    console.error('Error clearing CandidateResultHistory:', e);
+    throw e;
+  }
+}
+
+export async function pruneCandidateResultHistory(max: number): Promise<number> {
+  if (!realm) throw new Error('Realm not initialized');
+  try {
+    let removed = 0;
+    realm.write(() => {
+  const rows = realm!.objects<any>('CandidateResultHistory').sorted('timestamp', true); // newest first
+      if (rows.length > max) {
+        const toDelete = Array.from(rows.slice(max));
+        removed = toDelete.length;
+  toDelete.forEach(r => realm!.delete(r));
+      }
+    });
+    return removed;
+  } catch (e) {
+    console.error('Error pruning CandidateResultHistory:', e);
+    throw e;
   }
 }
 

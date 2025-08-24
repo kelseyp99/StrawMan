@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
-import { saveCandidateResult, getCandidateResult, appendCandidateResultHistory, getCandidateResultHistory } from '../../services/dbServices';
+import { saveCandidateResult, getCandidateResult, appendCandidateResultHistory, getCandidateResultHistory, clearCandidateResultHistory, pruneCandidateResultHistory } from '../../services/dbServices';
 
 export interface CandidateOption { id: string; label: string }
 
@@ -18,11 +18,12 @@ export const MultiChoiceCandidates: React.FC<MultiChoiceCandidatesProps> = ({ op
   const [selected, setSelected] = useState<string | null>(null);
   const [history, setHistory] = useState<{ id: string; selectedId?: string | null; timestamp: Date }[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
+  const HISTORY_LIMIT = 25;
 
   const loadHistory = useCallback(async () => {
     try {
       setLoadingHistory(true);
-      const rows = await getCandidateResultHistory(25);
+  const rows = await getCandidateResultHistory(HISTORY_LIMIT);
       setHistory(rows);
     } catch { /* ignore */ } finally { setLoadingHistory(false); }
   }, []);
@@ -87,10 +88,16 @@ export const MultiChoiceCandidates: React.FC<MultiChoiceCandidatesProps> = ({ op
       <View style={styles.historyBox}>
         <View style={styles.historyHeaderRow}>
           <Text style={styles.historyTitle}>History (latest {history.length})</Text>
-          <Pressable onPress={loadHistory} style={styles.refreshBtn} accessibilityRole="button" accessibilityLabel="Refresh history">
-            <Text style={styles.refreshText}>{loadingHistory ? '…' : '↻'}</Text>
-          </Pressable>
+          <View style={styles.historyBtnRow}>
+            <Pressable onPress={loadHistory} style={styles.refreshBtn} accessibilityRole="button" accessibilityLabel="Refresh history">
+              <Text style={styles.refreshText}>{loadingHistory ? '…' : '↻'}</Text>
+            </Pressable>
+            <Pressable onPress={async () => { await clearCandidateResultHistory(); await loadHistory(); }} style={styles.clearBtn} accessibilityRole="button" accessibilityLabel="Clear history">
+              <Text style={styles.clearText}>Clear</Text>
+            </Pressable>
+          </View>
         </View>
+        <Text style={styles.retentionNote}>Keeps newest 100 entries. Showing last {history.length}.</Text>
         {history.length === 0 && !loadingHistory && (
           <Text style={styles.historyEmpty}>No history yet</Text>
         )}
@@ -128,6 +135,10 @@ const styles = StyleSheet.create({
   historyTitle: { fontWeight: '600', fontSize: 14, color: '#333' },
   refreshBtn: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6, backgroundColor: '#f2f2f2' },
   refreshText: { fontSize: 14, color: '#444' },
+  historyBtnRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  clearBtn: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6, backgroundColor: '#ffecec', marginLeft: 6 },
+  clearText: { fontSize: 12, color: '#aa2222', fontWeight: '600' },
+  retentionNote: { fontSize: 10, color: '#888', marginBottom: 4 },
   historyEmpty: { fontStyle: 'italic', color: '#888', fontSize: 12 },
   historyRow: { paddingVertical: 2 },
   historyRowText: { fontSize: 12, color: '#444' },
