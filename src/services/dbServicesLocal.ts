@@ -1752,6 +1752,56 @@ export async function debugPrintAllDiscussions(): Promise<void> {
   }
 }
 
+// ---------------- CandidateResult Local Persistence ----------------
+interface CandidateResultRow {
+  id: string; // fixed id (e.g., 'current')
+  selectedId?: string | null;
+  timestamp: Date;
+  uid?: string | null;
+  synced: boolean;
+  syncTimestamp?: Date | null;
+}
+
+export async function saveCandidateResult(selectedId: string | null, uid?: string | null): Promise<string> {
+  if (!realm) throw new Error('Realm not initialized');
+  const id = 'current';
+  try {
+    realm.write(() => {
+      realm!.create<CandidateResultRow>('CandidateResult', {
+        id,
+        selectedId: selectedId || null,
+        timestamp: new Date(),
+        uid: uid || 'local-user',
+        synced: false,
+        syncTimestamp: null,
+      }, Realm.UpdateMode.Modified);
+    });
+    return id;
+  } catch (e) {
+    console.error('Error saving CandidateResult:', e);
+    throw e;
+  }
+}
+
+export async function getCandidateResult(): Promise<CandidateResultRow | null> {
+  if (!realm) throw new Error('Realm not initialized');
+  try {
+    const row = realm.objectForPrimaryKey<CandidateResultRow>('CandidateResult', 'current');
+    if (!row) return null;
+    return {
+      id: row.id,
+      selectedId: row.selectedId,
+      timestamp: row.timestamp,
+      uid: row.uid,
+      synced: row.synced,
+      syncTimestamp: row.syncTimestamp,
+    };
+  } catch (e) {
+    console.error('Error reading CandidateResult:', e);
+    return null;
+  }
+}
+
 export async function removeDuplicateActivityLogs(): Promise<{
   duplicatesFound: number;
   duplicatesRemoved: number;

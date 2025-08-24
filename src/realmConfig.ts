@@ -190,6 +190,20 @@ const CategorySchema = {
   },
 };
 
+// Stores single-select candidate picker results
+const CandidateResultSchema = {
+  name: 'CandidateResult',
+  primaryKey: 'id',
+  properties: {
+    id: 'string',
+    selectedId: 'string?',
+    timestamp: 'date',
+    uid: 'string?',
+    synced: 'bool',
+    syncTimestamp: 'date?',
+  },
+};
+
 const config: Configuration = {
   path: 'lifelog.realm', // Kept from first config
   schema: [
@@ -207,8 +221,9 @@ const config: Configuration = {
     DiscussionCountSchema,
     ChangeLogSchema,
     CategorySchema,
+    CandidateResultSchema,
   ],
-  schemaVersion: 14, // Bumped from 13 to 14 to add uid, lockedCategory, lockedDescription, attachedFile fields
+  schemaVersion: 15, // Bumped to 15 to add CandidateResultSchema
   onMigration: (oldRealm: Realm, newRealm: Realm) => {
     console.log(
       'Migrating Realm schema from version',
@@ -252,6 +267,10 @@ const config: Configuration = {
         if (discussion.uid === undefined) discussion.uid = 'local-user';
       });
     }
+    if (oldRealm.schemaVersion < 15) {
+      console.log('[Migration] Adding CandidateResultSchema defaults');
+      // No existing data to migrate; schema will initialize empty.
+    }
   },
 };
 
@@ -279,4 +298,5 @@ export {
   DiscussionCountSchema,
   ChangeLogSchema,
   CategorySchema,
+  CandidateResultSchema,
 };

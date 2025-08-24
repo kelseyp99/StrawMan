@@ -1563,6 +1563,31 @@ export async function debugPrintAllDiscussions(): Promise<void> {
   }
 }
 
+// ---------------- CandidateResult Public API ----------------
+export async function saveCandidateResult(selectedId: string | null): Promise<string> {
+  try {
+    const uid = (await getUID()) || 'unknown';
+    // Always local first
+    const id = await local.saveCandidateResult(selectedId, uid);
+    // TODO: remote sync if required later
+    return id;
+  } catch (e) {
+    console.error('Error in saveCandidateResult:', e);
+    throw e;
+  }
+}
+
+export async function getCandidateResult(): Promise<{ id: string; selectedId?: string | null; timestamp: Date } | null> {
+  try {
+    const row = await local.getCandidateResult();
+    if (!row) return null;
+    return { id: row.id, selectedId: row.selectedId, timestamp: row.timestamp };
+  } catch (e) {
+    console.error('Error in getCandidateResult:', e);
+    return null;
+  }
+}
+
 export async function removeDuplicateActivityLogs(): Promise<{
   duplicatesFound: number;
   duplicatesRemoved: number;

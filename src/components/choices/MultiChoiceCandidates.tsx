@@ -1,5 +1,6 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
+import { saveCandidateResult, getCandidateResult } from '../../services/dbServices';
 
 export interface CandidateOption { id: string; label: string }
 
@@ -16,10 +17,24 @@ interface MultiChoiceCandidatesProps {
 export const MultiChoiceCandidates: React.FC<MultiChoiceCandidatesProps> = ({ options = DEFAULT_OPTIONS, onChange }) => {
   const [selected, setSelected] = useState<string | null>(null);
 
+  // Hydrate from Realm on mount
+  useEffect(() => {
+    (async () => {
+      try {
+        const existing = await getCandidateResult();
+        if (existing?.selectedId) {
+          setSelected(existing.selectedId);
+        }
+      } catch {}
+    })();
+  }, []);
+
   const choose = useCallback((id: string) => {
     setSelected(prev => {
       const next = prev === id ? null : id; // tap again clears selection
       onChange?.(next);
+      // Fire and forget persistence
+      saveCandidateResult(next).catch(() => {});
       return next;
     });
   }, [onChange]);
