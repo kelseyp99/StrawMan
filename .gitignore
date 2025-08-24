@@ -43,8 +43,12 @@ android/.gradle/
 android/local.properties
 android/.idea/
 
-# iOS
-ios/
+# iOS (track project, ignore build artifacts and dependencies)
+ios/Pods/
+ios/build/
+ios/**/xcuserdata/
+*.xcuserstate
+ios_broken_*/
 
 # Environment
 .env
@@ -57,8 +61,9 @@ ios/
 *.keystore
 *.jks
 
-# Backup
+# Backup folders
 *-backup/
+ios_broken_*/
 
 # Coverage
 coverage/
@@ -69,6 +74,9 @@ coverage/
 # Others
 *.swp
 *.swo
+
+# Firebase local cache (keep firebase.json & .firebaserc)
+.firebase/
 
 # Ignore backup config
 app.json.bak
