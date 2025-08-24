@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
-import { saveCandidateResult, getCandidateResult, appendCandidateResultHistory } from '../../services/dbServices';
+import { saveCandidateResult, getCandidateResult, appendCandidateResultHistory, getCandidateResultHistory } from '../../services/dbServices';
 
 export interface CandidateOption { id: string; label: string }
 
@@ -16,6 +16,16 @@ interface MultiChoiceCandidatesProps {
 
 export const MultiChoiceCandidates: React.FC<MultiChoiceCandidatesProps> = ({ options = DEFAULT_OPTIONS, onChange }) => {
   const [selected, setSelected] = useState<string | null>(null);
+  const [history, setHistory] = useState<{ id: string; selectedId?: string | null; timestamp: Date }[]>([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
+
+  const loadHistory = useCallback(async () => {
+    try {
+      setLoadingHistory(true);
+      const rows = await getCandidateResultHistory(25);
+      setHistory(rows);
+    } catch { /* ignore */ } finally { setLoadingHistory(false); }
+  }, []);
 
   // Hydrate from Realm on mount
   useEffect(() => {
@@ -25,9 +35,10 @@ export const MultiChoiceCandidates: React.FC<MultiChoiceCandidatesProps> = ({ op
         if (existing?.selectedId) {
           setSelected(existing.selectedId);
         }
+    await loadHistory();
       } catch {}
     })();
-  }, []);
+  }, [loadHistory]);
 
   const choose = useCallback((id: string) => {
     setSelected(prev => {
@@ -37,7 +48,9 @@ export const MultiChoiceCandidates: React.FC<MultiChoiceCandidatesProps> = ({ op
   // Persist current state
   saveCandidateResult(next).catch(() => {});
   // Append to history (fire & forget)
-  appendCandidateResultHistory(next).catch(() => {});
+      appendCandidateResultHistory(next)
+        .then(() => loadHistory())
+        .catch(() => {});
       return next;
     });
   }, [onChange]);
@@ -71,6 +84,27 @@ export const MultiChoiceCandidates: React.FC<MultiChoiceCandidatesProps> = ({ op
           <Text style={styles.selectedItem}>{options.find(o => o.id === selected)?.label || selected}</Text>
         ) : <Text style={styles.none}>None</Text>}
       </View>
+      <View style={styles.historyBox}>
+        <View style={styles.historyHeaderRow}>
+          <Text style={styles.historyTitle}>History (latest {history.length})</Text>
+          <Pressable onPress={loadHistory} style={styles.refreshBtn} accessibilityRole="button" accessibilityLabel="Refresh history">
+            <Text style={styles.refreshText}>{loadingHistory ? '…' : '↻'}</Text>
+          </Pressable>
+        </View>
+        {history.length === 0 && !loadingHistory && (
+          <Text style={styles.historyEmpty}>No history yet</Text>
+        )}
+        {history.map(h => {
+          const label = h.selectedId ? (options.find(o => o.id === h.selectedId)?.label || h.selectedId) : 'Cleared';
+          const ts = new Date(h.timestamp);
+          const timeStr = ts.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+          return (
+            <View key={h.id} style={styles.historyRow}>
+              <Text style={styles.historyRowText}>{timeStr} — {label}</Text>
+            </View>
+          );
+        })}
+      </View>
     </View>
   );
 };
@@ -89,6 +123,14 @@ const styles = StyleSheet.create({
   summaryTitle: { fontWeight: '600', marginBottom: 4 },
   none: { fontStyle: 'italic', color: '#777' },
   selectedItem: { fontSize: 14, color: '#222' },
+  historyBox: { marginTop: 16, borderTopWidth: 1, borderTopColor: '#eee', paddingTop: 8 },
+  historyHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 },
+  historyTitle: { fontWeight: '600', fontSize: 14, color: '#333' },
+  refreshBtn: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6, backgroundColor: '#f2f2f2' },
+  refreshText: { fontSize: 14, color: '#444' },
+  historyEmpty: { fontStyle: 'italic', color: '#888', fontSize: 12 },
+  historyRow: { paddingVertical: 2 },
+  historyRowText: { fontSize: 12, color: '#444' },
 });
 
 export default MultiChoiceCandidates;
