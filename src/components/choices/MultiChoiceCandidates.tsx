@@ -95,16 +95,23 @@ export const MultiChoiceCandidates: React.FC<MultiChoiceCandidatesProps> = ({ op
             <Pressable onPress={async () => { await clearCandidateResultHistory(); await loadHistory(); }} style={styles.clearBtn} accessibilityRole="button" accessibilityLabel="Clear history">
               <Text style={styles.clearText}>Clear</Text>
             </Pressable>
+            <Pressable onPress={async () => { await pruneCandidateResultHistory(10); await loadHistory(); }} style={styles.pruneBtn} accessibilityRole="button" accessibilityLabel="Prune history to last 10 entries">
+              <Text style={styles.pruneText}>Prune→10</Text>
+            </Pressable>
           </View>
         </View>
-        <Text style={styles.retentionNote}>Keeps newest 100 entries. Showing last {history.length}.</Text>
+        <Text style={styles.retentionNote}>Auto-keeps newest 100. Prune trims to 10. Showing {history.length}.</Text>
         {history.length === 0 && !loadingHistory && (
           <Text style={styles.historyEmpty}>No history yet</Text>
         )}
         {history.map(h => {
           const label = h.selectedId ? (options.find(o => o.id === h.selectedId)?.label || h.selectedId) : 'Cleared';
           const ts = new Date(h.timestamp);
-          const timeStr = ts.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+          const now = new Date();
+          const sameDay = ts.toDateString() === now.toDateString();
+          const timeStr = sameDay
+            ? ts.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+            : ts.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) + ' ' + ts.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
           return (
             <View key={h.id} style={styles.historyRow}>
               <Text style={styles.historyRowText}>{timeStr} — {label}</Text>
@@ -138,6 +145,8 @@ const styles = StyleSheet.create({
   historyBtnRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   clearBtn: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6, backgroundColor: '#ffecec', marginLeft: 6 },
   clearText: { fontSize: 12, color: '#aa2222', fontWeight: '600' },
+  pruneBtn: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6, backgroundColor: '#eef5ff' },
+  pruneText: { fontSize: 12, color: '#2255aa', fontWeight: '600' },
   retentionNote: { fontSize: 10, color: '#888', marginBottom: 4 },
   historyEmpty: { fontStyle: 'italic', color: '#888', fontSize: 12 },
   historyRow: { paddingVertical: 2 },
