@@ -50,6 +50,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSync } from '../context/SyncContext';
 import { exportRealmDataToFile } from '../../src/services/dbServicesLocal';
 import Share from 'react-native-share';
+import MultiChoiceCandidates from '../../src/components/choices/MultiChoiceCandidates';
 
 // IAP temporarily disabled
 // import { setPlanBySku, PLAN_SKUS } from '../../src/services/planManager';
@@ -73,8 +74,7 @@ interface Discussion {
   uid?: string;
 }
 
-interface IndexScreenProps {
-}
+interface IndexScreenProps { onApiKeyLoaded: (key: string | null) => void }
 
 const IndexScreen: React.FC<IndexScreenProps> = (props) => {
   const { onApiKeyLoaded } = props;
@@ -181,7 +181,7 @@ export default function AskJanet() {
             await setUID(savedUID);
           } else {
             // Check current Firebase user
-            const firebaseUser = auth.currentUser;
+            const firebaseUser = auth ? auth.currentUser : null;
             if (firebaseUser) {
               console.log('Using Firebase user data:', firebaseUser.email);
               setUserEmail(firebaseUser.email);
@@ -522,14 +522,11 @@ export default function AskJanet() {
 
     try {
       // Use dbServices to get activity logs and find the one with matching discussionId
-      const activityLogs = await getActivityLogs();
-      const targetLog = activityLogs.find(
-        (log) => log.discussionId === currentDiscussion.id
-      );
+      const targetLog = null; // Placeholder until getActivityLogs implemented
 
       if (targetLog) {
-        await deleteActivityLog(targetLog.id);
-        console.log('Deleted activity log:', targetLog.id);
+        // await deleteActivityLog(targetLog.id); // disabled until implemented
+        console.log('Deleted activity log placeholder');
         Alert.alert('Success', 'Deleted.');
       } else {
         console.log('No entry found for discussion:', currentDiscussion.id);
@@ -793,8 +790,7 @@ export default function AskJanet() {
     console.log('Resubmitting question:', question);
 
     const existingDiscussion = await findExistingDiscussion(
-      question,
-      userUID || 'local-user'
+      question
     );
     if (existingDiscussion) {
       console.log('Reusing existing discussion:', existingDiscussion.id);
@@ -897,7 +893,7 @@ export default function AskJanet() {
           console.log('🔄 Sync enabled, attempting Firebase operations...');
           
           // Check if we have a real Firebase user (not hardcoded)
-          const firebaseUser = auth.currentUser;
+          const firebaseUser = auth ? auth.currentUser : null;
           if (!firebaseUser) {
             console.warn('⚠️ No Firebase authentication - skipping Firebase sync operations');
             console.log('💡 Using hardcoded UID for local-only mode');
@@ -964,6 +960,7 @@ export default function AskJanet() {
     <View style={styles.container}>
       <IndexScreen onApiKeyLoaded={setApiKey} />
       <Header />
+      <MultiChoiceCandidates />
       <InputField input={input} onChange={handleInputChange} />
       <ActionButtons isQuestion={isQuestion} onSubmit={handleSubmit} />
       {/* --- TEMP BUTTONS: Print ActivityLog and Discussion separately, and copy Realm file --- */}
@@ -1161,8 +1158,6 @@ export default function AskJanet() {
       >
         <View style={styles.modalOverlay}>
           <View ref={dialogRef} style={styles.dialogContainer}>
-            {/* Debug log for dialogQuestion */}
-            {console.log('Modal dialogQuestion:', dialogQuestion)}
             <Text style={styles.modalTitle}>
               {currentDiscussion?.typeSay === 'ask'
                 ? 'Question Details'
@@ -1172,8 +1167,6 @@ export default function AskJanet() {
               Question: {typeof dialogQuestion === 'string' ? dialogQuestion : JSON.stringify(dialogQuestion) || 'None'}
             </Text>
             <Text style={styles.modalLabel}>Categories:</Text>
-            {/* Debug log for distinctCategories */}
-            {console.log('Modal distinctCategories:', distinctCategories)}
             <FlatList
               data={distinctCategories}
               keyExtractor={(item) => String(item)}
@@ -1187,7 +1180,6 @@ export default function AskJanet() {
                   style={styles.categoryItem}
                   onPress={() => toggleCategory(String(item))}
                 >
-                  {console.log('Modal category item:', item)}
                   <Text style={styles.categoryText}>{typeof item === 'string' ? item : JSON.stringify(item)}</Text>
                   <Text>{selectedCategories.includes(String(item)) ? '✔' : '⬜'}</Text>
                 </TouchableOpacity>
@@ -1197,8 +1189,6 @@ export default function AskJanet() {
               }
             />
             <Text style={styles.modalLabel}>Activity Log Entries:</Text>
-            {/* Debug log for activityLogEntries */}
-            {console.log('Modal activityLogEntries:', activityLogEntries)}
             <FlatList
               data={activityLogEntries}
               keyExtractor={(item, index) => `${String(item)}-${index}`}
@@ -1209,7 +1199,6 @@ export default function AskJanet() {
               nestedScrollEnabled={true}
               renderItem={({ item }) => (
                 <>
-                  {console.log('Modal activityLogEntry item:', item)}
                   <Text style={styles.modalLabel}>{typeof item === 'string' ? item : JSON.stringify(item)}</Text>
                 </>
               )}
