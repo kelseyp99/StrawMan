@@ -10,8 +10,8 @@ module.exports = {
   // Note: Removed react-native-google-mobile-ads config plugin usage because the package
   // doesn't ship a valid Expo config plugin. Ads still work in native with manual setup.
   expo: {
-  // Use distinct slug to avoid confusion with original LifeLog project
-  slug: 'strawman',
+    name: 'StrawMan',
+    slug: 'strawman',
     owner: 'tinman42',
   scheme: 'strawman',
     icon: './assets/images/ask-janet-icon2.png',
@@ -26,6 +26,7 @@ module.exports = {
       enabled: true,
       fallbackToCacheTimeout: 0,
       checkAutomatically: 'ON_LOAD',
+      runtimeVersion: '1.1.0-strawman-dev'
     },
     extra: {
       EXPO_PUBLIC_IS_EXPO_GO: process.env.EXPO_PUBLIC_IS_EXPO_GO || 'true',
