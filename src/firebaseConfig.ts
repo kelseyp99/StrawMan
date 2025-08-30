@@ -38,7 +38,7 @@ import type { Firestore } from 'firebase/firestore';
 
 let app: FirebaseApp | null = null;
 let auth: FirebaseAuth | Partial<FirebaseAuth> | null = null;
-let db: Firestore | Record<string, unknown> | null = null;
+let db: Firestore | null = null;
 
 if (ENABLE_FIREBASE) {
   app = initializeApp(firebaseConfig);
@@ -46,29 +46,7 @@ if (ENABLE_FIREBASE) {
     persistence: getReactNativePersistence(AsyncStorage) as Persistence
   });
   
-  if (ENABLE_FIRESTORE) {
-    db = getFirestore(app);
-  } else {
-    // Mock Firestore while keeping auth enabled
-    db = {
-      collection: () => ({ 
-        doc: () => ({ 
-          get: () => Promise.reject(new Error('Firestore disabled - using offline mode')),
-          set: () => Promise.reject(new Error('Firestore disabled - using offline mode')),
-          update: () => Promise.reject(new Error('Firestore disabled - using offline mode')),
-          delete: () => Promise.reject(new Error('Firestore disabled - using offline mode')),
-        }),
-        add: () => Promise.reject(new Error('Firestore disabled - using offline mode')),
-        get: () => Promise.reject(new Error('Firestore disabled - using offline mode')),
-      }),
-      doc: () => ({ 
-        get: () => Promise.reject(new Error('Firestore disabled - using offline mode')),
-        set: () => Promise.reject(new Error('Firestore disabled - using offline mode')),
-        update: () => Promise.reject(new Error('Firestore disabled - using offline mode')),
-        delete: () => Promise.reject(new Error('Firestore disabled - using offline mode')),
-      }),
-    };
-  }
+  db = getFirestore(app) as Firestore;
 } else {
   // Mock Firebase services for completely offline mode
   auth = {
@@ -78,24 +56,7 @@ if (ENABLE_FIREBASE) {
     createUserWithEmailAndPassword: () => Promise.reject(new Error('Firebase disabled')),
     signOut: () => Promise.reject(new Error('Firebase disabled')),
   } as Partial<FirebaseAuth>;
-  db = {
-    collection: () => ({ 
-      doc: () => ({ 
-        get: () => Promise.reject(new Error('Firebase disabled')),
-        set: () => Promise.reject(new Error('Firebase disabled')),
-        update: () => Promise.reject(new Error('Firebase disabled')),
-        delete: () => Promise.reject(new Error('Firebase disabled')),
-      }),
-      add: () => Promise.reject(new Error('Firebase disabled')),
-      get: () => Promise.reject(new Error('Firebase disabled')),
-    }),
-    doc: () => ({ 
-      get: () => Promise.reject(new Error('Firebase disabled')),
-      set: () => Promise.reject(new Error('Firebase disabled')),
-      update: () => Promise.reject(new Error('Firebase disabled')),
-      delete: () => Promise.reject(new Error('Firebase disabled')),
-    }),
-  };
+  db = null; // Set to null when disabled
 }
 
 export { auth, db, ENABLE_FIRESTORE, ENABLE_FIREBASE };

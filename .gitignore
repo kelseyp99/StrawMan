@@ -83,3 +83,7 @@ app.json.bak
 
 # Ignore SmartCities workspace
 SmartCities.code-workspace
+
+# Google OAuth secrets
+client_secret*.json
+client_*.plist

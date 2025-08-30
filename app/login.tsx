@@ -456,11 +456,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     width: '100%',
     padding: 15,
-    backgroundColor: '#666', // Changed to grey
+    backgroundColor: '#4285F4', // Google Blue
     borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
     marginVertical: 5,
+    borderWidth: 1,
+    borderColor: '#4285F4',
   },
   appleButton: {
     flexDirection: 'row',

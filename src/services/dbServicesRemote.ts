@@ -1,4 +1,4 @@
-function assertDb(db: any) {
+function assertDb(db: Firestore | null): asserts db is Firestore {
   if (!db) throw new Error('Firestore db is not initialized');
 }
 // CHANGELOG (2025-06-02):
@@ -2599,4 +2599,28 @@ export async function markChangeLogEntrySynced(
   rowId: string
 ): Promise<void> {
   // TODO: Implement remote mark as synced logic
+}
+
+export async function saveCandidateResult(selectedId: string | null): Promise<string> {
+  const uid = await getUID();
+  if (!uid) throw new Error('No UID available');
+  try {
+    const id = 'current';
+    assertDb(db);
+    await setDoc(
+      doc(db as Firestore, `Users/${uid}/Votes`, id),
+      {
+        id,
+        selectedId: selectedId || null,
+        timestamp: new Date(),
+        uid,
+      },
+      { merge: true }
+    );
+    console.log('CandidateResult saved in Firestore');
+    return id;
+  } catch (error) {
+    console.error('Error saving CandidateResult:', error);
+    throw error;
+  }
 }

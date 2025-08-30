@@ -1567,10 +1567,22 @@ export async function debugPrintAllDiscussions(): Promise<void> {
 export async function saveCandidateResult(selectedId: string | null): Promise<string> {
   try {
     const uid = (await getUID()) || 'unknown';
-    // Always local first
-    const id = await local.saveCandidateResult(selectedId, uid);
-    // TODO: remote sync if required later
-    return id;
+    // Always save locally first
+    const result = await local.saveCandidateResult(selectedId, uid);
+    // Only save remote if useRemote is true
+    if (await shouldUseRemote()) {
+      console.log('[CANDIDATE] Calling remote.saveCandidateResult');
+      await remote.saveCandidateResult(selectedId);
+      // Log the sync entry
+      await logSyncEntry({
+        id: result,
+        tableName: 'Votes',
+        operation: 'update',
+        timestamp: new Date(),
+        uid,
+      });
+    }
+    return result;
   } catch (e) {
     console.error('Error in saveCandidateResult:', e);
     throw e;
