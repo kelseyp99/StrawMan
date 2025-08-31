@@ -297,7 +297,7 @@ export default function Login() {
   return (
     <View style={styles.container}>
       <Header />
-      <Text style={styles.title}>LifeLog - Personal Tracker</Text>
+  {/* Removed LifeLog - Personal Tracker title for StrawMan */}
       {error ? <Text style={styles.error}>{error}</Text> : null}
       <TextInput
         style={styles.input}

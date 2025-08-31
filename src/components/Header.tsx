@@ -1,12 +1,20 @@
 import React from "react";
-import { View, Text } from "react-native";
+import { View, Text, TouchableOpacity } from "react-native";
+import * as Google from 'expo-auth-session/providers/google';
+import Constants from 'expo-constants';
+import { Platform } from 'react-native';
 
 export default function Header() {
+  const [request, response, promptAsync] = Google.useIdTokenAuthRequest({
+    clientId: Platform.OS === 'ios'
+      ? (Constants.expoConfig?.extra as any)?.googleClientIdIos
+      : (Constants.expoConfig?.extra as any)?.googleClientIdAndroid,
+    scopes: ['profile', 'email'],
+  });
+
   return (
-    <View style={{ alignItems: "center", marginBottom: 20 }}>
-      {/* Icon removed for StrawMan differentiation */}
-      <Text style={{ fontSize: 26, fontWeight: "bold", textAlign: "center", color: '#AA2222' }}>StrawMan Dev</Text>
-      <Text style={{ marginTop: 4, fontSize: 12, letterSpacing: 1, color: '#AA2222' }}>Experimental Build</Text>
+    <View style={{ alignItems: 'center', marginBottom: 20, marginTop: 40 }}>
+      <Text style={{ fontSize: 26, fontWeight: "bold", textAlign: "center", color: '#AA2222' }}>StrawMan</Text>
     </View>
   );
 }

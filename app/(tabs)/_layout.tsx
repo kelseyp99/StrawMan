@@ -50,20 +50,11 @@ export default function TabLayout() {
           }}
         />
         <Tabs.Screen
-          name="tools"
+          name="about"
           options={{
-            title: 'Tools',
+            title: 'About',
             tabBarIcon: ({ color }) => (
-              <MaterialCommunityIcons name="tools" size={30} color={color} />
-            ),
-          }}
-        />{' '}
-        <Tabs.Screen
-          name="explore"
-          options={{
-            title: 'Explore',
-            tabBarIcon: ({ color }) => (
-              <IconSymbol size={28} name="info.circle.fill" color={color} />
+              <MaterialCommunityIcons name="information" size={30} color={color} />
             ),
           }}
         />
