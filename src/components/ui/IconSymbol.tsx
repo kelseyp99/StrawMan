@@ -14,6 +14,7 @@ const MAPPING = {
   'info.circle.fill': 'info',
   'chevron.left.forwardslash.chevron.right': 'code',
   'chevron.right': 'chevron-right',
+  'tools': 'build', // wrench/tools icon
 } as Partial<
   Record<
     import('expo-symbols').SymbolViewProps['name'],
