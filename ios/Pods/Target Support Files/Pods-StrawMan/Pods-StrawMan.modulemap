@@ -1,6 +1,0 @@
-module Pods_StrawMan {
-  umbrella header "Pods-StrawMan-umbrella.h"
-
-  export *
-  module * { export * }
-}

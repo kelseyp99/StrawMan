@@ -50,11 +50,29 @@ export default function TabLayout() {
           }}
         />
         <Tabs.Screen
+          name="Reports"
+          options={{
+            title: 'Reports',
+            tabBarIcon: ({ color }) => (
+              <MaterialCommunityIcons name="file-document-outline" size={30} color={color} />
+            ),
+          }}
+        />
+        <Tabs.Screen
           name="tools"
           options={{
             title: 'Tools',
             tabBarIcon: ({ color }) => (
               <MaterialCommunityIcons name="tools" size={30} color={color} />
+            ),
+          }}
+        />
+        <Tabs.Screen
+          name="reports"
+          options={{
+            title: 'Reports',
+            tabBarIcon: ({ color }) => (
+              <MaterialCommunityIcons name="file-document-outline" size={30} color={color} />
             ),
           }}
         />
