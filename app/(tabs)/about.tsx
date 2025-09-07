@@ -4,6 +4,7 @@ import { View, Text, ScrollView, StyleSheet } from "react-native";
 export default function About() {
   return (
     <ScrollView contentContainerStyle={styles.container}>
+  <View style={styles.safeZone} />
       <Text style={styles.title}>About StrawMan</Text>
       <Text style={styles.body}>
         StrawMan is a simple, informal voting app designed for open participation. Users can log in and vote as many times as they want, with each vote securely logged in Firebase and assigned a unique log number. Your personal voting history is always available, so you can see every vote you've cast—including multiple votes on the same topic.
@@ -21,6 +22,22 @@ const styles = StyleSheet.create({
     padding: 24,
     backgroundColor: '#fff',
     flexGrow: 1,
+  },
+  safeZone: {
+    marginTop: 48,
+    marginBottom: 24,
+  },
+  safeZoneTitle: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    color: '#2288AA',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  safeZoneBody: {
+    fontSize: 15,
+    color: '#333',
+    textAlign: 'center',
   },
   title: {
     fontSize: 28,
