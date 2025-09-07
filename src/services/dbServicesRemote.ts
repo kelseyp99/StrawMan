@@ -1,3 +1,28 @@
+// Save candidate result history to Firestore
+export async function appendCandidateResultHistory(selectedId: string | null, uid?: string | null): Promise<string> {
+  if (!db) throw new Error('Firestore db is not initialized');
+  const userId = uid || (await getUID()) || 'unknown';
+  const id = `${Date.now()}_${Math.random().toString(36).slice(2,8)}`;
+  console.log('[appendCandidateResultHistory] userId:', userId, 'selectedId:', selectedId, 'docPath:', `Users/${userId}/CandidateResultHistory/${id}`);
+  try {
+    await setDoc(
+      doc(db, `Users/${userId}/CandidateResultHistory`, id),
+      {
+        id,
+        selectedId: selectedId || null,
+        timestamp: new Date(),
+        uid: userId,
+        synced: true,
+        syncTimestamp: new Date(),
+      }
+    );
+    console.log('[appendCandidateResultHistory] Successfully wrote to Firestore:', `Users/${userId}/CandidateResultHistory/${id}`);
+    return id;
+  } catch (e) {
+    console.error('[appendCandidateResultHistory] Error appending CandidateResultHistory to Firestore:', e, 'userId:', userId, 'selectedId:', selectedId);
+    throw e;
+  }
+}
 function assertDb(db: Firestore | null): asserts db is Firestore {
   if (!db) throw new Error('Firestore db is not initialized');
 }
@@ -2604,23 +2629,71 @@ export async function markChangeLogEntrySynced(
 export async function saveCandidateResult(selectedId: string | null): Promise<string> {
   const uid = await getUID();
   if (!uid) throw new Error('No UID available');
+  const id = `${Date.now()}_${Math.random().toString(36).slice(2,8)}`;
+  const docPath = `Users/${uid}/Votes/${id}`;
+  // Print Firebase authentication state
+  // Use the exported auth object from firebaseConfig
+  let currentUser = null;
   try {
-    const id = 'current';
+    // Import auth from firebaseConfig
+    // @ts-ignore
+    const { auth } = require('../firebaseConfig');
+    currentUser = auth && auth.currentUser ? auth.currentUser : null;
+  } catch (e) {
+    currentUser = null;
+  }
+  console.log('[saveCandidateResult] UID:', uid, 'DocPath:', docPath, 'selectedId:', selectedId, 'AuthUser:', currentUser ? currentUser.uid : null);
+  try {
     assertDb(db);
     await setDoc(
       doc(db as Firestore, `Users/${uid}/Votes`, id),
       {
-        id,
         selectedId: selectedId || null,
         timestamp: new Date(),
-        uid,
       },
       { merge: true }
     );
-    console.log('CandidateResult saved in Firestore');
+    console.log('CandidateResult saved in Firestore:', docPath);
     return id;
   } catch (error) {
-    console.error('Error saving CandidateResult:', error);
+    console.error('[saveCandidateResult] Error:', error, 'UID:', uid, 'DocPath:', docPath, 'selectedId:', selectedId, 'AuthUser:', currentUser ? currentUser.uid : null);
     throw error;
+  }
+}
+
+export async function createUserElectionsTable(uid?: string | null) {
+  if (!db) throw new Error('Firestore db is not initialized');
+  const userId = uid || (await getUID()) || 'unknown';
+  // Example: create a Florida Gubernatorial election record
+  const id = `fl_gov_${Date.now()}`;
+  try {
+    await setDoc(
+      doc(db, `Users/${userId}/Elections`, id),
+      {
+        id,
+        name: 'Florida Gubernatorial',
+        date: new Date(),
+        description: 'Florida Gubernatorial Election',
+      }
+    );
+    console.log('[createUserElectionsTable] Successfully created Elections record:', `Users/${userId}/Elections/${id}`);
+    return id;
+  } catch (e) {
+    console.error('[createUserElectionsTable] Error creating Elections record:', e, 'userId:', userId);
+    throw e;
+  }
+}
+
+export async function ensureUserElectionsTable(uid?: string | null) {
+  if (!db) throw new Error('Firestore db is not initialized');
+  const userId = uid || (await getUID()) || 'unknown';
+  const electionsRef = collection(db, `Users/${userId}/Elections`);
+  const snapshot = await getDocs(electionsRef);
+  if (snapshot.empty) {
+    // No elections exist, create default Florida Gubernatorial election
+    await createUserElectionsTable(userId);
+    console.log('[ensureUserElectionsTable] Created Elections table for user:', userId);
+  } else {
+    console.log('[ensureUserElectionsTable] Elections table already exists for user:', userId);
   }
 }
