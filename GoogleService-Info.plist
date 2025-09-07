@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CLIENT_ID</key>
+	<string>615690850067-e48fie6co3tnp7o1p2lnvmf299563tff.apps.googleusercontent.com</string>
+	<key>REVERSED_CLIENT_ID</key>
+	<string>com.googleusercontent.apps.615690850067-e48fie6co3tnp7o1p2lnvmf299563tff</string>
+	<key>ANDROID_CLIENT_ID</key>
+	<string>894321564476-8vj9coq1i0q361g4kn45a5lm1vg8229q.apps.googleusercontent.com</string>
+	<key>API_KEY</key>
+	<string>AIzaSyAoSnQ0zIgXVVc4ZmIL1mBXUPKKrQlg3hU</string>
+	<key>GCM_SENDER_ID</key>
+	<string>894321564476</string>
+	<key>PLIST_VERSION</key>
+	<string>1</string>
+	<key>BUNDLE_ID</key>
+	<string>com.smartcitiesfl.strawman</string>
+	<key>PROJECT_ID</key>
+	<string>strawman-42</string>
+	<key>STORAGE_BUCKET</key>
+	<string>strawman-42.firebasestorage.app</string>
+	<key>IS_ADS_ENABLED</key>
+	<false></false>
+	<key>IS_ANALYTICS_ENABLED</key>
+	<false></false>
+	<key>IS_APPINVITE_ENABLED</key>
+	<true></true>
+	<key>IS_GCM_ENABLED</key>
+	<true></true>
+	<key>IS_SIGNIN_ENABLED</key>
+	<true></true>
+	<key>GOOGLE_APP_ID</key>
+	<string>1:894321564476:ios:f513742afd178296e25c39</string>
+</dict>
+</plist>
