@@ -373,48 +373,36 @@ const MainComponent: React.FC = () => {
     try {
       setLoading(true);
       // Fetch data with minimal processing
-      const activityLogRaw = await getActivityLogs();
-      console.log('[DEBUG] Raw activity logs from Realm:', activityLogRaw);
-      const activityLogData = (
-        await Promise.all(
-          activityLogRaw.map(async (log: any) => {
-            let categoryName = log.category;
-            if (log.categoryId) {
-              try {
-                const categoryObj = await getCategoryById(log.categoryId);
-                if (categoryObj) {
-                  categoryName = categoryObj.name;
-                }
-              } catch (error) {
-                console.warn(
-                  `Could not fetch category for id ${log.categoryId}:`,
-                  error
-                );
-              }
-            }
-            return {
-              ...log,
-              id: String(log.id || ''),
-              categoryId: String(log.categoryId || ''),
-              category: String(categoryName || ''),
-              description: String(log.description || ''),
-              timestamp:
-                log.timestamp instanceof Date
-                  ? log.timestamp.toLocaleDateString() +
-                    ' ' +
-                    log.timestamp.toLocaleTimeString()
-                  : String(log.timestamp || 'No date'),
-              rawTimestamp:
-                log.timestamp instanceof Date
-                  ? log.timestamp
-                  : new Date(log.timestamp || 0),
-              cleared: log.cleared ? '✔️ Yes' : '❌ No',
-            };
-          })
-        )
-      ).sort(
+      // Fetch vote history and merge into activities table
+      let voteHistoryRaw: any[] = [];
+      let voteHistoryData: any[] = [];
+      try {
+        voteHistoryRaw = await require('../services/dbServices').getCandidateResultHistory(50);
+        voteHistoryData = voteHistoryRaw.map((vote: any) => ({
+          id: String(vote.id || ''),
+          categoryId: '',
+          category: 'Vote',
+          description: vote.selectedId ? `Voted for candidate ${vote.selectedId}` : 'Vote recorded',
+          timestamp:
+            vote.timestamp instanceof Date
+              ? vote.timestamp.toLocaleDateString() + ' ' + vote.timestamp.toLocaleTimeString()
+              : String(vote.timestamp || 'No date'),
+          rawTimestamp:
+            vote.timestamp instanceof Date
+              ? vote.timestamp
+              : new Date(vote.timestamp || 0),
+          cleared: '',
+        }));
+        console.log('[DEBUG] Raw vote history from Realm:', voteHistoryRaw);
+      } catch (e) {
+        console.error('Error fetching vote history:', e);
+      }
+
+      // Merge vote history with activity logs (if you want to keep activities, otherwise use only voteHistoryData)
+      const mergedActivityLogData = [...voteHistoryData].sort(
         (a: any, b: any) => b.rawTimestamp.getTime() - a.rawTimestamp.getTime()
       );
+      console.log('[DEBUG] Merged voteHistoryData:', mergedActivityLogData);
 
       const discussionRaw = await getDiscussions();
       console.log('[PERF] Fetched', discussionRaw.length, 'discussions from local Realm');
@@ -472,32 +460,18 @@ const MainComponent: React.FC = () => {
 
       setTables([
         {
-          name: 'Activities',
+          name: 'History',
           columns: [
             { Header: 'ID', accessor: 'id', hidden: true },
-            { Header: 'categoryId', accessor: 'categoryId', hidden: true },
-            { Header: 'rawTimestamp', accessor: 'rawTimestamp', hidden: true },
             { Header: 'Date', accessor: 'timestamp', flex: 1 },
-            {
-              Header: 'Category',
-              accessor: 'category',
-              style: styles.leftAlignCell,
-              flex: 1,
-            },
             {
               Header: 'Desc',
               accessor: 'description',
               style: styles.leftAlignCell,
               flex: 2,
             },
-            {
-              Header: 'Cleared',
-              accessor: 'cleared',
-              hidden: true,
-              style: styles.leftAlignCell,
-            },
           ],
-          data: activityLogData,
+          data: mergedActivityLogData,
         },
         {
           name: 'Discussions',
