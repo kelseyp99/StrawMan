@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Firebase Database Viewer & Editor</title>
+  <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js"></script>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 2em; }
+    h1 { margin-bottom: 1em; }
+    .section { margin-bottom: 2em; }
+    .item { padding: 0.5em; border-bottom: 1px solid #ccc; }
+    .edit-btn { margin-left: 1em; }
+    .save-btn { margin-left: 1em; }
+    .input-edit { width: 200px; }
+  </style>
+</head>
+<body>
+  <h1>Firebase Database Viewer & Editor</h1>
+  <div id="elections" class="section"></div>
+  <div id="candidates" class="section"></div>
+  <script>
+    // StrawMan Firebase config
+    const firebaseConfig = {
+      apiKey: "AIzaSyC1dU8xLrg-c7qS_ALHBi3p1VuH049vePk",
+      authDomain: "strawman-42.firebaseapp.com",
+      projectId: "strawman-42",
+      // You can add more config fields if needed
+    };
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.firestore();
+
+    // Helper to render and edit a collection
+    function renderCollection(collectionName, containerId) {
+      db.collection(collectionName).get().then(snapshot => {
+        const container = document.getElementById(containerId);
+        container.innerHTML = `<h2>${collectionName}</h2>`;
+        snapshot.forEach(doc => {
+          const data = doc.data();
+          const itemDiv = document.createElement('div');
+          itemDiv.className = 'item';
+          let html = `<strong>ID:</strong> ${doc.id}<br/>`;
+          Object.keys(data).forEach(key => {
+            html += `<strong>${key}:</strong> <span id="${collectionName}-${doc.id}-${key}">${data[key]}</span> `;
+            html += `<button class='edit-btn' onclick='editField("${collectionName}", "${doc.id}", "${key}")'>Edit</button><br/>`;
+          });
+          itemDiv.innerHTML = html;
+          container.appendChild(itemDiv);
+        });
+      });
+    }
+
+    window.editField = function(collection, docId, key) {
+      const span = document.getElementById(`${collection}-${docId}-${key}`);
+      const currentValue = span.textContent;
+      span.innerHTML = `<input class='input-edit' type='text' id='input-${collection}-${docId}-${key}' value='${currentValue}' />`;
+      span.insertAdjacentHTML('afterend', `<button class='save-btn' onclick='saveField("${collection}", "${docId}", "${key}")'>Save</button>`);
+    };
+
+    window.saveField = function(collection, docId, key) {
+      const input = document.getElementById(`input-${collection}-${docId}-${key}`);
+      const newValue = input.value;
+      db.collection(collection).doc(docId).update({ [key]: newValue }).then(() => {
+        document.getElementById(`${collection}-${docId}-${key}`).textContent = newValue;
+        // Remove save button
+        input.nextSibling.remove();
+      });
+    };
+
+    renderCollection('Elections', 'elections');
+    renderCollection('Candidates', 'candidates');
+  </script>
+</body>
+</html>

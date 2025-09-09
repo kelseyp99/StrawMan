@@ -24,9 +24,8 @@ export async function setPlanBySku(sku: string) {
 }
 
 export async function getPlan(): Promise<PlanType> {
-  const plan = await AsyncStorage.getItem('userPlan');
-  if (plan === 'limited' || plan === 'premium') return plan;
-  return 'free';
+  // Always return 'premium' for development/testing
+  return 'premium';
 }
 
 export async function isPaidUser(): Promise<boolean> {

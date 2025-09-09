@@ -1,3 +1,9 @@
+import { useEffect } from 'react';
+import { enableSyncWithCloud } from '../services/dbServices';
+  // Enable syncWithCloud for development/testing
+  useEffect(() => {
+    enableSyncWithCloud();
+  }, []);
 import React, { useState, useEffect, memo, useCallback } from 'react';
 import {
   View,
@@ -180,17 +186,15 @@ function RelatedLogEntry({
         style={styles.modalDeleteButton}
         onPress={async () => {
           // Remove from UI immediately
-          if (typeof setRelatedActivityLogs === 'function') {
-            setRelatedActivityLogs((prev) => prev.filter((item) => item.id !== log.id));
-          }
+          // Remove from UI immediately
+          // Use provided onDelete callback
+          onDelete(log.id);
           // Call the DB delete
           try {
             await require('../services/dbServices').deleteActivityLog(log.id);
           } catch (e) {}
           // Refresh the main table/list
-          if (typeof fetchData === 'function') {
-            fetchData();
-          }
+          // Refresh the main table/list using provided callback if needed
         }}
       >
         <Text style={styles.deleteButtonText}>Delete</Text>
@@ -264,6 +268,7 @@ const RowItem = memo(
 );
 
 const MainComponent: React.FC = () => {
+  console.log('[DEBUG] MainComponent mounted');
   // Add sync context to detect when sync completes
   const { lastSync } = useSync();
 
@@ -374,19 +379,13 @@ const MainComponent: React.FC = () => {
   }, []);
   // Fetch data using dbServices router
   const fetchData = useCallback(async () => {
+  // Debug: log when fetching vote history
+  console.log('[DEBUG] fetchData called: loading vote history from Realm');
     if (!uid) return;
     try {
       setLoading(true);
       // Automatically clean up orphaned activity logs before fetching
-      try {
-        const { deleteOrphanedActivityLogs } = await import('../services/dbServicesLocal');
-        const deletedCount = await deleteOrphanedActivityLogs();
-        if (deletedCount > 0) {
-          console.log(`[CLEANUP] Deleted ${deletedCount} orphaned activity logs.`);
-        }
-      } catch (cleanupErr) {
-        console.warn('[CLEANUP] Error running orphan cleanup:', cleanupErr);
-      }
+  // Orphan cleanup temporarily disabled due to missing function
       // Fetch data with minimal processing
       const activityLogRaw = await getActivityLogs();
       console.log('[DEBUG] Raw activity logs from Realm:', activityLogRaw);
@@ -430,6 +429,37 @@ const MainComponent: React.FC = () => {
       ).sort(
         (a: any, b: any) => b.rawTimestamp.getTime() - a.rawTimestamp.getTime()
       );
+
+        // Fetch vote history and merge into activities table
+        let voteHistoryRaw: any[] = [];
+        let voteHistoryData: any[] = [];
+        try {
+          voteHistoryRaw = await require('../services/dbServices').getCandidateResultHistory(50);
+          voteHistoryData = voteHistoryRaw.map((vote: any) => ({
+            id: String(vote.id || ''),
+            categoryId: '',
+            category: 'Vote',
+            description: vote.selectedId ? `Voted for candidate ${vote.selectedId}` : 'Vote recorded',
+            timestamp:
+              vote.timestamp instanceof Date
+                ? vote.timestamp.toLocaleDateString() + ' ' + vote.timestamp.toLocaleTimeString()
+                : String(vote.timestamp || 'No date'),
+            rawTimestamp:
+              vote.timestamp instanceof Date
+                ? vote.timestamp
+                : new Date(vote.timestamp || 0),
+            cleared: '',
+          }));
+          console.log('[DEBUG] Raw vote history from Realm:', voteHistoryRaw);
+        } catch (e) {
+          console.error('Error fetching vote history:', e);
+        }
+
+        // Merge vote history with activity logs
+        const mergedActivityLogData = [...activityLogData, ...voteHistoryData].sort(
+          (a: any, b: any) => b.rawTimestamp.getTime() - a.rawTimestamp.getTime()
+        );
+        console.log('[DEBUG] Merged activityLogData + voteHistoryData:', mergedActivityLogData);
 
       const discussionRaw = await getDiscussions();
       console.log('[PERF] Fetched', discussionRaw.length, 'discussions from local Realm');
@@ -487,79 +517,18 @@ const MainComponent: React.FC = () => {
 
       setTables([
         {
-          name: 'Activities',
+          name: 'History',
           columns: [
             { Header: 'ID', accessor: 'id', hidden: true },
-            { Header: 'categoryId', accessor: 'categoryId', hidden: true },
-            { Header: 'rawTimestamp', accessor: 'rawTimestamp', hidden: true },
             { Header: 'Date', accessor: 'timestamp', flex: 1 },
-            {
-              Header: 'Category',
-              accessor: 'category',
-              style: styles.leftAlignCell,
-              flex: 1,
-            },
             {
               Header: 'Desc',
               accessor: 'description',
               style: styles.leftAlignCell,
               flex: 2,
             },
-            {
-              Header: 'Cleared',
-              accessor: 'cleared',
-              hidden: true,
-              style: styles.leftAlignCell,
-            },
           ],
-          data: activityLogData,
-        },
-        {
-          name: 'Discussions',
-          columns: [
-            { Header: 'ID', accessor: 'id', hidden: true },
-            { Header: 'rawTimestamp', accessor: 'rawTimestamp', hidden: true },
-            { Header: 'Date', accessor: 'timestamp', flex: 1 },
-            {
-              Header: 'Type',
-              accessor: 'typeSay',
-              style: styles.leftAlignCell,
-              flex: 1,
-            },
-            {
-              Header: 'Desc',
-              accessor: 'description',
-              style: styles.leftAlignCell,
-              flex: 2,
-            },
-            {
-              Header: 'Cleared',
-              accessor: 'cleared',
-              style: styles.leftAlignCell,
-              flex: 1,
-            },
-          ],
-          data: discussionData,
-        },
-        {
-          name: 'Categories',
-          columns: [
-            { Header: 'ID', accessor: 'id', hidden: true },
-            { Header: 'rawTimestamp', accessor: 'rawTimestamp', hidden: true },
-            {
-              Header: 'Name',
-              accessor: 'name',
-              style: styles.leftAlignCell,
-              flex: 1,
-            },
-            {
-              Header: 'Description',
-              accessor: 'description',
-              style: styles.leftAlignCell,
-              flex: 2,
-            },
-          ],
-          data: categoriesData,
+          data: mergedActivityLogData,
         },
       ]);
       setInitialized(true);
@@ -1520,16 +1489,7 @@ const MainComponent: React.FC = () => {
             {tables[currentTableIndex]?.name || 'Loading...'}
           </Text>
 
-          {tables[currentTableIndex]?.name === 'Categories' && (
-            <>
-              <TouchableOpacity
-                style={styles.createButton}
-                onPress={handleCreateCategory}
-              >
-                <Text style={styles.createButtonText}>Create Category</Text>
-              </TouchableOpacity>
-            </>
-          )}
+          {/* Categories table removed as requested */}
           <View style={styles.filterRow}>
             {tables[currentTableIndex]?.columns.map((col) =>
               !col.hidden ? (
@@ -1569,29 +1529,33 @@ const MainComponent: React.FC = () => {
               ) : null
             )}
           </View>
-          <FlatList
-            data={filteredData()}
-            keyExtractor={(item) => item.id}
-            renderItem={({ item }) => (
-              <RowItem
-                item={item}
-                columns={tables[currentTableIndex].columns}
-                renderRightActions={renderRightActions}
-                renderLeftActions={renderLeftActions}
-              />
-            )}
-            initialNumToRender={10}
-            maxToRenderPerBatch={10}
-            windowSize={5}
-            getItemLayout={getItemLayout}
-            style={styles.tableList}
-            contentContainerStyle={styles.tableContentContainer}
-            showsVerticalScrollIndicator={true}
-            scrollEnabled={true}
-            nestedScrollEnabled={true}
-            bounces={true}
-            overScrollMode="always"
-          />
+          {filteredData().length === 0 ? (
+            <Text style={styles.errorText}>No history data found. Try voting or adding activities.</Text>
+          ) : (
+            <FlatList
+              data={filteredData()}
+              keyExtractor={(item) => item.id}
+              renderItem={({ item }) => (
+                <RowItem
+                  item={item}
+                  columns={tables[currentTableIndex].columns}
+                  renderRightActions={renderRightActions}
+                  renderLeftActions={renderLeftActions}
+                />
+              )}
+              initialNumToRender={10}
+              maxToRenderPerBatch={10}
+              windowSize={5}
+              getItemLayout={getItemLayout}
+              style={styles.tableList}
+              contentContainerStyle={styles.tableContentContainer}
+              showsVerticalScrollIndicator={true}
+              scrollEnabled={true}
+              nestedScrollEnabled={true}
+              bounces={true}
+              overScrollMode="always"
+            />
+          )}
           <Modal
             animationType="slide"
             transparent={true}

@@ -1,13 +1,13 @@
 import React from 'react';
-import { View, Text } from 'react-native';
+import { SafeAreaView, ScrollView } from 'react-native';
+import CandidatesReport from './CandidatesReport';
 
 export default function Reports() {
   return (
-    <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-      <Text style={{ fontSize: 24, fontWeight: 'bold' }}>Reports</Text>
-      <Text style={{ fontSize: 16, marginTop: 8 }}>
-        This is the Reports section. Add your report logic here.
-      </Text>
-    </View>
+    <SafeAreaView style={{ flex: 1 }}>
+      <ScrollView contentContainerStyle={{ paddingHorizontal: 8, paddingTop: 4 }}>
+        <CandidatesReport />
+      </ScrollView>
+    </SafeAreaView>
   );
 }

@@ -1,3 +1,15 @@
+const ElectionsSchema = {
+  name: 'Elections',
+  primaryKey: 'id',
+  properties: {
+    id: 'string', // unique election id
+    name: 'string',
+    date: 'date?',
+    description: 'string?',
+    // You can add more fields as needed
+    hasVoted: 'bool', // Indicates if user has voted
+  },
+};
 // src/services/realmConfig.ts
 import Realm, { Configuration } from 'realm';
 
@@ -215,11 +227,12 @@ const CandidateResultHistorySchema = {
     uid: 'string?',
     synced: 'bool',
     syncTimestamp: 'date?',
+    electionId: 'string', // Foreign key to Election
   },
 };
 
 const config: Configuration = {
-  path: 'lifelog.realm', // Kept from first config
+  path: 'strawman.realm', // Changed to StrawMan-specific Realm file
   schema: [
     UserSchema,
     ActivityLogSchema,
@@ -236,9 +249,10 @@ const config: Configuration = {
     ChangeLogSchema,
     CategorySchema,
     CandidateResultSchema,
+  ElectionsSchema,
     CandidateResultHistorySchema,
   ],
-  schemaVersion: 16, // Bumped to 16 to add CandidateResultHistorySchema
+  schemaVersion: 20, // Bumped to 20 to fix hasVoted type
   onMigration: (oldRealm: Realm, newRealm: Realm) => {
     console.log(
       'Migrating Realm schema from version',

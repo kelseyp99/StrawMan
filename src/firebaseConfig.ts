@@ -16,7 +16,7 @@ const ENABLE_FIREBASE = true; // Enable for authentication
 const ENABLE_FIRESTORE = true; // Enable Firestore for paid users
 
 // Default to StrawMan project (override via env or expo.extra.firebase)
-const firebaseConfig = {
+export const firebaseConfig = {
   apiKey: Constants.expoConfig?.extra?.firebase?.apiKey || process.env.EXPO_PUBLIC_FIREBASE_API_KEY || "AIzaSyC1dU8xLrg-c7qS_ALHBi3p1VuH049vePk", // strawman-42
   authDomain: Constants.expoConfig?.extra?.firebase?.authDomain || process.env.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN || "strawman-42.firebaseapp.com",
   projectId: Constants.expoConfig?.extra?.firebase?.projectId || process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID || "strawman-42",

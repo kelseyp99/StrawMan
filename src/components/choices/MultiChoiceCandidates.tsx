@@ -1,6 +1,7 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { saveCandidateResult, getCandidateResult, appendCandidateResultHistory, getCandidateResultHistory, clearCandidateResultHistory, pruneCandidateResultHistory } from '../../services/dbServices';
+import { ensureUserElectionsTable } from '../../services/dbServicesRemote';
 
 export interface CandidateOption { id: string; label: string }
 
@@ -45,13 +46,14 @@ export const MultiChoiceCandidates: React.FC<MultiChoiceCandidatesProps> = ({ op
     setSelected(prev => {
       const next = prev === id ? null : id; // tap again clears selection
       onChange?.(next);
-      // Fire and forget persistence
-  // Persist current state
-  saveCandidateResult(next).catch(() => {});
-  // Append to history (fire & forget)
-      appendCandidateResultHistory(next)
-        .then(() => loadHistory())
-        .catch(() => {});
+      // Only save vote if a candidate is selected
+      if (next) {
+        ensureUserElectionsTable().catch(() => {});
+        saveCandidateResult(next).catch(() => {});
+        appendCandidateResultHistory(next)
+          .then(() => loadHistory())
+          .catch(() => {});
+      }
       return next;
     });
   }, [onChange]);

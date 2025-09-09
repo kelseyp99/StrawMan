@@ -1,3 +1,19 @@
+// Copy Elections table to root of Firestore as master table
+export async function copyUserElectionsToRoot(uid: string) {
+  assertDb(db);
+  const userElectionsRef = collection(db, `Users/${uid}/Elections`);
+  const rootElectionsRef = collection(db, 'Elections');
+  const snapshot = await getDocs(userElectionsRef);
+  let copied = 0;
+  for (const docSnap of snapshot.docs) {
+    const data = docSnap.data();
+    const id = docSnap.id;
+    await setDoc(doc(rootElectionsRef, id), data, { merge: true });
+    copied++;
+  }
+  console.log(`[copyUserElectionsToRoot] Copied ${copied} elections from Users/${uid}/Elections to root Elections`);
+  return copied;
+}
 // Save candidate result history to Firestore
 export async function appendCandidateResultHistory(selectedId: string | null, uid?: string | null): Promise<string> {
   if (!db) throw new Error('Firestore db is not initialized');
@@ -16,6 +32,51 @@ export async function appendCandidateResultHistory(selectedId: string | null, ui
         syncTimestamp: new Date(),
       }
     );
+
+    // Get last vote for this election
+    const historySnap = await getDocs(collection(db, `Users/${userId}/CandidateResultHistory`));
+    let lastVote: any = null;
+    historySnap.forEach(docSnap => {
+      const data = docSnap.data();
+      if (data.selectedId && data.selectedId !== null) {
+        if (!lastVote || data.timestamp > lastVote.timestamp) {
+          lastVote = data;
+        }
+      }
+    });
+
+    // If lastVote exists and selectedId is the same, do nothing
+    if (lastVote && lastVote.selectedId === selectedId) {
+      console.log('[appendCandidateResultHistory] Same candidate voted, no change.');
+      return id;
+    }
+
+    // If lastVote exists and selectedId is different, decrement previous candidate voteTally
+    if (lastVote && lastVote.selectedId !== selectedId) {
+      const prevCandidateRef = doc(db, 'Candidates', lastVote.selectedId);
+      const prevCandidateSnap = await getDoc(prevCandidateRef);
+      let prevVoteTally = 0;
+      if (prevCandidateSnap.exists()) {
+        const prevData = prevCandidateSnap.data();
+        prevVoteTally = (prevData.voteTally || 1) - 1;
+        await setDoc(prevCandidateRef, { voteTally: Math.max(prevVoteTally, 0) }, { merge: true });
+        console.log(`[appendCandidateResultHistory] Decremented voteTally for previous candidate ${lastVote.selectedId}`);
+      }
+    }
+
+    // Increment voteTally for the new candidate
+    if (selectedId) {
+      const candidateRef = doc(db, 'Candidates', selectedId);
+      const candidateSnap = await getDoc(candidateRef);
+      let voteTally = 1;
+      if (candidateSnap.exists()) {
+        const data = candidateSnap.data();
+        voteTally = (data.voteTally || 0) + 1;
+      }
+      await setDoc(candidateRef, { voteTally }, { merge: true });
+      console.log(`[appendCandidateResultHistory] Incremented voteTally for candidate ${selectedId}`);
+    }
+
     console.log('[appendCandidateResultHistory] Successfully wrote to Firestore:', `Users/${userId}/CandidateResultHistory/${id}`);
     return id;
   } catch (e) {

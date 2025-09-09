@@ -1,4 +1,5 @@
 import React, { useState, useEffect, memo, useCallback } from 'react';
+import { enableSyncWithCloud } from '../services/dbServices';
 import {
   View,
   Text,
@@ -259,6 +260,10 @@ const RowItem = memo(
 );
 
 const MainComponent: React.FC = () => {
+  // Enable syncWithCloud for development/testing
+  useEffect(() => {
+    enableSyncWithCloud();
+  }, []);
   // Add sync context to detect when sync completes
   const { lastSync } = useSync();
 

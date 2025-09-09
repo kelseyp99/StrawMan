@@ -1041,9 +1041,6 @@ export async function deleteActivityLog(activityLogId: string): Promise<void> {
         console.warn('[DEBUG] No ActivityLog found with id:', activityLogId);
       }
     });
-  // ...existing code...
-
-// ...existing code...
   } catch (error) {
     console.error('Error deleting activity log:', error);
     throw error;
@@ -1802,10 +1799,28 @@ export async function getCandidateResult(): Promise<CandidateResultRow | null> {
   }
 }
 
+async function getOrCreateFloridaGubernatorialElectionId() {
+  if (!realm) throw new Error('Realm not initialized');
+  let election = realm.objects('Elections').filtered('name == $0', 'Florida Gubernatorial')[0];
+  if (!election) {
+    const id = `fl_gov_${Date.now()}`;
+    realm.write(() => {
+      election = realm.create('Elections', {
+        id,
+        name: 'Florida Gubernatorial',
+        date: new Date(),
+        description: 'Florida Gubernatorial Election',
+      });
+    });
+  }
+  return election.id;
+}
+
 export async function appendCandidateResultHistory(selectedId: string | null, uid?: string | null): Promise<string> {
   if (!realm) throw new Error('Realm not initialized');
   const id = `${Date.now()}_${Math.random().toString(36).slice(2,8)}`;
   try {
+    const electionId = await getOrCreateFloridaGubernatorialElectionId();
     realm.write(() => {
       realm!.create('CandidateResultHistory', {
         id,
@@ -1814,15 +1829,25 @@ export async function appendCandidateResultHistory(selectedId: string | null, ui
         uid: uid || 'local-user',
         synced: false,
         syncTimestamp: null,
+        electionId,
+  hasVoted: true,
       });
+      // Set hasVoted=true in Elections table for this electionId
+      const election = realm!.objectForPrimaryKey('Elections', electionId);
+      if (election) {
+        election.hasVoted = true;
+      }
       // Retention: keep only the newest 100 entries
       const MAX_HISTORY = 100;
-  const all = realm!.objects<any>('CandidateResultHistory').sorted('timestamp', true); // newest first
+      const all = realm!.objects<any>('CandidateResultHistory').sorted('timestamp', true); // newest first
       if (all.length > MAX_HISTORY) {
         const toDelete = Array.from(all.slice(MAX_HISTORY)); // oldest beyond cap
-  toDelete.forEach(r => realm!.delete(r));
+        toDelete.forEach(r => realm!.delete(r));
       }
     });
+    // Debug log: confirm vote was saved
+    const saved = realm!.objectForPrimaryKey('CandidateResultHistory', id);
+    console.log('[DEBUG] Vote saved to Realm:', saved);
     return id;
   } catch (e) {
     console.error('Error appending CandidateResultHistory:', e);
@@ -1830,11 +1855,29 @@ export async function appendCandidateResultHistory(selectedId: string | null, ui
   }
 }
 
-export async function getCandidateResultHistory(limit = 50): Promise<{ id: string; selectedId?: string | null; timestamp: Date }[]> {
+export async function getCandidateResultHistory(limit = 50): Promise<{ id: string; selectedId?: string | null; timestamp: Date; electionId?: string; electionName?: string; electionDescription?: string }[]> {
   if (!realm) throw new Error('Realm not initialized');
   try {
     const rows = realm.objects<any>('CandidateResultHistory').sorted('timestamp', true);
-    return Array.from(rows.slice(0, limit)).map(r => ({ id: r.id, selectedId: r.selectedId, timestamp: r.timestamp }));
+    return Array.from(rows.slice(0, limit)).map(r => {
+      let electionName = '';
+      let electionDescription = '';
+      if (r.electionId) {
+        const election = realm.objectForPrimaryKey('Elections', r.electionId);
+        if (election) {
+          electionName = election.name;
+          electionDescription = election.description;
+        }
+      }
+      return {
+        id: r.id,
+        selectedId: r.selectedId,
+        timestamp: r.timestamp,
+        electionId: r.electionId,
+        electionName,
+        electionDescription,
+      };
+    });
   } catch (e) {
     console.error('Error reading CandidateResultHistory:', e);
     return [];
@@ -2274,5 +2317,20 @@ export async function addChangeLogEntry(
 export async function fetchInitialDiscussion(): Promise<Discussion | null> {
   // Local implementation: return null (no local discussion)
   return null;
+}
+
+export async function createFloridaGubernatorialElection() {
+  if (!realm) throw new Error('Realm not initialized');
+  const id = `fl_gov_${Date.now()}`;
+  realm.write(() => {
+    realm.create('Election', {
+      id,
+      name: 'Florida Gubernatorial',
+      date: new Date(),
+      description: 'Florida Gubernatorial Election',
+    });
+  });
+  console.log('Created Election:', id);
+  return id;
 }
 

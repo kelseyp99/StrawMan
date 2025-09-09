@@ -31,6 +31,12 @@ import { ENABLE_CATEGORY_SYNC } from './syncConfig';
 import { ENABLE_FIRESTORE } from '../firebaseConfig';
 import { isPaidUser as planIsPaidUser } from './planManager';
 
+// Helper to enable syncWithCloud for testing
+export async function enableSyncWithCloud() {
+  await AsyncStorage.setItem('syncWithCloud', 'true');
+  console.log('[DEBUG] syncWithCloud set to true');
+}
+
 // Helper function to check if remote sync should be used
 async function shouldUseRemote(): Promise<boolean> {
   try {
@@ -1603,7 +1609,15 @@ export async function getCandidateResult(): Promise<{ id: string; selectedId?: s
 export async function appendCandidateResultHistory(selectedId: string | null): Promise<string> {
   try {
     const uid = (await getUID()) || 'unknown';
-    return await local.appendCandidateResultHistory(selectedId, uid);
+    // Save to Realm (local)
+    const localId = await local.appendCandidateResultHistory(selectedId, uid);
+
+    // Save to Firebase (remote) if enabled
+    if (await shouldUseRemote()) {
+      await remote.appendCandidateResultHistory(selectedId, uid);
+    }
+
+    return localId;
   } catch (e) {
     console.error('Error in appendCandidateResultHistory:', e);
     throw e;
