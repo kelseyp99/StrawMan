@@ -2,8 +2,8 @@ import React, { useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 
 const candidates = [
-	{ id: 'A', name: 'Candidate A' },
-	{ id: 'B', name: 'Candidate B' },
+	{ id: 'byron', name: 'Byron Donalds' },
+	{ id: 'ham', name: 'Ham San Which' },
 ];
 
 const HomeScreen: React.FC = () => {
