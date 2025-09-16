@@ -1,0 +1,1 @@
+/Users/tinman/Backups/Scripts/manual_backup.sh
