@@ -1,8 +1,8 @@
 {
-  "name": "lifelog",
+  "name": "strawman",
   "main": "expo-router/entry",
   "version": "1.1.0",
-  "appId": "com.anonymous.lifelog",
+  "appId": "com.anonymous.strawman",
   "scripts": {
     "start": "expo start --dev-client -c",
     "build": "powershell -ExecutionPolicy Bypass -File .\\src\\utils\\scripts\\build-wrapper.ps1",
@@ -11,8 +11,8 @@
     "ios": "expo run:ios",
     "web": "expo start --web",
     "test": "jest --watchAll",
-  "lint": "eslint . --ext .ts,.tsx",
-  "eas-build-post-install": "node ./scripts/inject-admob-app-id.js"
+    "lint": "eslint . --ext .ts,.tsx",
+    "eas-build-post-install": "node ./scripts/inject-admob-app-id.js"
   },
   "jest": {
     "preset": "jest-expo"
@@ -30,6 +30,7 @@
     "date-fns": "^4.1.0",
     "dotenv": "^16.4.7",
     "expo": "~52.0.47",
+    "expo-application": "^5.9.1",
     "expo-asset": "~11.0.5",
     "expo-auth-session": "~6.0.3",
     "expo-blur": "~14.0.3",
@@ -43,6 +44,7 @@
     "expo-haptics": "~14.0.1",
     "expo-linking": "~7.0.5",
     "expo-media-library": "~17.0.6",
+    "expo-modules-core": "2.2.3",
     "expo-router": "~4.0.21",
     "expo-secure-store": "~14.0.1",
     "expo-splash-screen": "~0.29.24",
@@ -76,7 +78,8 @@
     "react-native-vector-icons": "^10.2.0",
     "react-native-view-shot": "~4.0.3",
     "react-native-web": "~0.19.13",
-    "react-native-webview": "13.12.5"
+    "react-native-webview": "13.12.5",
+    "realm": "^10.23.0"
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",
@@ -97,7 +100,6 @@
     "jest-expo": "~52.0.6",
     "react-native-fs": "^2.20.0",
     "react-test-renderer": "18.3.1",
-    "realm": "^20.1.0",
     "typescript": "^5.3.3"
   },
   "private": true,
