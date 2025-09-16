@@ -1,3 +1,67 @@
+// Save a vote and update candidate totals for an election
+export async function saveVoteAndUpdateTotals({
+  electionId,
+  candidateId,
+  uid
+}: {
+  electionId: string;
+  candidateId: string;
+  uid?: string | null;
+}): Promise<void> {
+  if (!realm) throw new Error('Realm not initialized');
+  const userId = uid || 'local-user';
+  const candidateResultId = `${electionId}_${userId}`;
+  let previousCandidateId: string | null = null;
+  realm.write(() => {
+    // Get previous vote
+    const prev = realm.objectForPrimaryKey('CandidateResult', candidateResultId) as CandidateResultRow | null;
+    if (prev && prev.selectedId && prev.selectedId !== candidateId) {
+      previousCandidateId = prev.selectedId;
+    }
+    // Save/update user's vote
+    realm.create('CandidateResult', {
+      id: candidateResultId,
+      selectedId: candidateId,
+      timestamp: new Date(),
+      uid: userId,
+      synced: false,
+      syncTimestamp: null,
+    }, Realm.UpdateMode.Modified);
+    // Save to history
+    realm.create('CandidateResultHistory', {
+      id: `${candidateResultId}_${Date.now()}`,
+      selectedId: candidateId,
+      timestamp: new Date(),
+      uid: userId,
+      synced: false,
+      syncTimestamp: null,
+    });
+    // Increment new candidate's count
+    const countId = `${electionId}_${candidateId}`;
+    let countObj = realm.objectForPrimaryKey('DiscussionCount', countId) as { count: number; timestamp: Date } | null;
+    if (!countObj) {
+      realm.create('DiscussionCount', {
+        id: countId,
+        discussionId: electionId,
+        count: 1,
+        description: '',
+        timestamp: new Date(),
+      });
+    } else {
+      countObj.count += 1;
+      countObj.timestamp = new Date();
+    }
+    // Decrement previous candidate's count if changed
+    if (previousCandidateId && previousCandidateId !== candidateId) {
+      const prevCountId = `${electionId}_${previousCandidateId}`;
+      let prevCountObj = realm.objectForPrimaryKey('DiscussionCount', prevCountId) as { count: number; timestamp: Date } | null;
+      if (prevCountObj && prevCountObj.count > 0) {
+        prevCountObj.count -= 1;
+        prevCountObj.timestamp = new Date();
+      }
+    }
+  });
+}
 import RNFS from 'react-native-fs';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Share from 'react-native-share';
