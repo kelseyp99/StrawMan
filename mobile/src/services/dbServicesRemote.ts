@@ -15,72 +15,24 @@ export async function copyUserElectionsToRoot(uid: string) {
   return copied;
 }
 // Save candidate result history to Firestore
-export async function appendCandidateResultHistory(selectedId: string | null, uid?: string | null): Promise<string> {
-  if (!db) throw new Error('Firestore db is not initialized');
+export async function appendCandidateResultHistory(selectedId: string | null, uid?: string | null, electionId?: string): Promise<string> {
   const userId = uid || (await getUID()) || 'unknown';
-  const id = `${Date.now()}_${Math.random().toString(36).slice(2,8)}`;
-  console.log('[appendCandidateResultHistory] userId:', userId, 'selectedId:', selectedId, 'docPath:', `Users/${userId}/CandidateResultHistory/${id}`);
+  const realElectionId = electionId || 'election_placeholder';
+  // Ensure user document exists in Firestore before voting (modular API)
+  if (db) {
+    const userDocRef = doc(db, 'users', userId);
+    const userSnap = await getDoc(userDocRef);
+    if (!userSnap.exists()) {
+      await setDoc(userDocRef, { createdAt: new Date().toISOString() });
+      console.log(`[appendCandidateResultHistory] Created user doc for ${userId}`);
+    }
+  }
   try {
-    await setDoc(
-      doc(db, `Users/${userId}/CandidateResultHistory`, id),
-      {
-        id,
-        selectedId: selectedId || null,
-        timestamp: new Date(),
-        uid: userId,
-        synced: true,
-        syncTimestamp: new Date(),
-      }
-    );
-
-    // Get last vote for this election
-    const historySnap = await getDocs(collection(db, `Users/${userId}/CandidateResultHistory`));
-    let lastVote: any = null;
-    historySnap.forEach(docSnap => {
-      const data = docSnap.data();
-      if (data.selectedId && data.selectedId !== null) {
-        if (!lastVote || data.timestamp > lastVote.timestamp) {
-          lastVote = data;
-        }
-      }
-    });
-
-    // If lastVote exists and selectedId is the same, do nothing
-    if (lastVote && lastVote.selectedId === selectedId) {
-      console.log('[appendCandidateResultHistory] Same candidate voted, no change.');
-      return id;
-    }
-
-    // If lastVote exists and selectedId is different, decrement previous candidate voteTally
-    if (lastVote && lastVote.selectedId !== selectedId) {
-      const prevCandidateRef = doc(db, 'Candidates', lastVote.selectedId);
-      const prevCandidateSnap = await getDoc(prevCandidateRef);
-      let prevVoteTally = 0;
-      if (prevCandidateSnap.exists()) {
-        const prevData = prevCandidateSnap.data();
-        prevVoteTally = (prevData.voteTally || 1) - 1;
-        await setDoc(prevCandidateRef, { voteTally: Math.max(prevVoteTally, 0) }, { merge: true });
-        console.log(`[appendCandidateResultHistory] Decremented voteTally for previous candidate ${lastVote.selectedId}`);
-      }
-    }
-
-    // Increment voteTally for the new candidate
-    if (selectedId) {
-      const candidateRef = doc(db, 'Candidates', selectedId);
-      const candidateSnap = await getDoc(candidateRef);
-      let voteTally = 1;
-      if (candidateSnap.exists()) {
-        const data = candidateSnap.data();
-        voteTally = (data.voteTally || 0) + 1;
-      }
-      await setDoc(candidateRef, { voteTally }, { merge: true });
-      console.log(`[appendCandidateResultHistory] Incremented voteTally for candidate ${selectedId}`);
-    }
-
-    console.log('[appendCandidateResultHistory] Successfully wrote to Firestore:', `Users/${userId}/CandidateResultHistory/${id}`);
-    return id;
+    const result = await callCastVote({ userId, electionId: realElectionId, candidateId: selectedId || '' });
+    console.log('[appendCandidateResultHistory] Cloud function result:', result);
+    return result?.data?.id || '';
   } catch (e) {
-    console.error('[appendCandidateResultHistory] Error appending CandidateResultHistory to Firestore:', e, 'userId:', userId, 'selectedId:', selectedId);
+    console.error('[appendCandidateResultHistory] Error calling castVote cloud function:', e, 'userId:', userId, 'selectedId:', selectedId);
     throw e;
   }
 }
@@ -93,6 +45,7 @@ function assertDb(db: Firestore | null): asserts db is Firestore {
 //   Use this for one-way upload of new Realm data to Firestore only.
 
 import { db } from '../firebaseConfig';
+import { callCastVote } from './castVoteCloud';
 import type { Firestore } from 'firebase/firestore';
 import { realm } from '../realmConfig';
 import {

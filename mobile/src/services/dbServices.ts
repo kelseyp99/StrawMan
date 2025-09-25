@@ -1606,18 +1606,15 @@ export async function getCandidateResult(): Promise<{ id: string; selectedId?: s
   }
 }
 
-export async function appendCandidateResultHistory(selectedId: string | null): Promise<string> {
+export async function appendCandidateResultHistory(selectedId: string | null, electionId?: string): Promise<string> {
   try {
     const uid = (await getUID()) || 'unknown';
-    // Save to Realm (local)
-    const localId = await local.appendCandidateResultHistory(selectedId, uid);
-
-    // Save to Firebase (remote) if enabled
+    // Only use Firebase/cloud for voting history
     if (await shouldUseRemote()) {
-      await remote.appendCandidateResultHistory(selectedId, uid);
+      return await remote.appendCandidateResultHistory(selectedId, uid, electionId);
+    } else {
+      throw new Error('Cloud voting is not enabled.');
     }
-
-    return localId;
   } catch (e) {
     console.error('Error in appendCandidateResultHistory:', e);
     throw e;
