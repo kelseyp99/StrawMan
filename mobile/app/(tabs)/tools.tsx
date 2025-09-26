@@ -8,7 +8,7 @@ import {
   PlanModal,
 } from '../../src/components/UpgradeModals';
 import { synchronizeCategories, cleanupDuplicateCategories, synchronizeActivityLog, synchronizeDiscussions } from '../../src/services/dbServices';
-import { initializeDefaultCategories } from '../../src/services/dbServicesLocal';
+// ...existing code...
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export default function ToolsScreen() {

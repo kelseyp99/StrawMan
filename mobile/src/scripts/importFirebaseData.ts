@@ -1,10 +1,10 @@
-// Import Firebase export JSON and insert into Realm using dbServicesLocal
+// ...existing code...
 import fs from 'fs';
 import path from 'path';
 import {
   importLegacyDiscussions,
   importLegacyActivityLogs,
-} from '../services/dbServicesLocal';
+// ...existing code...
 
 // Path to your exported Firebase data
 const DATA_PATH = path.join(__dirname, '../../firebase_export.json');

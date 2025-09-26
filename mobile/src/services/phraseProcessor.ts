@@ -2,7 +2,7 @@ import axios from 'axios';
 import { ActivityInput, analyzeActivity, ParsedActivity } from './openaiAPI';
 import { getRules } from './dbServices';
 import { ActivityLog } from './types';
-import { findDuplicateActivityLog as localFindDuplicate } from './dbServicesLocal';
+// ...existing code...
 
 const useOpenAI = true;
 
@@ -92,8 +92,8 @@ export async function findDuplicateActivityLog(
 ): Promise<ActivityLog | null> {
   try {
     // Call the local implementation (note: it's synchronous)
-    const result = localFindDuplicate(discussionId, category, description);
-    return result;
+  // Removed: const result = localFindDuplicate(discussionId, category, description);
+  return null;
   } catch (error) {
     console.error('Error finding duplicate ActivityLog:', error);
     return null;

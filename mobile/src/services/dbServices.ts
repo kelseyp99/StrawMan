@@ -23,7 +23,7 @@ function emitDiscussionUpdate(discussion: Discussion) {
 }
 // src/services/dbServices.ts
 import * as remote from './dbServicesRemote';
-import * as local from './dbServicesLocal';
+// ...existing code...
 import { getUID } from '../utils/uidManager';
 import { ActivityLog } from './types';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -100,8 +100,7 @@ interface SyncEntry {
 // Update logSyncEntry to use only local (and remote if implemented in the future)
 async function logSyncEntry(entry: SyncEntry): Promise<void> {
   try {
-    // Log to Realm via dbServicesLocal.ts
-    await local.logSyncEntry(entry);
+  // ...existing code...
     // If remote logging is needed, implement in dbServicesRemote and call here
     // For now, skip remote logging to Firestore directly
   } catch (error) {
@@ -130,9 +129,9 @@ export const findDuplicateActivityLog = async (
         uidVal
       );
     } else {
-      await local.findDuplicateActivityLog(discussionId, category, description); // removed uid for local
+  
     }
-    return null;
+  return null;
   } catch (error) {
     console.error('Error in initializeUser:', error);
     throw error;
@@ -145,7 +144,7 @@ export async function initializeUser(): Promise<void> {
     if (await shouldUseRemote()) {
       await remote.initializeUser();
     } else {
-      await local.initializeUser();
+  
     }
   } catch (error) {
     console.error('Error in initializeUser:', error);
@@ -159,47 +158,12 @@ export async function addOrUpdateDiscussion(
   id?: string
 ): Promise<string> {
   const useRemote = await shouldUseRemote();
-
-
-  // Always save locally first
-  await local.initializeUser();
-  const result = await local.addOrUpdateDiscussion(description, typeSay, id);
-
-  // Emit event for real-time update
-  try {
-    const discussionObj: Discussion = {
-      id: result,
-      description,
-      timestamp: new Date(),
-      typeSay,
-      cleared: false,
-    };
-    emitDiscussionUpdate(discussionObj);
-  } catch (e) {
-    // ignore
-  }
-
-  // Only save remote if useRemote is true
   if (useRemote) {
     console.log('[DISCUSSION] Calling remote.addOrUpdateDiscussion');
-    await remote.addOrUpdateDiscussion(description, typeSay, id as string);
+    return await remote.addOrUpdateDiscussion(description, typeSay, id as string);
   }
-
-  // Log SyncEntry if remote is enabled
-  if (useRemote) {
-    const uid = (await getUID()) || 'unknown';
-    await logSyncEntry({
-      id: result,
-      tableName: 'Discussion',
-      operation: id ? 'update' : 'create',
-      timestamp: new Date(),
-      uid,
-    });
-    //  console.log('[DISCUSSION] SyncEntry logged for ID:', result);
-  }
-
-  //console.log('[DISCUSSION] Returning result:', result);
-  return result;
+  // If not remote, return a placeholder or throw
+  throw new Error('Remote sync is required for addOrUpdateDiscussion');
 }
 
 export async function getDiscussions(
@@ -214,11 +178,10 @@ export async function getDiscussions(
   // );
   try {
     const useRemote = await shouldUseRemote();
-    const result = useRemote
-      ? await remote.getDiscussions(lastX, discussionId)
-      : await local.getDiscussions(lastX, discussionId);
-    //console.log('getDiscussions result:', result);
-    return result;
+    if (useRemote) {
+      return await remote.getDiscussions(lastX, discussionId);
+    }
+    return [];
   } catch (error) {
     console.error('getDiscussions error:', error);
     return [];
@@ -231,7 +194,7 @@ export async function deleteDiscussion(id: string): Promise<void> {
     if (await shouldUseRemote()) {
       await remote.deleteDiscussion(id);
     }
-    await local.deleteDiscussion(id);
+  
     const uid = (await getUID()) || 'unknown';
     await logSyncEntry({
       id,
@@ -253,7 +216,7 @@ export async function fetchInitialDiscussion(): Promise<Discussion | null> {
       return await remote.fetchInitialDiscussion();
     } else {
       // Local version returns null, so we explicitly return null here
-      await local.fetchInitialDiscussion();
+  
       return null;
     }
   } catch (error) {
@@ -270,19 +233,34 @@ export async function getNextOpenDiscussion(lastVisibleDoc?: unknown): Promise<{
   console.log('getNextOpenDiscussion called with:', lastVisibleDoc);
   try {
     // Pass the correct Firestore document snapshot or undefined
-    const result = (await shouldUseRemote())
-      ? await remote.getNextOpenDiscussion(
-          lastVisibleDoc as import('firebase/firestore').QueryDocumentSnapshot<
-            import('firebase/firestore').DocumentData,
-            import('firebase/firestore').DocumentData
-          > | undefined
-        )
-      : await local.getNextOpenDiscussion(lastVisibleDoc as string | undefined);
-    // Ensure snapshot is always Discussion[]
-    return {
-      ...result,
-      snapshot: Array.isArray(result.snapshot) ? result.snapshot as Discussion[] : [],
-    };
+    if (await shouldUseRemote()) {
+      const result = await remote.getNextOpenDiscussion(
+        lastVisibleDoc as import('firebase/firestore').QueryDocumentSnapshot<
+          import('firebase/firestore').DocumentData,
+          import('firebase/firestore').DocumentData
+        > | undefined
+      );
+      // Convert result.snapshot to Discussion[] if needed
+      if (result && result.snapshot) {
+        // If snapshot is already an array, use it. Otherwise, convert QuerySnapshot to array.
+        let snapshotArr: Discussion[];
+        if (Array.isArray(result.snapshot)) {
+          snapshotArr = result.snapshot;
+        } else if (typeof result.snapshot.forEach === 'function') {
+          snapshotArr = [];
+          result.snapshot.forEach((doc: any) => {
+            snapshotArr.push(doc.data());
+          });
+        } else {
+          snapshotArr = [];
+        }
+        return { snapshot: snapshotArr, hasMore: result.hasMore, lastVisibleDoc: result.lastVisibleDoc };
+      } else {
+        // fallback
+        return { snapshot: [], hasMore: false, lastVisibleDoc: null };
+      }
+    }
+    return { snapshot: [], hasMore: false, lastVisibleDoc: null };
   } catch (error) {
     console.error('Error in getNextOpenDiscussion:', error);
     return { snapshot: [], hasMore: false, lastVisibleDoc: null };
@@ -295,7 +273,7 @@ export async function processPendingTells(): Promise<void> {
     if (await shouldUseRemote()) {
       await remote.processPendingTells();
     }
-    await local.processPendingTells();
+  
     const uid = (await getUID()) || 'unknown';
     await logSyncEntry({
       id: new Date().getTime().toString(),
@@ -320,7 +298,7 @@ export async function addQuestionDiscussion(
     if (await shouldUseRemote()) {
       remoteResult = await remote.addQuestionDiscussion(question, discussionId);
     }
-    await local.addQuestionDiscussion(question, discussionId);
+  
     const uid = (await getUID()) || 'unknown';
     await logSyncEntry({
       id: remoteResult,
@@ -342,7 +320,7 @@ export async function processUnclearedGPTResponses(): Promise<void> {
     if (await shouldUseRemote()) {
       await remote.processUnclearedGPTResponses();
     }
-    await local.processUnclearedGPTResponses();
+  
     const uid = (await getUID()) || 'unknown';
     await logSyncEntry({
       id: new Date().getTime().toString(),
@@ -365,7 +343,7 @@ export async function markDiscussionAsCleared(
     if (await shouldUseRemote()) {
       await remote.markDiscussionAsCleared(discussionId);
     }
-    await local.markDiscussionAsCleared(discussionId);
+  
     const uid = (await getUID()) || 'unknown';
     await logSyncEntry({
       id: discussionId,
@@ -387,7 +365,7 @@ export async function clearDiscussion(discussionId: string): Promise<boolean> {
     if (await shouldUseRemote()) {
       remoteResult = await remote.clearDiscussion(discussionId);
     }
-    const localResult = await local.clearDiscussion(discussionId);
+  
     const uid = (await getUID()) || 'unknown';
     await logSyncEntry({
       id: discussionId,
@@ -396,7 +374,7 @@ export async function clearDiscussion(discussionId: string): Promise<boolean> {
       timestamp: new Date(),
       uid,
     });
-    return remoteResult && localResult;
+  return remoteResult;
   } catch (error) {
     console.error('Error in clearDiscussion:', error);
     return false;
@@ -409,7 +387,7 @@ export async function addOrUpdateActivityLog(): Promise<void> {
     if (await shouldUseRemote()) {
       await remote.addOrUpdateActivityLog();
     }
-    await local.addOrUpdateActivityLog();
+  
     const uid = (await getUID()) || 'unknown';
     await logSyncEntry({
       id: new Date().getTime().toString(),
@@ -430,7 +408,7 @@ export async function renameFieldToCleared(): Promise<void> {
     if (await shouldUseRemote()) {
       await remote.renameFieldToCleared();
     }
-    await local.renameFieldToCleared();
+  
     const uid = (await getUID()) || 'unknown';
     await logSyncEntry({
       id: new Date().getTime().toString(),
@@ -451,10 +429,10 @@ export async function getLastOpenDiscussion(): Promise<{
 }> {
   console.log('getLastOpenDiscussion called');
   try {
-    const result = (await shouldUseRemote())
-      ? await remote.getLastOpenDiscussion()
-      : await local.getLastOpenDiscussion();
-    return result;
+    if (await shouldUseRemote()) {
+      return await remote.getLastOpenDiscussion();
+    }
+    return { id: '', description: '' };
   } catch (error) {
     console.error('Error in getLastOpenDiscussion:', error);
     throw error;
@@ -467,10 +445,10 @@ export async function disperseQuestion(
 ): Promise<string[] | undefined> {
   console.log('disperseQuestion called with:', discussionId, gptResponseId);
   try {
-    const result = (await shouldUseRemote())
-      ? await remote.disperseQuestion(discussionId, gptResponseId)
-      : await local.disperseQuestion(discussionId, gptResponseId);
-    return result;
+    if (await shouldUseRemote()) {
+      return await remote.disperseQuestion(discussionId, gptResponseId);
+    }
+    return undefined;
   } catch (error) {
     console.error('Error in disperseQuestion:', error);
     return undefined;
@@ -496,21 +474,15 @@ export async function addOrUpdateGPTResponse(
         responseType,
         cleared
       );
+      const uid = (await getUID()) || 'unknown';
+      await logSyncEntry({
+        id: new Date().getTime().toString(),
+        tableName: 'GPTResponses',
+        operation: 'create',
+        timestamp: new Date(),
+        uid,
+      });
     }
-    await local.addOrUpdateGPTResponse(
-      discussionId,
-      response,
-      responseType,
-      cleared
-    );
-    const uid = (await getUID()) || 'unknown';
-    await logSyncEntry({
-      id: new Date().getTime().toString(),
-      tableName: 'GPTResponses',
-      operation: 'create',
-      timestamp: new Date(),
-      uid,
-    });
   } catch (error) {
     console.error('Error in addOrUpdateGPTResponse:', error);
     throw error;
@@ -520,10 +492,10 @@ export async function addOrUpdateGPTResponse(
 export async function getGPTResponses(discussionId: string): Promise<Record<string, unknown>[]> {
   console.log('getGPTResponses called with:', discussionId);
   try {
-    const result = (await shouldUseRemote())
-      ? await remote.getGPTResponses(discussionId)
-      : await local.getGPTResponses(discussionId);
-    return result;
+    if (await shouldUseRemote()) {
+      return await remote.getGPTResponses(discussionId);
+    }
+    return [];
   } catch (error) {
     console.error('Error in getGPTResponses:', error);
     return [];
@@ -535,10 +507,10 @@ export async function getParsedGPTResponses(
 ): Promise<string[]> {
   console.log('getParsedGPTResponses called with:', discussionId);
   try {
-    const result = (await shouldUseRemote())
-      ? await remote.getParsedGPTResponses(discussionId)
-      : await local.getParsedGPTResponses(discussionId);
-    return result;
+    if (await shouldUseRemote()) {
+      return await remote.getParsedGPTResponses(discussionId);
+    }
+    return [];
   } catch (error) {
     console.error('Error in getParsedGPTResponses:', error);
     return [];
@@ -548,10 +520,10 @@ export async function getParsedGPTResponses(
 export async function getAIResponse(question: string): Promise<string> {
   console.log('getAIResponse called with:', question);
   try {
-    const result = (await shouldUseRemote())
-      ? await remote.getAIResponse(question)
-      : await local.getAIResponse(question);
-    return result;
+    if (await shouldUseRemote()) {
+      return await remote.getAIResponse(question);
+    }
+    return '';
   } catch (error) {
     console.error('Error in getAIResponse:', error);
     throw error;
@@ -560,12 +532,7 @@ export async function getAIResponse(question: string): Promise<string> {
 
 export async function populateCategoryId(): Promise<void> {
   console.log('populateCategoryId called');
-  try {
-    await local.populateCategoryId();
-  } catch (error) {
-    console.error('Error in populateCategoryId:', error);
-    throw error;
-  }
+  // Removed: local.populateCategoryId
 }
 
 export async function syncToCloud(
@@ -598,8 +565,7 @@ export async function syncToCloud(
     // Full-table sync
     console.log('syncToCloud (full-table) called for:', tableName);
     try {
-      // Use the local syncToCloud, which uploads all unsynced rows via the router
-      await local.syncToCloud(tableName, undefined, undefined);
+  // Removed: local.syncToCloud
     } catch (error) {
       console.error('Error in syncToCloud (full-table):', error);
       throw error;
@@ -610,10 +576,10 @@ export async function syncToCloud(
 export async function getNextActiveAlert(): Promise<Record<string, unknown> | null> {
   console.log('getNextActiveAlert called');
   try {
-    const result = (await shouldUseRemote())
-      ? await remote.getNextActiveAlert()
-      : await local.getNextActiveAlert();
-    return result;
+    if (await shouldUseRemote()) {
+      return await remote.getNextActiveAlert();
+    }
+    return null;
   } catch (error) {
     console.error('Error in getNextActiveAlert:', error);
     return null;
@@ -626,7 +592,7 @@ export async function addOrUpdateAlert(alertData: Record<string, unknown>): Prom
     if (await shouldUseRemote()) {
       await remote.addOrUpdateAlert(alertData);
     }
-    await local.addOrUpdateAlert(alertData);
+  // Removed: local.addOrUpdateAlert
     const uid = (await getUID()) || 'unknown';
     await logSyncEntry({
       id: (alertData._id as string) || new Date().getTime().toString(),
@@ -652,7 +618,7 @@ export async function deactivateAlertByKey(
     }
     // For local, if it still expects number, convert to number if possible
     const keyNum = typeof key === 'number' ? key : parseInt(keyStr, 10);
-    await local.deactivateAlertByKey(keyNum);
+  // Removed: local.deactivateAlertByKey
     const uid = (await getUID()) || 'unknown';
     await logSyncEntry({
       id: keyStr,
@@ -672,13 +638,13 @@ export async function getURLofGPT(
 ): Promise<{ url: string; apiKey: string } | null> {
   console.log('getURLofGPT called with:', gpt_name);
   try {
-    const result = (await shouldUseRemote())
-      ? await remote.getURLofGPT(gpt_name)
-      : await local.getURLofGPT(gpt_name);
-    return result;
+    if (await shouldUseRemote()) {
+      return await remote.getURLofGPT(gpt_name);
+    }
+    return { url: '', apiKey: '' };
   } catch (error) {
     console.error('Error in getURLofGPT:', error);
-    return null;
+    return { url: '', apiKey: '' };
   }
 }
 
@@ -687,10 +653,10 @@ export async function expandFromAbbreviation(
 ): Promise<string> {
   // console.log('expandFromAbbreviation called with:', discussion);
   try {
-    const result = (await shouldUseRemote())
-      ? await remote.expandFromAbbreviation(discussion)
-      : await local.expandFromAbbreviation(discussion);
-    return result;
+    if (await shouldUseRemote()) {
+      return await remote.expandFromAbbreviation(discussion);
+    }
+    return discussion;
   } catch (error) {
     console.error('Error in expandFromAbbreviation:', error);
     return discussion;
@@ -701,7 +667,7 @@ export async function restoreLostData(): Promise<void> {
   // console.log('restoreLostData called');
   try {
     await remote.restoreLostData();
-    await local.restoreLostData();
+    // Removed: local.restoreLostData
     const uid = (await getUID()) || 'unknown';
     await logSyncEntry({
       id: new Date().getTime().toString(),
@@ -719,10 +685,8 @@ export async function restoreLostData(): Promise<void> {
 export async function getRules(): Promise<Record<string, unknown>[]> {
   //console.log('getRules called');
   try {
-    const result = (await shouldUseRemote())
-      ? await remote.getRules()
-      : await local.getRules();
-    return result;
+  const result = await remote.getRules();
+  return result;
   } catch (error) {
     console.error('Error in getRules:', error);
     return [];
@@ -737,8 +701,7 @@ export async function updateGPTSpecialties(gptSpecialty: {
 }): Promise<void> {
   //console.log('updateGPTSpecialties called with:', gptSpecialty);
   try {
-    await remote.updateGPTSpecialties(gptSpecialty);
-    await local.updateGPTSpecialties(gptSpecialty);
+  await remote.updateGPTSpecialties(gptSpecialty);
     const uid = (await getUID()) || 'unknown';
     await logSyncEntry({
       id: gptSpecialty.id ? String(gptSpecialty.id) : Date.now().toString(),
@@ -756,10 +719,8 @@ export async function updateGPTSpecialties(gptSpecialty: {
 export async function getActivityLogs(): Promise<ActivityLog[]> {
   //console.log('getActivityLogs called');
   try {
-    const result = (await shouldUseRemote())
-      ? await remote.getActivityLogs()
-      : await local.getActivityLogs();
-    return result;
+  const result = await remote.getActivityLogs();
+  return result;
   } catch (error) {
     console.error('Error in getActivityLogs:', error);
     return [];
@@ -769,10 +730,12 @@ export async function getActivityLogs(): Promise<ActivityLog[]> {
 export async function getParameters(): Promise<Record<string, unknown>[]> {
   //console.log('getParameters called');
   try {
-    const result = (await shouldUseRemote())
-      ? await remote.getParameters()
-      : await local.getParameters();
-    return result as Record<string, unknown>[];
+    const result = await remote.getParameters();
+    // Ensure result is an array of objects
+    if (Array.isArray(result)) {
+      return result.map((item) => ({ ...item }));
+    }
+    return [];
   } catch (error) {
     console.error('Error in getParameters:', error);
     return [];
@@ -784,10 +747,8 @@ export async function getDescriptionsWithTimestamps(
 ): Promise<string> {
   console.log('getDescriptionsWithTimestamps called with:', categories);
   try {
-    const result = (await shouldUseRemote())
-      ? await remote.getDescriptionsWithTimestamps(categories)
-      : await local.getDescriptionsWithTimestamps(categories);
-    return result;
+  const result = await remote.getDescriptionsWithTimestamps(categories);
+  return result;
   } catch (error) {
     console.error('Error in getDescriptionsWithTimestamps:', error);
     return '[]';
@@ -797,8 +758,7 @@ export async function getDescriptionsWithTimestamps(
 export async function createDocument(data: Record<string, unknown>): Promise<string> {
   //console.log('createDocument called with:', data);
   try {
-    const remoteResult = await remote.createDocument(data);
-    await local.createDocument(data);
+  const remoteResult = await remote.createDocument(data);
     const uid = (await getUID()) || 'unknown';
     await logSyncEntry({
       id: remoteResult,
@@ -817,10 +777,8 @@ export async function createDocument(data: Record<string, unknown>): Promise<str
 export async function readDocuments(): Promise<Record<string, unknown>[]> {
   //console.log('readDocuments called');
   try {
-    const result = (await shouldUseRemote())
-      ? await remote.readDocuments()
-      : await local.readDocuments();
-    return result;
+  const result = await remote.readDocuments();
+  return result;
   } catch (error) {
     console.error('Error in readDocuments:', error);
     return [];
@@ -830,8 +788,7 @@ export async function readDocuments(): Promise<Record<string, unknown>[]> {
 export async function updateDocument(docId: string, data: Record<string, unknown>): Promise<void> {
   //console.log('updateDocument called with:', docId, data);
   try {
-    await remote.updateDocument(docId, data);
-    await local.updateDocument(docId, data);
+  await remote.updateDocument(docId, data);
     const uid = (await getUID()) || 'unknown';
     await logSyncEntry({
       id: docId,
@@ -849,8 +806,7 @@ export async function updateDocument(docId: string, data: Record<string, unknown
 export async function deleteDocument(docId: string): Promise<void> {
   console.log('deleteDocument called with:', docId);
   try {
-    await remote.deleteDocument(docId);
-    await local.deleteDocument(docId);
+  await remote.deleteDocument(docId);
     const uid = (await getUID()) || 'unknown';
     await logSyncEntry({
       id: docId,
@@ -868,10 +824,8 @@ export async function deleteDocument(docId: string): Promise<void> {
 export async function getDistinctCategories(): Promise<string[]> {
   //  console.log('getDistinctCategories called');
   try {
-    const result = (await shouldUseRemote())
-      ? await remote.getDistinctCategories()
-      : await local.getDistinctCategories();
-    return result;
+  const result = await remote.getDistinctCategories();
+  return result;
   } catch (error) {
     console.error('Error in getDistinctCategories:', error);
     return [];
@@ -881,10 +835,8 @@ export async function getDistinctCategories(): Promise<string[]> {
 export async function getCategoryById(id: string): Promise<Category | null> {
   //  console.log('getCategory called with:', id);
   try {
-    const result = (await shouldUseRemoteForCategories())
-      ? null // Remote doesn't support getCategoryById with id parameter yet
-      : await local.getCategoryById(id);
-    return result;
+  // Remote doesn't support getCategoryById with id parameter yet
+  return null;
   } catch (error) {
     console.error('Error in getCategory:', error);
     return null;
@@ -894,8 +846,7 @@ export async function getCategoryById(id: string): Promise<Category | null> {
 export async function insertJsonFile(jsonData: Array<{ category: string; value: string }>): Promise<void> {
   // console.log('insertJsonFile called with:', jsonData);
   try {
-    await remote.insertJsonFile(jsonData);
-    await local.insertJsonFile(jsonData);
+  await remote.insertJsonFile(jsonData);
     const uid = (await getUID()) || 'unknown';
     await logSyncEntry({
       id: new Date().getTime().toString(),
@@ -915,10 +866,8 @@ export async function queryAllFieldsByCategories(
 ): Promise<string[]> {
   console.log('queryAllFieldsByCategories called with:', categories);
   try {
-    const result = (await shouldUseRemote())
-      ? await remote.queryAllFieldsByCategories(categories)
-      : await local.queryAllFieldsByCategories(categories);
-    return result;
+  const result = await remote.queryAllFieldsByCategories(categories);
+  return result;
   } catch (error) {
     console.error('Error in queryAllFieldsByCategories:', error);
     return [];
@@ -930,8 +879,7 @@ export async function synchronizeActivityLog(
 ): Promise<void> {
   console.log('synchronizeActivityLog called with appVersion:', appVersion);
   try {
-    await remote.synchronizeActivityLog(appVersion);
-    await local.synchronizeActivityLog(appVersion);
+  await remote.synchronizeActivityLog(appVersion);
     const uid = (await getUID()) || 'unknown';
     await logSyncEntry({
       id: new Date().getTime().toString(),
@@ -951,8 +899,7 @@ export async function synchronizeDiscussions(
 ): Promise<void> {
   console.log('synchronizeDiscussions called with appVersion:', appVersion);
   try {
-    await remote.synchronizeDiscussions(appVersion);
-    await local.synchronizeDiscussions(appVersion);
+  await remote.synchronizeDiscussions(appVersion);
     const uid = (await getUID()) || 'unknown';
     await logSyncEntry({
       id: new Date().getTime().toString(),
@@ -970,35 +917,7 @@ export async function synchronizeDiscussions(
 export async function synchronizeCategories(appVersion: string): Promise<void> {
   console.log('synchronizeCategories called with appVersion:', appVersion);
   try {
-    const useRemoteCategories = await shouldUseRemoteForCategories();
-    console.log('[DEBUG] synchronizeCategories - useRemoteCategories:', useRemoteCategories);
-    
-    if (useRemoteCategories) {
-      console.log('[DEBUG] synchronizeCategories - calling remote.synchronizeCategories');
-      await remote.synchronizeCategories(appVersion);
-      
-      // NEW: Also download categories FROM Firebase TO local Realm
-      console.log('[DEBUG] synchronizeCategories - downloading categories from Firebase');
-      try {
-        const firebaseCategories = await remote.getCategories();
-        console.log(`[DEBUG] Downloaded ${firebaseCategories.length} categories from Firebase:`, firebaseCategories.map(c => c.name));
-        
-        if (firebaseCategories.length > 0) {
-          await local.syncTableFromRemote('Category', firebaseCategories as unknown as Record<string, unknown>[]);
-          console.log('[DEBUG] Successfully synced categories to local Realm');
-        } else {
-          console.log('[DEBUG] No categories found in Firebase');
-        }
-      } catch (downloadError) {
-        console.error('[DEBUG] Error downloading categories from Firebase:', downloadError);
-        // Don't fail the entire sync if download fails
-      }
-    } else {
-      console.log('[DEBUG] synchronizeCategories - skipping remote sync');
-    }
-    
-    console.log('[DEBUG] synchronizeCategories - calling local.synchronizeCategories');
-    await local.synchronizeCategories(appVersion);
+  await remote.synchronizeCategories(appVersion);
     const uid = (await getUID()) || 'unknown';
     await logSyncEntry({
       id: new Date().getTime().toString(),
@@ -1016,7 +935,8 @@ export async function synchronizeCategories(appVersion: string): Promise<void> {
 export async function getCategories(): Promise<Category[]> {
   console.log('getCategories called');
   try {
-    return await local.getCategories();
+  // Not implemented: getCategories (local only)
+  return [];
   } catch (error) {
     console.error('Error in getCategories:', error);
     throw error;
@@ -1026,12 +946,8 @@ export async function getCategories(): Promise<Category[]> {
 export async function getCategoryNames(): Promise<string[]> {
   console.log('getCategoryNames called');
   try {
-    if (await shouldUseRemoteForCategories()) {
-      // For now, use local even if remote is enabled since remote doesn't have this function yet
-      return await local.getCategoryNames();
-    } else {
-      return await local.getCategoryNames();
-    }
+  // Not implemented: getCategoryNames (local only)
+  return [];
   } catch (error) {
     console.error('Error in getCategoryNames:', error);
     throw error;
@@ -1048,19 +964,11 @@ export async function addOrUpdateCategory(
   let localError: any = null;
   let remoteError: any = null;
   const uid = (await getUID()) || 'unknown';
-  // Try local first
+  // Only remote supported
   try {
-    categoryId = await local.addOrUpdateCategory(name, description, id);
+    categoryId = await remote.addOrUpdateCategory(name, description, id);
   } catch (err) {
-    localError = err;
-  }
-  // Try remote if enabled
-  if (await shouldUseRemoteForCategories()) {
-    try {
-      categoryId = await remote.addOrUpdateCategory(name, description, id);
-    } catch (err) {
-      remoteError = err;
-    }
+    remoteError = err;
   }
   if (categoryId) {
     await logSyncEntry({
@@ -1072,8 +980,8 @@ export async function addOrUpdateCategory(
     });
     return categoryId;
   } else {
-    console.error('Error in addOrUpdateCategory:', { localError, remoteError });
-    throw localError || remoteError || new Error('Failed to create or update category');
+    console.error('Error in addOrUpdateCategory:', { remoteError });
+    throw remoteError || new Error('Failed to create or update category');
   }
 }
 
@@ -1082,25 +990,15 @@ export async function checkCategoryReferences(categoryId: string): Promise<{
   referenceCount: number;
   references: { tableName: string; count: number }[];
 }> {
-  console.log('checkCategoryReferences called with:', categoryId);
-  try {
-    // For now, always use local since remote doesn't support this yet
-    return await local.checkCategoryReferences(categoryId);
-  } catch (error) {
-    console.error('Error in checkCategoryReferences:', error);
-    throw error;
-  }
+  // Not implemented: checkCategoryReferences (local only)
+  return { hasReferences: false, referenceCount: 0, references: [] };
 }
 
 export async function findCategoryByName(name: string): Promise<Category | null> {
   console.log('findCategoryByName called with:', name);
   try {
-    if (await shouldUseRemoteForCategories()) {
-      // For now, use local even if remote is enabled
-      return await local.findCategoryByName(name);
-    } else {
-      return await local.findCategoryByName(name);
-    }
+  // Not implemented: findCategoryByName (local only)
+  return null;
   } catch (error) {
     console.error('Error in findCategoryByName:', error);
     throw error;
@@ -1116,18 +1014,7 @@ export async function mergeCategoryReferences(
     toCategoryId,
   });
   try {
-    // Always use local for merging, then sync if needed
-    await local.mergeCategoryReferences(fromCategoryId, toCategoryId);
-
-    // Log the merge operation
-    const uid = (await getUID()) || 'unknown';
-    await logSyncEntry({
-      id: `merge_${fromCategoryId}_to_${toCategoryId}`,
-      tableName: 'Category',
-      operation: 'update',
-      timestamp: new Date(),
-      uid,
-    });
+  // Not implemented: mergeCategoryReferences (local only)
   } catch (error) {
     console.error('Error in mergeCategoryReferences:', error);
     throw error;
@@ -1137,10 +1024,7 @@ export async function mergeCategoryReferences(
 export async function deleteCategory(id: string): Promise<void> {
   console.log('deleteCategory called with:', id);
   try {
-    if (await shouldUseRemoteForCategories()) {
-      await remote.deleteCategory(id);
-    }
-    await local.deleteCategory(id);
+  await remote.deleteCategory(id);
     const uid = (await getUID()) || 'unknown';
     await logSyncEntry({
       id,
@@ -1157,11 +1041,7 @@ export async function deleteCategory(id: string): Promise<void> {
 
 // Delete ActivityLog (router)
 export async function deleteActivityLog(activityLogId: string): Promise<void> {
-  if (await shouldUseRemote()) {
-    await remote.deleteActivityLog(activityLogId);
-  } else {
-    await local.deleteActivityLog(activityLogId);
-  }
+  await remote.deleteActivityLog(activityLogId);
   const uid = (await getUID()) || 'unknown';
   await logSyncEntry({
     id: activityLogId,
@@ -1176,11 +1056,7 @@ export async function deleteActivityLog(activityLogId: string): Promise<void> {
 export async function createActivityLog(
   activityLog: Omit<ActivityLog, 'id'>
 ): Promise<string> {
-  if (await shouldUseRemote()) {
-    return await remote.createActivityLog(activityLog);
-  } else {
-    return await local.createActivityLog(activityLog);
-  }
+  return await remote.createActivityLog(activityLog);
 }
 
 export async function updateActivityLogCategory(
@@ -1193,11 +1069,7 @@ export async function updateActivityLogCategory(
     category
   );
   try {
-    if (await shouldUseRemote()) {
-      await remote.updateActivityLogCategory(activityLogId, category);
-    } else {
-      await local.updateActivityLogCategory(activityLogId, category);
-    }
+  await remote.updateActivityLogCategory(activityLogId, category);
     const uid = (await getUID()) || 'unknown';
     await logSyncEntry({
       id: activityLogId,
@@ -1220,11 +1092,7 @@ export async function createRuleCandidate(data: {
 }): Promise<void> {
   // console.log('createRuleCandidate called with:', data);
   try {
-    if (await shouldUseRemote()) {
-      await remote.createRuleCandidate(data);
-    } else {
-      await local.createRuleCandidate(data);
-    }
+  await remote.createRuleCandidate(data);
     const uid = (await getUID()) || 'unknown';
     await logSyncEntry({
       id: new Date().getTime().toString(),
@@ -1244,70 +1112,10 @@ export async function createRuleCandidate(data: {
  * This will populate Realm with any remote rows created by legacy apps or other clients.
  */
 export async function syncFromRemote() {
-  // Tables to sync
-  const tables = ['ActivityLog', 'Discussion', 'Category'];
-  console.log('[SYNC] Starting syncFromRemote for tables:', tables);
-  for (const tableName of tables) {
-    // 1. Get all local changelog rowIds for this table
-    let localChangeLog: Record<string, unknown>[] = [];
-    try {
-      localChangeLog = await local.readChangeLog({ tableName });
-    } catch (e) {
-      console.warn(
-        `[SYNC] Could not read local changelog for ${tableName}:`,
-        e
-      );
-    }
-    const localChangeLogRowIds = new Set(
-      (localChangeLog || []).map((cl) => cl.rowId?.toString()).filter((id): id is string => id !== undefined)
-    );
-
-    // 2. Download legacy/unsynced remote rows and create remote changelog entries
-    let newRows: Record<string, unknown>[] = [];
-    try {
-      const result = await remote.downloadLegacyRowsAndSyncChangelog(
-        tableName,
-        localChangeLogRowIds
-      );
-      newRows = result.newRows;
-      // changelogEntries = result.changelogEntries; // Not used currently
-    } catch (e) {
-      console.warn(
-        `[SYNC] Could not download legacy rows for ${tableName}:`,
-        e
-      );
-    }
-
-    // 3. Insert newRows into Realm
-    console.log(`[SYNC] Inserting ${newRows.length} new rows for ${tableName}`);
-    if (newRows && newRows.length > 0) {
-      try {
-        await local.syncTableFromRemote(tableName, newRows);
-      } catch (e) {
-        console.warn(`[SYNC] Could not insert newRows for ${tableName}:`, e);
-      }
-    }
-
-    // 4. Add local changelog entries for each new row if not present
-    if (newRows && newRows.length > 0) {
-      for (const row of newRows) {
-        const rowId = row.id?.toString();
-        if (rowId && !localChangeLogRowIds.has(rowId)) {
-          try {
-            local.logChange(tableName, rowId, 'create');
-          } catch (e) {
-            console.warn(
-              `[SYNC] Could not add local changelog for ${tableName} row ${rowId}:`,
-              e
-            );
-          }
-        }
-      }
-    }
-  }
+  // Not implemented: syncFromRemote (local only)
 }
 
-export { syncTableFromRemote, cleanupDuplicateCategories } from './dbServicesLocal';
+// ...existing code...
 
 /**
  * Utility: Run all sync functions (Discussions, ActivityLog, Categories, and full remote sync)
@@ -1317,7 +1125,7 @@ export async function runAllSyncFunctions(appVersion = '1.1.0') {
   await synchronizeDiscussions(appVersion);
   await synchronizeActivityLog(appVersion);
   await synchronizeCategories(appVersion);
-  await syncFromRemote();
+  // syncFromRemote not implemented
   console.log('[UTIL] All sync functions complete.');
 }
 
@@ -1326,9 +1134,8 @@ export async function runAllSyncFunctions(appVersion = '1.1.0') {
  */
 export async function deleteAllLocalAndRemoteRows() {
   console.log('[UTIL] Deleting all local and remote rows...');
-  await local.deleteAllLocalRows();
   await remote.deleteAllRemoteChangeLogs();
-  console.log('[UTIL] All local and remote rows deleted.');
+  console.log('[UTIL] All remote rows deleted.');
 }
 
 /**
@@ -1340,18 +1147,7 @@ export async function insertTestRowsAndExit() {
   );
   for (let i = 0; i < 10; i++) {
     await addOrUpdateDiscussion(`Test Discussion ${i + 1}`, 'test', undefined);
-    await local.createActivityLog({
-      discussionId: `test-discussion-${i + 1}`,
-      category: 'test',
-      description: `Test ActivityLog ${i + 1}`,
-      timestamp: new Date(),
-      cleared: false,
-      responseType: 'test',
-      synced: false,
-      uid: 'local_user',
-      lockedCategory: false,
-      lockedDescription: false,
-    });
+    // Not implemented: createActivityLog (local only)
   }
   console.log('[UTIL] Test rows inserted. Exiting process.');
   if (typeof process !== 'undefined' && process.exit) {
@@ -1393,73 +1189,12 @@ export async function createCategoriesFromActivityLogs() {
 
   try {
     // Get all activity logs to extract distinct categories
-    const activityLogs = await getActivityLogs();
-    console.log(`[UTIL] Found ${activityLogs.length} activity logs`);
-
-    // Extract distinct categories (excluding empty, null, undefined, and 'uncategorized')
-    const distinctCategories = new Set<string>();
-
-    activityLogs.forEach((log: ActivityLog) => {
-      const category = log.category?.trim();
-      if (
-        category &&
-        category !== 'uncategorized' &&
-        category !== 'undefined' &&
-        category !== 'null' &&
-        category.length > 0
-      ) {
-        distinctCategories.add(category);
-      }
-    });
-
-    console.log(
-      `[UTIL] Found ${distinctCategories.size} distinct categories:`,
-      Array.from(distinctCategories)
-    );
-
-    // Check existing categories to avoid duplicates
-    const existingCategories = await getCategories();
-    const existingCategoryNames = new Set(
-      existingCategories.map((cat) => cat.name.toLowerCase())
-    );
-
-    let createdCount = 0;
-    let skippedCount = 0;
-
-    // Create categories that don't already exist
-    for (const categoryName of distinctCategories) {
-      const lowerCaseName = categoryName.toLowerCase();
-
-      if (existingCategoryNames.has(lowerCaseName)) {
-        console.log(
-          `[UTIL] Category '${categoryName}' already exists, skipping`
-        );
-        skippedCount++;
-      } else {
-        try {
-          await addOrUpdateCategory(
-            categoryName,
-            `Auto-created from ActivityLog data`
-          );
-          console.log(`[UTIL] Created category: ${categoryName}`);
-          createdCount++;
-        } catch (error) {
-          console.warn(
-            `[UTIL] Failed to create category '${categoryName}':`,
-            error
-          );
-        }
-      }
-    }
-
-    console.log(
-      `[UTIL] Categories creation complete. Created: ${createdCount}, Skipped: ${skippedCount}`
-    );
+    // Not implemented: createCategoriesFromActivityLogs (local only)
     return {
-      total: distinctCategories.size,
-      created: createdCount,
-      skipped: skippedCount,
-      categories: Array.from(distinctCategories),
+      total: 0,
+      created: 0,
+      skipped: 0,
+      categories: [],
     };
   } catch (error) {
     console.error('[UTIL] Error creating categories from ActivityLog:', error);
@@ -1479,12 +1214,7 @@ export async function addChangeLogEntry(
       // If remote implementation exists, call it here
       // await remote.addChangeLogEntry(tableName, rowId, operation, timestamp);
     }
-    await local.addChangeLogEntry(
-      tableName,
-      rowId,
-      operation,
-      timestamp ?? new Date()
-    );
+  // Not implemented: addChangeLogEntry (local only)
   } catch (error) {
     console.error('Error in addChangeLogEntry:', error);
     throw error;
@@ -1506,7 +1236,8 @@ export async function importLegacyDiscussions(
       discussionId: d.discussionId || d.id, // Use id as fallback for discussionId
       typeSay: d.typeSay || 'tell' // Default typeSay
     }));
-    return await local.importLegacyDiscussions(mappedDiscussions);
+  // Not implemented: importLegacyDiscussions (local only)
+  return 0;
   } catch (error) {
     console.error('Error in importLegacyDiscussions:', error);
     throw error;
@@ -1522,7 +1253,8 @@ export async function importLegacyActivityLogs(
     'activity logs'
   );
   try {
-    return await local.importLegacyActivityLogs(activityLogs);
+  // Not implemented: importLegacyActivityLogs (local only)
+  return 0;
   } catch (error) {
     console.error('Error in importLegacyActivityLogs:', error);
     throw error;
@@ -1532,7 +1264,7 @@ export async function importLegacyActivityLogs(
 export async function ensureStringIds(tableName: string): Promise<void> {
   console.log('ensureStringIds called for:', tableName);
   try {
-    await local.ensureStringIds(tableName);
+  // Not implemented: ensureStringIds (local only)
   } catch (error) {
     console.error('Error in ensureStringIds:', error);
     throw error;
@@ -1542,7 +1274,7 @@ export async function ensureStringIds(tableName: string): Promise<void> {
 export async function printAllRealmDataToTerminal(): Promise<void> {
   console.log('printAllRealmDataToTerminal called');
   try {
-    await local.printAllRealmDataToTerminal();
+  // Not implemented: printAllRealmDataToTerminal (local only)
   } catch (error) {
     console.error('Error in printAllRealmDataToTerminal:', error);
     throw error;
@@ -1552,7 +1284,7 @@ export async function printAllRealmDataToTerminal(): Promise<void> {
 export async function debugPrintAllActivityLogs(): Promise<void> {
   console.log('debugPrintAllActivityLogs called');
   try {
-    await local.debugPrintAllActivityLogs();
+  // Not implemented: debugPrintAllActivityLogs (local only)
   } catch (error) {
     console.error('Error in debugPrintAllActivityLogs:', error);
     throw error;
@@ -1562,7 +1294,7 @@ export async function debugPrintAllActivityLogs(): Promise<void> {
 export async function debugPrintAllDiscussions(): Promise<void> {
   console.log('debugPrintAllDiscussions called');
   try {
-    await local.debugPrintAllDiscussions();
+  // Not implemented: debugPrintAllDiscussions (local only)
   } catch (error) {
     console.error('Error in debugPrintAllDiscussions:', error);
     throw error;
@@ -1574,20 +1306,16 @@ export async function saveCandidateResult(selectedId: string | null): Promise<st
   try {
     const uid = (await getUID()) || 'unknown';
     // Always save locally first
-    const result = await local.saveCandidateResult(selectedId, uid);
-    // Only save remote if useRemote is true
-    if (await shouldUseRemote()) {
-      console.log('[CANDIDATE] Calling remote.saveCandidateResult');
-      await remote.saveCandidateResult(selectedId);
-      // Log the sync entry
-      await logSyncEntry({
-        id: result,
-        tableName: 'Votes',
-        operation: 'update',
-        timestamp: new Date(),
-        uid,
-      });
-    }
+    // Only save remote
+    const result = await remote.saveCandidateResult(selectedId);
+    // Log the sync entry
+    await logSyncEntry({
+      id: result,
+      tableName: 'Votes',
+      operation: 'update',
+      timestamp: new Date(),
+      uid,
+    });
     return result;
   } catch (e) {
     console.error('Error in saveCandidateResult:', e);
@@ -1597,9 +1325,8 @@ export async function saveCandidateResult(selectedId: string | null): Promise<st
 
 export async function getCandidateResult(): Promise<{ id: string; selectedId?: string | null; timestamp: Date } | null> {
   try {
-    const row = await local.getCandidateResult();
-    if (!row) return null;
-    return { id: row.id, selectedId: row.selectedId, timestamp: row.timestamp };
+  // Not implemented: getCandidateResult (local only)
+  return null;
   } catch (e) {
     console.error('Error in getCandidateResult:', e);
     return null;
@@ -1609,12 +1336,8 @@ export async function getCandidateResult(): Promise<{ id: string; selectedId?: s
 export async function appendCandidateResultHistory(selectedId: string | null, electionId?: string): Promise<string> {
   try {
     const uid = (await getUID()) || 'unknown';
-    // Only use Firebase/cloud for voting history
-    if (await shouldUseRemote()) {
-      return await remote.appendCandidateResultHistory(selectedId, uid, electionId);
-    } else {
-      throw new Error('Cloud voting is not enabled.');
-    }
+  // Only use Firebase/cloud for voting history
+  return await remote.appendCandidateResultHistory(selectedId, uid, electionId);
   } catch (e) {
     console.error('Error in appendCandidateResultHistory:', e);
     throw e;
@@ -1623,7 +1346,8 @@ export async function appendCandidateResultHistory(selectedId: string | null, el
 
 export async function getCandidateResultHistory(limit = 50): Promise<{ id: string; selectedId?: string | null; timestamp: Date }[]> {
   try {
-    return await local.getCandidateResultHistory(limit);
+  // Not implemented: getCandidateResultHistory (local only)
+  return [];
   } catch (e) {
     console.error('Error in getCandidateResultHistory:', e);
     return [];
@@ -1632,7 +1356,8 @@ export async function getCandidateResultHistory(limit = 50): Promise<{ id: strin
 
 export async function clearCandidateResultHistory(): Promise<number> {
   try {
-    return await local.clearCandidateResultHistory();
+  // Not implemented: clearCandidateResultHistory (local only)
+  return 0;
   } catch (e) {
     console.error('Error in clearCandidateResultHistory:', e);
     throw e;
@@ -1641,7 +1366,8 @@ export async function clearCandidateResultHistory(): Promise<number> {
 
 export async function pruneCandidateResultHistory(max: number): Promise<number> {
   try {
-    return await local.pruneCandidateResultHistory(max);
+  // Not implemented: pruneCandidateResultHistory (local only)
+  return 0;
   } catch (e) {
     console.error('Error in pruneCandidateResultHistory:', e);
     throw e;
@@ -1654,7 +1380,8 @@ export async function removeDuplicateActivityLogs(): Promise<{
 }> {
   console.log('removeDuplicateActivityLogs called');
   try {
-    return await local.removeDuplicateActivityLogs();
+  // Not implemented: removeDuplicateActivityLogs (local only)
+  return { duplicatesFound: 0, duplicatesRemoved: 0 };
   } catch (error) {
     console.error('Error in removeDuplicateActivityLogs:', error);
     throw error;
@@ -1667,39 +1394,7 @@ export async function debugTestDataFetch(): Promise<void> {
 
   try {
     console.log('[DEBUG] Testing getActivityLogs...');
-    const activityLogs = await local.getActivityLogs();
-    console.log(
-      '[DEBUG] Local getActivityLogs returned:',
-      activityLogs.length,
-      'items'
-    );
-
-    console.log('[DEBUG] Testing getDiscussions...');
-    const discussions = await local.getDiscussions();
-    console.log(
-      '[DEBUG] Local getDiscussions returned:',
-      discussions.length,
-      'items'
-    );
-
-    console.log('[DEBUG] Testing getCategories...');
-    const categories = await local.getCategories();
-    console.log(
-      '[DEBUG] Local getCategories returned:',
-      categories.length,
-      'items'
-    );
-
-    console.log('[DEBUG] Testing shouldUseRemote...');
-    const useRemote = await shouldUseRemote();
-    console.log('[DEBUG] shouldUseRemote returned:', useRemote);
-
-    console.log('[DEBUG] Testing shouldUseRemoteForCategories...');
-    const useRemoteCategories = await shouldUseRemoteForCategories();
-    console.log(
-      '[DEBUG] shouldUseRemoteForCategories returned:',
-      useRemoteCategories
-    );
+  // Not implemented: debugTestDataFetch (local only)
   } catch (error) {
     console.error('[DEBUG] Error in debugTestDataFetch:', error);
   }
@@ -1712,98 +1407,6 @@ export async function debugTestDataFetch(): Promise<void> {
  */
 export async function syncBidirectionalChangeLog() {
   const tables = ['ActivityLog', 'Discussion', 'Category']; // Add more as needed
-  for (const tableName of tables) {
-    // --- Phase 1: Local → Remote ---
-    const localChangeLog = await local.readChangeLog({
-      tableName,
-      synced: false,
-    });
-    const remoteChangeLog = await remote.readChangeLog({ tableName });
-    const remoteChangeLogMap = new Map();
-    remoteChangeLog.forEach((entry: Record<string, unknown>) => {
-      remoteChangeLogMap.set(entry.rowId, entry);
-    });
-    for (const localEntry of localChangeLog) {
-      const remoteEntry = remoteChangeLogMap.get(localEntry.rowId as string);
-      if (remoteEntry) {
-        // Both logs have entry for this row
-        if (new Date(localEntry.timestamp as string | number | Date) > new Date(remoteEntry.timestamp as string | number | Date)) {
-          // Local is newer: apply to remote
-          await remote.applyChangeLogOperation(tableName, localEntry);
-          await remote.addOrUpdateChangeLogEntry(
-            tableName,
-            localEntry.rowId as string,
-            localEntry.operation as string,
-            localEntry.timestamp as Date,
-            localEntry.data as Record<string, unknown>
-          );
-        } else if (
-          new Date(remoteEntry.timestamp as string | number | Date) > new Date(localEntry.timestamp as string | number | Date)
-        ) {
-          // Remote is newer: apply to local
-          await local.applyChangeLogOperation(tableName, remoteEntry);
-          await local.addOrUpdateChangeLogEntry(
-            tableName,
-            remoteEntry.rowId as string,
-            remoteEntry.operation,
-            remoteEntry.timestamp,
-            remoteEntry.data
-          );
-        }
-      } else {
-        // No remote entry: push local to remote
-        await remote.applyChangeLogOperation(tableName, localEntry);          await remote.addOrUpdateChangeLogEntry(
-            tableName,
-            localEntry.rowId as string,
-            localEntry.operation as string,
-            localEntry.timestamp as Date,
-            localEntry.data as Record<string, unknown>
-          );
-      }
-      // Mark local entry as synced
-      await local.markChangeLogEntrySynced(tableName, localEntry.rowId as string);
-    }
-
-    // --- Phase 2: Remote → Local ---
-    const updatedLocalChangeLog = await local.readChangeLog({ tableName });
-    const localChangeLogMap = new Map();
-    updatedLocalChangeLog.forEach((entry: Record<string, unknown>) => {
-      localChangeLogMap.set(entry.rowId, entry);
-    });
-    const unsyncedRemoteChangeLog = remoteChangeLog.filter(
-      (entry: Record<string, unknown>) => !entry.synced
-    );
-    for (const remoteEntry of unsyncedRemoteChangeLog) {
-      const rowId = typeof remoteEntry.rowId === 'string' ? remoteEntry.rowId : String(remoteEntry.rowId ?? '');
-      const localEntry = localChangeLogMap.get(rowId);
-      const remoteTimestamp = remoteEntry.timestamp as string | number | Date;
-      const localTimestamp = localEntry?.timestamp as string | number | Date;
-      if (!localEntry) {
-        // No local entry: apply remote to local
-        await local.applyChangeLogOperation(tableName, remoteEntry);
-        await local.addOrUpdateChangeLogEntry(
-          tableName,
-          rowId,
-          remoteEntry.operation as string,
-          new Date(remoteTimestamp),
-          remoteEntry.data as Record<string, unknown>
-        );
-      } else if (
-        new Date(remoteTimestamp) > new Date(localTimestamp)
-      ) {
-        // Remote is newer: apply to local
-        await local.applyChangeLogOperation(tableName, remoteEntry);
-        await local.addOrUpdateChangeLogEntry(
-          tableName,
-          rowId,
-          remoteEntry.operation as string,
-          new Date(remoteTimestamp),
-          remoteEntry.data as Record<string, unknown>
-        );
-      }
-      // Mark remote entry as synced
-      await remote.markChangeLogEntrySynced(tableName, rowId);
-    }
-  }
-  console.log('[SYNC] Bi-directional change log sync complete.');
+  // Not implemented: syncBidirectionalChangeLog (local only)
+  console.log('[SYNC] Bi-directional change log sync not implemented.');
 }

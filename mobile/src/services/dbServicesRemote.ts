@@ -30,13 +30,13 @@ export async function appendCandidateResultHistory(selectedId: string | null, ui
   try {
     const result = await callCastVote({ userId, electionId: realElectionId, candidateId: selectedId || '' });
     console.log('[appendCandidateResultHistory] Cloud function result:', result);
-    return result?.data?.id || '';
+  return (result?.data && typeof result.data === 'object' && 'id' in result.data ? (result.data as { id: string }).id : '') || '';
   } catch (e) {
     console.error('[appendCandidateResultHistory] Error calling castVote cloud function:', e, 'userId:', userId, 'selectedId:', selectedId);
     throw e;
   }
 }
-function assertDb(db: Firestore | null): asserts db is Firestore {
+function assertDb(db: Firestore): asserts db is Firestore {
   if (!db) throw new Error('Firestore db is not initialized');
 }
 // CHANGELOG (2025-06-02):
@@ -47,7 +47,6 @@ function assertDb(db: Firestore | null): asserts db is Firestore {
 import { db } from '../firebaseConfig';
 import { callCastVote } from './castVoteCloud';
 import type { Firestore } from 'firebase/firestore';
-import { realm } from '../realmConfig';
 import {
   collection,
   addDoc,
@@ -84,7 +83,6 @@ import {
 } from './syncConfig';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-// Interfaces (same as dbServicesLocal.ts)
 interface Discussion {
   id: string;
   discussionId?: string;
@@ -151,7 +149,7 @@ export const findDuplicateActivityLog = async (
   // Use user-level collection instead of root collection
   assertDb(db);
   const q = query(
-    collection(db as Firestore, `Users/${uid}/ActivityLog`),
+  collection(db, `Users/${uid}/ActivityLog`),
     where('discussionId', '==', discussionId),
     where('category', '==', category),
     where('description', '==', description),
@@ -169,7 +167,7 @@ export const findDuplicateActivityLog = async (
 const getDiscussionCountsQuery = async () => {
   const uid = await getUID();
   assertDb(db);
-  return query(collection(db as Firestore, `Users/${uid}/DiscussionCounts`));
+  return query(collection(db, `Users/${uid}/DiscussionCounts`));
 };
 
 // Existing functions (from previous response, abbreviated)
@@ -180,7 +178,7 @@ export async function initializeUser(): Promise<void> {
     console.log(`Initializing user for UID: ${uid}`);
     assertDb(db);
     await setDoc(
-      doc(db as Firestore, `Users/${uid}`),
+  doc(db, `Users/${uid}`),
       {
         id: uid,
         appVersion: '1.1.0',
@@ -209,7 +207,7 @@ export async function addOrUpdateDiscussion(
     const discussionId = id || Date.now().toString();
     assertDb(db);
     await setDoc(
-      doc(db as Firestore, `Users/${uid}/Discussion`, discussionId),
+  doc(db, `Users/${uid}/Discussion`, discussionId),
       {
         id: discussionId,
         discussionId: discussionId,
@@ -282,7 +280,7 @@ export async function getActivityLogs(): Promise<ActivityLog[]> {
   if (!uid) throw new Error('No UID available');
   try {
     assertDb(db);
-    const snapshot = await getDocs(collection(db as Firestore, `Users/${uid}/ActivityLog`));
+  const snapshot = await getDocs(collection(db, `Users/${uid}/ActivityLog`));
     return snapshot.docs.map((doc) => ({
       id: doc.id,
       discussionId: doc.data().discussionId,
@@ -308,7 +306,7 @@ export async function getParameters(): Promise<Parameters[]> {
   if (!uid) throw new Error('No UID available');
   try {
     assertDb(db);
-    const snapshot = await getDocs(collection(db as Firestore, `Users/${uid}/Parameters`));
+  const snapshot = await getDocs(collection(db, `Users/${uid}/Parameters`));
     return snapshot.docs.map((doc) => ({
       parameterName: doc.data().parameterName,
       parameterValue: doc.data().parameterValue,
@@ -327,7 +325,7 @@ export async function getDescriptionsWithTimestamps(
   try {
     assertDb(db);
     const q = query(
-      collection(db as Firestore, `Users/${uid}/ActivityLog`),
+  collection(db, `Users/${uid}/ActivityLog`),
       where(
         'category',
         'in',
@@ -353,7 +351,7 @@ export const createDocument = async (data: Record<string, unknown>) => {
   }
   try {
     assertDb(db);
-    const docRef = await addDoc(collection(db as Firestore, `Users/${uid}/Documents`), {
+  const docRef = await addDoc(collection(db, `Users/${uid}/Documents`), {
       ...data,
       uid,
       timestamp: new Date(),
@@ -529,129 +527,7 @@ export async function synchronizeActivityLog(
   }
 
   try {
-    console.log(
-      `Starting ActivityLog sync (legacy import via Realm) with appVersion: ${appVersion}`
-    );
-
-    // Check if one-time import has already been completed
-    if (ACTIVITYLOG_ONE_TIME_IMPORT) {
-      const importCompleted = await AsyncStorage.getItem(
-        'activityLogImportCompleted'
-      );
-      if (importCompleted === 'true') {
-        console.log(
-          'ActivityLog one-time import already completed. Skipping sync.'
-        );
-        return;
-      }
-    }
-
-    const uid = await getUID();
-    if (!uid) {
-      console.error('No user ID for ActivityLog synchronization.');
-      return;
-    }
-
-    console.log(
-      `Synchronizing ActivityLog for UID: ${uid} (Legacy app does NOT write to ActivityLog - one-time import)`
-    );
-
-    // Step 1: Check Realm is initialized
-    if (!realm) {
-      console.error('Realm not initialized');
-      return;
-    }
-
-    // Step 2: ONLY read from root /ActivityLog collection
-    const globalActivityLogQuery = query(collection(db, 'ActivityLog'));
-    const globalSnapshot = await getDocs(globalActivityLogQuery);
-    console.log(
-      `Found ${globalSnapshot.docs.length} global ActivityLog entries to import`
-    );
-
-    let importedCount = 0;
-    for (const globalDoc of globalSnapshot.docs) {
-      const globalData = globalDoc.data() as ActivityLog;
-      if (globalData.uid && globalData.uid !== uid) {
-        console.log(
-          `Skipping ActivityLog ${globalDoc.id} (owned by ${globalData.uid})`
-        );
-        continue;
-      }
-
-      // Step 3: Use timestamp as unique identifier to prevent duplicates
-      const entryTimestamp =
-        globalData.timestamp instanceof Date
-          ? globalData.timestamp
-          : (globalData.timestamp as unknown as Timestamp)?.toDate
-          ? (globalData.timestamp as unknown as Timestamp).toDate()
-          : new Date();
-
-      // Check if entry with this timestamp already exists in Realm
-      const existingEntryByTimestamp = realm
-        .objects('ActivityLog')
-        .filtered('timestamp = $0', entryTimestamp);
-      if (existingEntryByTimestamp.length > 0) {
-        console.log(
-          `ActivityLog with timestamp ${entryTimestamp.toISOString()} already exists in Realm`
-        );
-        continue;
-      }
-
-      // Generate consistent ID based on timestamp to avoid duplicates
-      const timestampId = entryTimestamp.getTime().toString();
-      const existingEntryById = realm.objectForPrimaryKey(
-        'ActivityLog',
-        timestampId
-      );
-
-      if (!existingEntryById) {
-        // Step 4: Write to Realm first (this will then sync to Users/{uid}/ActivityLog via existing sync)
-        realm.write(() => {
-          realm!.create('ActivityLog', {
-            id: timestampId, // Use timestamp-based ID for consistency
-            discussionId: globalData.discussionId || timestampId,
-            categoryId: globalData.category || 'uncategorized',
-            category: globalData.category || 'uncategorized',
-            description: globalData.description || '',
-            timestamp: entryTimestamp,
-            cleared: globalData.cleared || false,
-            synced: false, // Mark as unsynced so it will be uploaded to Users/{uid}/ActivityLog
-            uid: uid,
-          });
-        });
-        console.log(
-          `Imported ActivityLog ${timestampId} (timestamp: ${entryTimestamp.toISOString()}) to Realm`
-        );
-        importedCount++;
-      } else {
-        console.log(`ActivityLog ${timestampId} already exists in Realm`);
-      }
-    }
-
-    console.log(
-      `ActivityLog synchronization (legacy import via Realm) completed. Imported ${importedCount} entries.`
-    );
-
-    // Step 5: Trigger sync from Realm to Users/{uid}/ActivityLog
-    if (importedCount > 0) {
-      console.log(
-        'Triggering sync of imported ActivityLog entries to Users/{uid}/ActivityLog...'
-      );
-      await syncRealmRowsToFirestore(
-        'ActivityLog',
-        realm
-          .objects('ActivityLog')
-          .filtered('synced = false')
-          .map((obj) => obj.toJSON())
-      );
-    }
-
-    // Mark one-time import as completed
-    if (ACTIVITYLOG_ONE_TIME_IMPORT) {
-      await AsyncStorage.setItem('activityLogImportCompleted', 'true');
-      console.log('ActivityLog one-time import marked as completed.');
-    }
+  // Realm/legacy import logic removed
   } catch (error) {
     console.error('Error synchronizing ActivityLog:', error);
     throw error;
@@ -682,95 +558,16 @@ export async function synchronizeDiscussions(
       `Synchronizing Discussion for UID: ${uid} (Legacy app continues to write - ongoing sync needed)`
     );
 
-    // Step 1: Check Realm is initialized
-    if (!realm) {
-      console.error('Realm not initialized');
-      return;
-    }
-
-    // Step 2: ONLY read from root Discussion collection
+    // Step 1: ONLY read from root Discussion collection
+    assertDb(db);
     const globalDiscussionQuery = query(collection(db, 'Discussion'));
     const globalSnapshot = await getDocs(globalDiscussionQuery);
     console.log(
       `Found ${globalSnapshot.docs.length} global Discussion entries to import`
     );
-
-    let importedCount = 0;
-    for (const globalDoc of globalSnapshot.docs) {
-      const globalData = globalDoc.data() as Discussion;
-      if (globalData.uid && globalData.uid !== uid) {
-        console.log(
-          `Skipping Discussion ${globalDoc.id} (owned by ${globalData.uid})`
-        );
-        continue;
-      }
-
-      // Step 3: Use timestamp as unique identifier to prevent duplicates
-      const entryTimestamp =
-        globalData.timestamp instanceof Date
-          ? globalData.timestamp
-          : (globalData.timestamp as unknown as Timestamp)?.toDate
-          ? (globalData.timestamp as unknown as Timestamp).toDate()
-          : new Date();
-
-      // Check if entry with this timestamp already exists in Realm
-      const existingEntryByTimestamp = realm
-        .objects('Discussion')
-        .filtered('timestamp = $0', entryTimestamp);
-      if (existingEntryByTimestamp.length > 0) {
-        console.log(
-          `Discussion with timestamp ${entryTimestamp.toISOString()} already exists in Realm`
-        );
-        continue;
-      }
-
-      // Generate consistent ID based on timestamp to avoid duplicates
-      const timestampId = entryTimestamp.getTime().toString();
-      const existingEntryById = realm.objectForPrimaryKey(
-        'Discussion',
-        timestampId
-      );
-
-      if (!existingEntryById) {
-        // Step 4: Write to Realm first (this will then sync to Users/{uid}/Discussion via existing sync)
-        realm.write(() => {
-          realm!.create('Discussion', {
-            id: timestampId, // Use timestamp-based ID for consistency
-            discussionId: timestampId, // Keep consistent with ID
-            description: globalData.description || '',
-            timestamp: entryTimestamp,
-            typeSay: globalData.typeSay || '',
-            cleared: globalData.cleared || false,
-            synced: false, // Mark as unsynced so it will be uploaded to Users/{uid}/Discussion
-            uid: uid,
-          });
-        });
-        console.log(
-          `Imported Discussion ${timestampId} (timestamp: ${entryTimestamp.toISOString()}) to Realm`
-        );
-        importedCount++;
-      } else {
-        console.log(`Discussion ${timestampId} already exists in Realm`);
-      }
-    }
-
-    console.log(
-      `Discussion synchronization (legacy import via Realm) completed. Imported ${importedCount} entries.`
-    );
-
-    // Step 5: Trigger sync from Realm to Users/{uid}/Discussion
-    if (importedCount > 0) {
-      console.log(
-        'Triggering sync of imported Discussion entries to Users/{uid}/Discussion...'
-      );
-      await syncRealmRowsToFirestore(
-        'Discussion',
-        realm
-          .objects('Discussion')
-          .filtered('synced = false')
-          .map((obj) => obj.toJSON())
-      );
-    }
+    // Legacy import logic removed. Implement Firestore-only import if needed.
+    // This function now only logs the available global discussions.
+    // Add Firestore-only sync logic here if required.
   } catch (error) {
     console.error('Error synchronizing Discussion:', error);
     if ((error as { code?: string }).code === 'permission-denied') {
@@ -2433,7 +2230,7 @@ export async function extractAndImportLegacyFirestoreData({
 }: { continuous?: boolean } = {}) {
   const uid = await getUID();
   if (!uid) throw new Error('No UID available');
-  if (!realm) throw new Error('Realm not initialized');
+  // Realm removed: no local database required
 
   // Helper: deduplicate by timestamp
   function deduplicateByTimestamp<T extends { timestamp?: Date | string | number | Timestamp }>(
@@ -2467,9 +2264,7 @@ export async function extractAndImportLegacyFirestoreData({
   // Helper: upsert to Realm
   function upsertToRealm(tableName: string, row: Record<string, unknown>) {
     try {
-      realm!.write(() => {
-        realm!.create(tableName, { ...row }, Realm.UpdateMode.Modified);
-      });
+  // Realm removed: no local write required
     } catch (error: unknown) {
       console.error(`[upsertToRealm] Error inserting ${tableName} row:`, {
         error: (error as Error)?.message || String(error),
@@ -2660,7 +2455,7 @@ export async function saveCandidateResult(selectedId: string | null): Promise<st
   try {
     assertDb(db);
     await setDoc(
-      doc(db as Firestore, `Users/${uid}/Votes`, id),
+  doc(db, `Users/${uid}/Votes`, id),
       {
         selectedId: selectedId || null,
         timestamp: new Date(),

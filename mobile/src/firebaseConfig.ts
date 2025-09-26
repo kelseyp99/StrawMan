@@ -38,25 +38,16 @@ import type { Firestore } from 'firebase/firestore';
 
 let app: FirebaseApp | null = null;
 let auth: FirebaseAuth | Partial<FirebaseAuth> | null = null;
-let db: Firestore | null = null;
+let db: Firestore;
 
 if (ENABLE_FIREBASE) {
   app = initializeApp(firebaseConfig);
   auth = initializeAuth(app, {
     persistence: getReactNativePersistence(AsyncStorage) as Persistence
   });
-  
   db = getFirestore(app) as Firestore;
 } else {
-  // Mock Firebase services for completely offline mode
-  auth = {
-    currentUser: null,
-    onAuthStateChanged: () => () => {},
-    signInWithEmailAndPassword: () => Promise.reject(new Error('Firebase disabled')),
-    createUserWithEmailAndPassword: () => Promise.reject(new Error('Firebase disabled')),
-    signOut: () => Promise.reject(new Error('Firebase disabled')),
-  } as Partial<FirebaseAuth>;
-  db = null; // Set to null when disabled
+  throw new Error('Firebase is disabled. This app requires Firebase to be enabled.');
 }
 
 export { auth, db, ENABLE_FIRESTORE, ENABLE_FIREBASE };

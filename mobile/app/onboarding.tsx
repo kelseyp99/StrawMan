@@ -2,7 +2,7 @@ import React from 'react';
 import { View, Text, Button } from 'react-native';
 import { useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { initializeDefaultCategories } from '../src/services/dbServicesLocal';
+// ...existing code...
 
 export default function Onboarding() {
   const router = useRouter();

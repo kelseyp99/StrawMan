@@ -1,7 +1,7 @@
 // src/services/planManager.ts
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import Realm from 'realm';
-import { realm } from '../realmConfig';
+// Removed Realm import; all plan logic now uses AsyncStorage or stubs
+// Removed realm import; no longer needed after migration to Firestore
 
 export type PlanType = 'free' | 'limited' | 'premium';
 
@@ -61,31 +61,29 @@ export async function canAccessLoginAndSync(): Promise<boolean> {
   return plan === 'premium';
 }
 
-// Helper to safely get the user object from Realm
-function getUserFromRealm(): any {
-  if (!realm) return null;
-  const user = realm.objects('User')[0];
-  return user || null;
+
+// Stub user object for subscription logic (replace with Firestore or AsyncStorage as needed)
+function getUserStub(): any {
+  // TODO: Replace with Firestore or AsyncStorage user fetch
+  return {
+    subscriptionStartDate: new Date(),
+    subscriptionExpiryDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
+  };
 }
 
 export async function setYearlySubscriptionDates() {
-  const user = getUserFromRealm();
-  if (!user || !realm) return;
+  // TODO: Replace with Firestore or AsyncStorage logic
+  // Example: store subscription dates in AsyncStorage
   const now = new Date();
   const expiry = new Date(now.getTime() + 365 * 24 * 60 * 60 * 1000);
-  realm.write(() => {
-    user.subscriptionStartDate = now;
-    user.subscriptionExpiryDate = expiry;
-  });
+  await AsyncStorage.setItem('subscriptionStartDate', now.toISOString());
+  await AsyncStorage.setItem('subscriptionExpiryDate', expiry.toISOString());
 }
 
 export function getSubscriptionDaysLeft(): number {
-  const user = getUserFromRealm();
-  if (
-    !user?.subscriptionExpiryDate ||
-    !(user.subscriptionExpiryDate instanceof Date)
-  )
-    return 0;
+  // TODO: Replace with Firestore or AsyncStorage logic
+  const user = getUserStub();
+  if (!user?.subscriptionExpiryDate || !(user.subscriptionExpiryDate instanceof Date)) return 0;
   const now = new Date();
   const expiry = user.subscriptionExpiryDate;
   return Math.ceil((expiry.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));

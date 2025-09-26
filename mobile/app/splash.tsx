@@ -3,7 +3,7 @@ import { View, Text, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAuth } from './context/AuthContext';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { initializeDefaultCategories } from '../src/services/dbServicesLocal';
+// ...existing code...
 
 export default function Splash() {
   const router = useRouter();

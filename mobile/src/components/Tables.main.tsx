@@ -45,7 +45,7 @@ import {
   findCategoryByName,
   mergeCategoryReferences,
 } from '../services/dbServices';
-import { initializeDefaultCategories } from '../services/dbServicesLocal';
+// ...existing code...
 import { extractAndImportLegacyFirestoreData } from '../services/dbServicesRemote';
 import { findDuplicateActivityLog } from '../services/phraseProcessor';
 import { useSync } from '../../app/context/SyncContext';
