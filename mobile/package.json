@@ -29,7 +29,7 @@
     "axios": "^1.7.9",
     "date-fns": "^4.1.0",
     "dotenv": "^16.4.7",
-  "expo": "52.0.47",
+    "expo": "52.0.47",
     "expo-application": "^5.9.1",
     "expo-asset": "~11.0.5",
     "expo-auth-session": "~6.0.3",
@@ -68,7 +68,7 @@
     "react-native-config": "^1.5.5",
     "react-native-document-picker": "^9.3.1",
     "react-native-gesture-handler": "~2.20.2",
-  "react-native-google-mobile-ads": "13.6.1",
+    "react-native-google-mobile-ads": "^13.6.1",
     "react-native-paper": "^5.13.1",
     "react-native-permissions": "^5.4.0",
     "react-native-reanimated": "~3.16.1",
@@ -76,9 +76,9 @@
     "react-native-screens": "~4.4.0",
     "react-native-share": "^12.1.0",
     "react-native-vector-icons": "^10.2.0",
-  "react-native-view-shot": "~4.0.3",
-  "react-native-web": "~0.19.13",
-  "react-native-webview": "13.12.5"
+    "react-native-view-shot": "~4.0.3",
+    "react-native-web": "~0.19.13",
+    "react-native-webview": "13.12.5"
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",
@@ -90,7 +90,6 @@
     "@types/react-native-fs": "^2.8.3",
     "@types/react-native-vector-icons": "^6.4.18",
     "@types/react-test-renderer": "^18.3.0",
-    
     "@typescript-eslint/eslint-plugin": "^7.11.0",
     "@typescript-eslint/parser": "^7.11.0",
     "eslint": "^8.57.0",
