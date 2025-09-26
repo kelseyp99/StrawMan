@@ -1,0 +1,6 @@
+ext {
+  googleMobileAdsJson = [
+    getStringValue: { key, defaultValue -> key == "android_app_id" ? "ca-app-pub-3940256099942544~3347511713" : defaultValue },
+    isFlagEnabled: { key, defaultValue -> defaultValue }
+  ]
+}
