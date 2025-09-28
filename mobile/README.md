@@ -65,7 +65,7 @@ This section outlines the successful steps to configure Google Sign-In for the L
    - Example:
      ```javascript
      extra: {
-       EXPO_PUBLIC_IS_EXPO_GO: process.env.EXPO_PUBLIC_IS_EXPO_GO || "true",
+   EXPO_PUBLIC_IS_EXPO_GO: process.env.EXPO_PUBLIC_IS_EXPO_GO || "false",
        googleClientIdAndroid: "341732508688-o2qbbr16g2qh3e8niofee9iv4tl6krhb.apps.googleusercontent.com",
        eas: {
          projectId: "a27bcb78-af2a-4ef8-adeb-7fae3e17731d"

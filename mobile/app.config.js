@@ -31,7 +31,7 @@ module.exports = {
       runtimeVersion: '1.1.0-strawman-dev'
     },
     extra: {
-      EXPO_PUBLIC_IS_EXPO_GO: process.env.EXPO_PUBLIC_IS_EXPO_GO || 'true',
+  EXPO_PUBLIC_IS_EXPO_GO: process.env.EXPO_PUBLIC_IS_EXPO_GO || 'false',
   // TODO: Replace these with the OAuth 2.0 Client IDs created for strawman-42 in Google Cloud Console
   // Android: needs SHA-1 + SHA-256 fingerprints registered in Firebase to download a valid google-services.json
   googleClientIdAndroid: process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID_ANDROID || '615690850067-8pqu8asgu5s0lq0ms85b4fhihfg5d31m.apps.googleusercontent.com',
