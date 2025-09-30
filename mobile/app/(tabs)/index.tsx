@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useVoteHistory } from '../context/VoteHistoryContext';
 import { View, Text, StyleSheet, TouchableOpacity, Modal } from 'react-native';
 import { useRouter } from 'expo-router';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
@@ -14,13 +15,25 @@ const electionId = 'strawman2025'; // Use a real electionId for cloud function
 
 const HomeScreen: React.FC = () => {
 	const [vote, setVote] = useState<string | null>(null);
+	const [lastVoteTime, setLastVoteTime] = useState<number | null>(null);
 	const [message, setMessage] = useState<string | null>(null);
 	const [menuVisible, setMenuVisible] = useState(false);
+	const { history, addVote } = useVoteHistory();
 	const router = useRouter();
 
 	const handleVote = async (candidateId: string) => {
+		// If voting for the same candidate, check for cooldown
+		if (vote === candidateId && lastVoteTime) {
+			const now = Date.now();
+			if (now - lastVoteTime < 3000) { // 3 seconds cooldown
+				setMessage('Please wait a few seconds before voting for the same candidate again.');
+				return;
+			}
+		}
 		setVote(candidateId);
+		setLastVoteTime(Date.now());
 		setMessage(`You voted for ${candidates.find(c => c.id === candidateId)?.name}!`);
+		addVote(candidateId);
 		try {
 			await appendCandidateResultHistory(candidateId, electionId);
 		} catch (e) {
@@ -54,13 +67,28 @@ const HomeScreen: React.FC = () => {
 						key={candidate.id}
 						style={styles.voteButton}
 						onPress={() => handleVote(candidate.id)}
-						disabled={vote !== null}
+						// Only disable if voting for the same candidate and cooldown is active
+						disabled={!!(vote === candidate.id && lastVoteTime && Date.now() - lastVoteTime < 3000)}
 					>
 						<Text style={styles.buttonText}>{candidate.name}</Text>
 					</TouchableOpacity>
 				))}
 			</View>
 			{message && <Text style={styles.confirm}>{message}</Text>}
+
+			{/* Show local vote history for this session */}
+			<View style={{ marginTop: 30, width: '100%' }}>
+				<Text style={{ fontWeight: 'bold', fontSize: 16, marginBottom: 8 }}>Vote History (this session):</Text>
+				{history.length === 0 ? (
+					<Text style={{ color: '#888' }}>No votes yet.</Text>
+				) : (
+					history.map((entry, idx) => (
+						<Text key={idx} style={{ color: '#333' }}>
+							{new Date(entry.timestamp).toLocaleTimeString()}: {candidates.find(c => c.id === entry.candidateId)?.name || entry.candidateId}
+						</Text>
+					))
+				)}
+			</View>
 
 			{/* Modal for menu options */}
 			<Modal
