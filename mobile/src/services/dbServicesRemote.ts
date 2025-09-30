@@ -1,3 +1,14 @@
+// Fetch all candidates from the root-level 'candidates' collection
+export async function getAllCandidates(): Promise<any[]> {
+  try {
+    assertDb(db);
+    const snapshot = await getDocs(collection(db, 'candidates'));
+    return snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+  } catch (error) {
+    console.error('Error fetching candidates:', error);
+    return [];
+  }
+}
 // Copy Elections table to root of Firestore as master table
 export async function copyUserElectionsToRoot(uid: string) {
   assertDb(db);

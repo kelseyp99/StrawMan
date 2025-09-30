@@ -15,8 +15,8 @@ const CandidatesReport: React.FC = () => {
         return;
       }
       try {
-        // Fetch all candidates
-        const candidatesSnap = await getDocs(collection(db, 'Candidates'));
+        // Fetch all candidates from the correct collection (lowercase)
+        const candidatesSnap = await getDocs(collection(db, 'candidates'));
         const candidatesData = candidatesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         setCandidates(candidatesData);
 
@@ -32,7 +32,7 @@ const CandidatesReport: React.FC = () => {
         });
         setElectionsMap(map);
       } catch (e) {
-        console.error('Error fetching Candidates/Elections:', e);
+        console.error('Error fetching candidates/elections:', e);
       } finally {
         setLoading(false);
       }
@@ -46,9 +46,9 @@ const CandidatesReport: React.FC = () => {
   // Group candidates by election
   const grouped: Record<string, any[]> = {};
   candidates.forEach(candidate => {
-    const fk = candidate.elections_FK || candidate.elections_fk;
-    if (!grouped[fk]) grouped[fk] = [];
-    grouped[fk].push(candidate);
+  const fk = candidate.elections_FK || candidate.elections_fk;
+  if (!grouped[fk]) grouped[fk] = [];
+  grouped[fk].push(candidate);
   });
 
   return (
@@ -64,7 +64,7 @@ const CandidatesReport: React.FC = () => {
             {grouped[electionId].map(candidate => (
               <View key={candidate.id} style={styles.item}>
                 <Text style={styles.title}>{candidate.name || candidate.id}</Text>
-                <Text>Vote Tally: {candidate.voteTally || 0}</Text>
+                <Text>Vote Tally: {typeof candidate.voteTally === 'number' ? candidate.voteTally : 0}</Text>
               </View>
             ))}
           </View>
