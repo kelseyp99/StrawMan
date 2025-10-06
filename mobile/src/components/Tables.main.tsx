@@ -1,321 +1,83 @@
+// ...existing imports...
 
+// Add state hooks for table data, loading, and error
+const [tableData, setTableData] = React.useState<any[]>([]);
+const [loading, setLoading] = React.useState(false);
+const [error, setError] = React.useState<string | null>(null);
+
+
+import { getUserVoteHistoryCloud } from '../services/voteHistoryCloud';
+
+import React, { useEffect, useState, useCallback } from 'react';
+import { View, Text, FlatList, Dimensions, Alert } from 'react-native';
+// ...existing imports (Text, View, etc.)
 const SCREEN_WIDTH = Dimensions.get('window').width;
+  // Fetch and display the logged-in user's voting history
 
+  const MainComponent: React.FC = () => {
+    const [tableData, setTableData] = React.useState<any[]>([]);
+    const [loading, setLoading] = React.useState(false);
+    const [error, setError] = React.useState<string | null>(null);
 
-  const prompt2UpdateActivityLog = useCallback(
-    (discussionSnapshot: any): void => {
-      // console.log(
-      //   'Inside prompt2UpdateActivityLog, snapshot size:',
-      //   discussionSnapshot.size
-      // );
-      if (!discussionSnapshot || discussionSnapshot.empty) {
-        // console.log('No documents in snapshot to process.');
-        return;
-      }
+    // Fetch and display the logged-in user's voting history
+    React.useEffect(() => {
+      setLoading(true);
+      getUserVoteHistoryCloud()
+        .then((votes) => {
+          // Map votes to table row format
+          const rows = votes.map((vote: any) => ({
+            id: vote.id || vote.timestamp || Math.random().toString(),
+            timestamp: vote.timestamp ? new Date(vote.timestamp).toLocaleString() : '',
+            description: vote.selectedId ? `Voted for candidate ${vote.selectedId}` : 'Vote recorded',
+          }));
+          setTableData(rows);
+          setLoading(false);
+        })
+        .catch((err) => {
+          setError('Failed to load voting history');
+          setLoading(false);
+        });
+    }, []);
 
-      const unclearedDocs = discussionSnapshot.docs.filter(
-        (doc: any) => doc.data().cleared === false
+    if (loading) {
+      return (
+        <View style={styles.container}>
+          <Text style={styles.loadingText}>Loading...</Text>
+        </View>
       );
+    }
 
-      // console.log('Uncleared documents:', unclearedDocs.length);
-      if (unclearedDocs.length === 0) {
-        // console.log('No uncleared documents to process.');
-        return;
-      }
-
-      const discussionList = unclearedDocs
-        .map((doc: any) => `"${doc.data().description || 'No description'}"`)
-        .join(', ');
-
-      Alert.alert(
-        'Update Activity Log',
-        `Do you want to update the Activity Log with these discussions: ${discussionList}?`,
-        [
-          { text: 'Cancel', style: 'cancel' },
-          {
-            text: 'Yes',
-            onPress: async () => {
-              try {
-                // console.log('Starting Activity Log update...');
-                const distinctCategories = await getCategoryNames();
-                if (!uid) {
-                  console.error(
-                    'User ID is null, cannot proceed with ActivityLog update.'
-                  );
-                  Alert.alert(
-                    'Error',
-                    'User ID not found. Please sign in again.'
-                  );
-                  return;
-                }
-
-                for (const docSnapshot of unclearedDocs) {
-                  const discussionTyped = {
-                    id: docSnapshot.id,
-                    discussionId: docSnapshot.data().id || docSnapshot.id,
-                    description: docSnapshot.data().description || '',
-                    timestamp:
-                      docSnapshot.data().timestamp?.toDate() || new Date(),
-                    typeSay: docSnapshot.data().typeSay || 'tell',
-                    cleared: docSnapshot.data().cleared || false,
-                  };
-                  if (!discussionTyped.cleared) {
-                    // console.log('Processing Discussion:', discussionTyped.id);
-                    const activityAnalysis = await processPhrase(
-                      discussionTyped.description,
-                      distinctCategories,
-                      // removed discussionCounts,
-                      // removed setDiscussionCounts,
-                      discussionTyped.id,
-                      uid
-                    );
-                    await addOrUpdateGPTResponse(
-                      discussionTyped.id,
-                      JSON.stringify(activityAnalysis),
-                      'updateDB'
-                    );
-
-                    // Check for existing ActivityLog entry
-                    const existingLog = await findDuplicateActivityLog(
-                      discussionTyped.id,
-                      activityAnalysis.category,
-                      activityAnalysis.parsedDescription,
-                      uid
-                    );
-                    let newActivityLogId: string;
-                    if (existingLog) {
-                      // Use router to update existing ActivityLog entry (calls all pending updates)
-                      await addOrUpdateActivityLog(); // No parameters allowed
-                      newActivityLogId = String(existingLog.id);
-                      await fetchData(); // Refresh after edit
-                      // console.log(
-                      //   `Updated existing ActivityLog entry ${existingLog.id} for discussionId ${discussionTyped.id}`
-                      // );
-                    } else {
-                      // Use router to create new ActivityLog entry
-                      const newLog = {
-                        discussionId: String(discussionTyped.id), // ensure string type
-                        category:
-                          activityAnalysis.category !== 'uncategorized'
-                            ? activityAnalysis.category
-                            : 'uncategorized',
-                        description: activityAnalysis.parsedDescription,
-                        timestamp: discussionTyped.timestamp,
-                        cleared: false,
-                        uid: uid,
-                        lockedCategory: false,
-                        lockedDescription: false,
-                        synced: false,
-                      };
-                      newActivityLogId = await createActivityLog(newLog);
-                      await fetchData(); // Refresh after create
-                      // console.log(
-                      //   `Created new ActivityLog entry ${newActivityLogId} for discussionId ${discussionTyped.id}`
-                      // );
-                    }
-
-                    // Replace direct Firestore/Realm calls with router function
-                    await markDiscussionAsCleared(discussionTyped.id);
-                  }
-                }
-                // console.log('Activity Log update completed successfully.');
-                Alert.alert(
-                  'Success',
-                  `${unclearedDocs.length} Activity Log entries updated successfully!`
-                );
-                fetchData(); // Refresh tables after update
-              } catch (error) {
-                console.error('Error updating Activity Log:', error);
-                Alert.alert(
-                  'Error',
-                  `Failed to update Activity Log: ${(error as any).message}`
-                );
-              }
-            },
-          },
-        ],
-        { cancelable: true }
+    if (error) {
+      return (
+        <View style={styles.container}>
+          <Text style={styles.errorText}>{error}</Text>
+        </View>
       );
-    },
-  [uid, fetchData]
-  );
-
-  const handleSort = useCallback((column: string) => {
-    setSortBy((prev) => {
-      const newOrder =
-        prev?.column === column && prev.order === 'asc' ? 'desc' : 'asc';
-      return { column, order: newOrder };
-    });
-  }, []);
-  const sortedData = useCallback(() => {
-    if (!sortBy || tableData.length === 0) return tableData;
-    const { column, order } = sortBy;
-    return [...tableData].sort((a, b) => {
-      if (column === 'timestamp' && a.rawTimestamp && b.rawTimestamp) {
-        const timeA = a.rawTimestamp.getTime();
-        const timeB = b.rawTimestamp.getTime();
-        return order === 'asc' ? timeA - timeB : timeB - timeA;
-      }
-      const valueA = a[column] || '';
-      const valueB = b[column] || '';
-      if (typeof valueA === 'string' && typeof valueB === 'string') {
-        return order === 'asc'
-          ? valueA.localeCompare(valueB)
-          : valueB.localeCompare(valueA);
-      }
-      return order === 'asc' ? (valueA > valueB ? 1 : -1) : valueA < valueB ? 1 : -1;
-    });
-  }, [sortBy, tableData]);
-  const filteredData = useCallback(() => {
-    let data = [...tableData];
-    if (filters.timestamp) {
-      data = data.filter((row) => String(row.timestamp).toLowerCase().includes(filters.timestamp.toLowerCase()));
     }
-    if (filters.description) {
-      data = data.filter((row) => String(row.description).toLowerCase().includes(filters.description.toLowerCase()));
-    }
-    if (sortBy) {
-      data = data.sort((a, b) => {
-        const aValue = a[sortBy.column];
-        const bValue = b[sortBy.column];
-        if (aValue < bValue) return sortBy.order === 'asc' ? -1 : 1;
-        if (aValue > bValue) return sortBy.order === 'asc' ? 1 : -1;
-        return 0;
-      });
-    }
-    return data;
-  }, [tableData, filters, sortBy]);
 
-  // Get item layout for FlatList optimization
-  const getItemLayout = useCallback(
-    (data: any, index: number) => ({
-      length: 48,
-      offset: 48 * index,
-      index,
-    }),
-    []
-  );
-
-  // Show upgrade modal every 5th entry for free users
-  useEffect(() => {
-    if (isPaid) return; // Only for free users
-    const incrementEntryCount = async () => {
-      try {
-        let count = parseInt(
-          (await AsyncStorage.getItem('mainTableEntryCount')) || '0',
-          10
-        );
-        count = isNaN(count) ? 1 : count + 1;
-        await AsyncStorage.setItem('mainTableEntryCount', count.toString());
-        if (count % 5 === 0) {
-          setShowUpgradePrompt(true);
-        }
-      } catch (e) {
-        // ignore
-      }
-    };
-    incrementEntryCount();
-  }, []); // Only on mount
-
-  if (loading) {
     return (
       <View style={styles.container}>
-        <Text style={styles.loadingText}>Loading...</Text>
-      </View>
-    );
-  }
-
-  if (error) {
-    return (
-      <View style={styles.container}>
-        <Text style={styles.errorText}>{error}</Text>
-        <TouchableOpacity style={styles.retryButton} onPress={fetchData}>
-          <Text style={styles.retryButtonText}>Retry</Text>
-        </TouchableOpacity>
-      </View>
-    );
-  }
-
-  return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      style={styles.container}
-    >
-      <TouchableOpacity
-        style={[styles.syncButton, isSyncing ? { opacity: 0.5 } : null]}
-        onPress={triggerSync}
-        disabled={isSyncing}
-      >
-        <Text style={styles.syncButtonText}>
-          {isSyncing ? 'Syncing...' : 'Sync Now'}
-        </Text>
-      </TouchableOpacity>
-      <View style={styles.tableContainer}>
-        <Text style={styles.tableHeader}>History</Text>
-        <View style={styles.filterRow}>
-          {[{ Header: 'Date', accessor: 'timestamp', flex: 1 }, { Header: 'Desc', accessor: 'description', style: styles.leftAlignCell, flex: 2 }].map((col) => (
-            <TextInput
-              key={col.accessor}
-              style={[styles.filterInput, { flex: col.flex }]}
-              placeholder={`Filter ${col.Header}`}
-              value={typeof filters[col.accessor] === 'string' ? filters[col.accessor] : filters[col.accessor]?.toString() || ''}
-              onChangeText={(text) => setFilters((prev) => ({ ...prev, [col.accessor]: text }))}
-            />
-          ))}
-        </View>
-        <View style={styles.headerRow}>
-          {[{ Header: 'Date', accessor: 'timestamp', flex: 1 }, { Header: 'Desc', accessor: 'description', style: styles.leftAlignCell, flex: 2 }].map((col) => (
-            <TouchableOpacity
-              key={col.accessor}
-              onPress={() => setSortBy((prev) => prev && prev.column === col.accessor ? { column: col.accessor, order: prev.order === 'asc' ? 'desc' : 'asc' } : { column: col.accessor, order: 'asc' })}
-              style={[styles.headerCell, { flex: col.flex }]}
-            >
-              <Text style={styles.headerText}>
-                {col.Header}{' '}
-                {sortBy?.column === col.accessor
-                  ? sortBy.order === 'asc'
-                    ? '▲'
-                    : '▼'
-                  : ''}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-        {filteredData().length === 0 ? (
-          <Text style={styles.errorText}>No history data found. Try voting or adding activities.</Text>
+        <Text style={styles.tableHeader}>Voting History</Text>
+        {tableData.length === 0 ? (
+          <Text style={styles.errorText}>No voting history found.</Text>
         ) : (
           <FlatList
-            data={filteredData()}
+            data={tableData}
             keyExtractor={(item) => item.id}
             renderItem={({ item }) => (
-              <RowItem
-                item={item}
-                columns={[{ Header: 'Date', accessor: 'timestamp', flex: 1 }, { Header: 'Desc', accessor: 'description', style: styles.leftAlignCell, flex: 2 }]}
-                renderRightActions={() => <View />}
-                renderLeftActions={() => <View />}
-              />
+              <View style={styles.row}>
+                <Text style={[styles.cell, { flex: 1 }]}>{item.timestamp}</Text>
+                <Text style={[styles.cell, { flex: 2 }]}>{item.description}</Text>
+              </View>
             )}
-            initialNumToRender={10}
-            maxToRenderPerBatch={10}
-            windowSize={5}
             style={styles.tableList}
             contentContainerStyle={styles.tableContentContainer}
             showsVerticalScrollIndicator={true}
-            scrollEnabled={true}
-            nestedScrollEnabled={true}
-            bounces={true}
-            overScrollMode="always"
           />
         )}
       </View>
-    </KeyboardAvoidingView>
-  );
-
-const MainComponent: React.FC = () => {
-  // ...existing code...
-}
-
-
+    );
+  };
 const styles = StyleSheet.create({
   container: {
     flex: 1,
