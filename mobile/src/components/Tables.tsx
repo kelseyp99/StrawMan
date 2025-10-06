@@ -478,53 +478,6 @@ const MainComponent: React.FC = () => {
           ],
           data: mergedActivityLogData,
         },
-        {
-          name: 'Discussions',
-          columns: [
-            { Header: 'ID', accessor: 'id', hidden: true },
-            { Header: 'rawTimestamp', accessor: 'rawTimestamp', hidden: true },
-            { Header: 'Date', accessor: 'timestamp', flex: 1 },
-            {
-              Header: 'Type',
-              accessor: 'typeSay',
-              style: styles.leftAlignCell,
-              flex: 1,
-            },
-            {
-              Header: 'Desc',
-              accessor: 'description',
-              style: styles.leftAlignCell,
-              flex: 2,
-            },
-            {
-              Header: 'Cleared',
-              accessor: 'cleared',
-              style: styles.leftAlignCell,
-              flex: 1,
-            },
-          ],
-          data: discussionData,
-        },
-        {
-          name: 'Categories',
-          columns: [
-            { Header: 'ID', accessor: 'id', hidden: true },
-            { Header: 'rawTimestamp', accessor: 'rawTimestamp', hidden: true },
-            {
-              Header: 'Name',
-              accessor: 'name',
-              style: styles.leftAlignCell,
-              flex: 1,
-            },
-            {
-              Header: 'Description',
-              accessor: 'description',
-              style: styles.leftAlignCell,
-              flex: 2,
-            },
-          ],
-          data: categoriesData,
-        },
       ]);
       setInitialized(true);
       // console.log('[PERF] Tables initialized successfully');
