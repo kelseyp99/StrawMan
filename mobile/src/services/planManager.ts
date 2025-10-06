@@ -29,7 +29,8 @@ export async function getPlan(): Promise<PlanType> {
 }
 
 export async function isPaidUser(): Promise<boolean> {
-  return (await getPlan()) === 'premium';
+  const paid = await AsyncStorage.getItem('isPaidUser');
+  return paid === 'true';
 }
 
 export async function shouldShowAdsOrPrompts(): Promise<boolean> {

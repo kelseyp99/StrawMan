@@ -45,7 +45,6 @@ import {
   findCategoryByName,
   mergeCategoryReferences,
 } from '../services/dbServices';
-// ...existing code...
 import { extractAndImportLegacyFirestoreData } from '../services/dbServicesRemote';
 import { findDuplicateActivityLog } from '../services/phraseProcessor';
 import { useSync } from '../../app/context/SyncContext';
@@ -270,7 +269,7 @@ const RowItem = memo(
 const MainComponent: React.FC = () => {
   console.log('[DEBUG] MainComponent mounted');
   // Add sync context to detect when sync completes
-  const { lastSync } = useSync();
+  const { lastSync, triggerSync, isSyncing } = useSync();
 
   // Interstitial ad hook with smart timing
   const { tryShowAd } = useInterstitialAd({
@@ -1462,6 +1461,15 @@ const MainComponent: React.FC = () => {
           // Optionally trigger plan modal if desired
         }}
       />
+      <TouchableOpacity
+        style={[styles.syncButton, isSyncing ? { opacity: 0.5 } : null]}
+        onPress={triggerSync}
+        disabled={isSyncing}
+      >
+        <Text style={styles.syncButtonText}>
+          {isSyncing ? 'Syncing...' : 'Sync Now'}
+        </Text>
+      </TouchableOpacity>
       {initialized && tables.length > 0 ? (
         <View style={styles.tableContainer}>
           <View style={styles.navigation}>
@@ -2232,7 +2240,7 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     marginBottom: 10,
     marginTop: 5,
-  },
+   },
   createButtonText: {
     color: '#fff',
     fontWeight: 'bold',
@@ -2246,6 +2254,18 @@ const styles = StyleSheet.create({
   },
   categoryItemText: {
     fontSize: 16,
+    textAlign: 'center',
+  },
+  syncButton: {
+    padding: 10,
+    backgroundColor: '#007bff',
+    borderRadius: 5,
+    alignSelf: 'center',
+    marginBottom: 10,
+  },
+  syncButtonText: {
+    color: '#fff',
+    fontWeight: 'bold',
     textAlign: 'center',
   },
 });

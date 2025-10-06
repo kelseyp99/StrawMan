@@ -31,3 +31,5 @@ export const useVoteHistory = () => {
   if (!ctx) throw new Error('useVoteHistory must be used within a VoteHistoryProvider');
   return ctx;
 };
+
+export default VoteHistoryProvider;
