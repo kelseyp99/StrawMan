@@ -82,6 +82,7 @@ exports.castVote = functions.https.onCall(async (data, context) => {
         console.log(`[castVote] Updated user voting record for user ${userId}`);
 
         // Also write to Users/{userId}/Elections/{electionId} for compatibility
+
         const userElectionRef = db.collection('Users').doc(userId).collection('Elections').doc(electionId);
         t.set(userElectionRef, {
           hasVoted: true,
@@ -89,6 +90,26 @@ exports.castVote = functions.https.onCall(async (data, context) => {
           timestamp: admin.firestore.FieldValue.serverTimestamp(),
         }, { merge: true });
         console.log(`[castVote] Updated Users/${userId}/Elections/${electionId}`);
+
+        // Also write to Users/{userId}/Votes/{voteId} for vote history table
+        // Fetch candidate name for vote history
+        let candidateName = candidateId;
+        try {
+          const candidateDoc = await candidateRef.get();
+          if (candidateDoc.exists && candidateDoc.data().name) {
+            candidateName = candidateDoc.data().name;
+          }
+        } catch (err) {
+          console.warn(`[castVote] Could not fetch candidate name for ${candidateId}:`, err);
+        }
+        const userVotesRef = db.collection('Users').doc(userId).collection('Votes').doc();
+        t.set(userVotesRef, {
+          candidateId,
+          electionId,
+          name: candidateName,
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+        console.log(`[castVote] Added vote to Users/${userId}/Votes/`);
 
         // Add to candidate result history
         const historyRef = db.collection('candidateResultHistory').doc();
@@ -114,4 +135,36 @@ exports.castVote = functions.https.onCall(async (data, context) => {
   }
 
   return { success: true };
+});
+
+// Cloud Function to get all votes for a user from candidateResultHistory
+exports.getUserVoteHistory = functions.https.onCall(async (data, context) => {
+  const { userId } = data;
+  if (!userId) {
+    throw new functions.https.HttpsError('invalid-argument', 'Missing required parameter: userId');
+  }
+  try {
+    // Fetch all votes for this user from candidateResultHistory collection
+    const votesRef = db.collection('candidateResultHistory').where('uid', '==', userId);
+    const snapshot = await votesRef.get();
+    const votes = snapshot.docs.map(doc => {
+      const data = doc.data();
+      return {
+        id: doc.id,
+        selectedId: data.selectedId,
+        timestamp: data.timestamp,
+        electionId: data.electionId,
+      };
+    }).sort((a, b) => {
+      // Sort by timestamp descending (newest first)
+      const aTime = a.timestamp?.seconds || 0;
+      const bTime = b.timestamp?.seconds || 0;
+      return bTime - aTime;
+    });
+    console.log(`[getUserVoteHistory] Returning ${votes.length} votes for user ${userId}`);
+    return { votes };
+  } catch (err) {
+    console.error('[getUserVoteHistory] Error:', err);
+    throw new functions.https.HttpsError('internal', 'Failed to fetch user vote history.');
+  }
 });

@@ -1,43 +1,51 @@
-// ...existing imports...
-
-// Add state hooks for table data, loading, and error
-const [tableData, setTableData] = React.useState<any[]>([]);
-const [loading, setLoading] = React.useState(false);
-const [error, setError] = React.useState<string | null>(null);
-
-
-import { getUserVoteHistoryCloud } from '../services/voteHistoryCloud';
 
 import React, { useEffect, useState, useCallback } from 'react';
-import { View, Text, FlatList, Dimensions, Alert } from 'react-native';
-// ...existing imports (Text, View, etc.)
-const SCREEN_WIDTH = Dimensions.get('window').width;
-  // Fetch and display the logged-in user's voting history
+import { View, Text, FlatList, Dimensions, Alert, StyleSheet } from 'react-native';
+import { getUserVoteHistoryCloud } from '../services/voteHistoryCloud';
 
-  const MainComponent: React.FC = () => {
-    const [tableData, setTableData] = React.useState<any[]>([]);
-    const [loading, setLoading] = React.useState(false);
-    const [error, setError] = React.useState<string | null>(null);
+console.log('[DEBUG] Tables.main.tsx file loaded');
+
+const SCREEN_WIDTH = Dimensions.get('window').width;
+
+const MainComponent: React.FC = () => {
+  console.log('[DEBUG] Tables.main.tsx MainComponent mounted');
+  const [tableData, setTableData] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
     // Fetch and display the logged-in user's voting history
-    React.useEffect(() => {
-      setLoading(true);
-      getUserVoteHistoryCloud()
-        .then((votes) => {
-          // Map votes to table row format
-          const rows = votes.map((vote: any) => ({
-            id: vote.id || vote.timestamp || Math.random().toString(),
-            timestamp: vote.timestamp ? new Date(vote.timestamp).toLocaleString() : '',
-            description: vote.selectedId ? `Voted for candidate ${vote.selectedId}` : 'Vote recorded',
-          }));
-          setTableData(rows);
-          setLoading(false);
-        })
-        .catch((err) => {
-          setError('Failed to load voting history');
-          setLoading(false);
+  useEffect(() => {
+    console.log('[DEBUG] useEffect running, about to call getUserVoteHistoryCloud');
+    setLoading(true);
+    getUserVoteHistoryCloud()
+      .then((votes) => {
+        console.log('[DEBUG] Raw votes from cloud function:', votes);
+        const rows = votes.map((candidate) => {
+          let createdAt = '';
+          if (candidate.createdAt) {
+            if (candidate.createdAt.toDate) {
+              createdAt = candidate.createdAt.toDate().toLocaleString();
+            } else if (candidate.createdAt.seconds) {
+              createdAt = new Date(candidate.createdAt.seconds * 1000).toLocaleString();
+            } else if (typeof candidate.createdAt === 'string' || typeof candidate.createdAt === 'number') {
+              createdAt = new Date(candidate.createdAt).toLocaleString();
+            }
+          }
+          return {
+            id: candidate.id || Math.random().toString(),
+            name: candidate.name || '',
+            createdAt,
+          };
         });
-    }, []);
+        setTableData(rows);
+        setLoading(false);
+      })
+      .catch((err) => {
+        console.log('[DEBUG] Error from getUserVoteHistoryCloud:', err);
+        setError('Failed to load voting history');
+        setLoading(false);
+      });
+  }, []);
 
     if (loading) {
       return (
@@ -55,25 +63,35 @@ const SCREEN_WIDTH = Dimensions.get('window').width;
       );
     }
 
+      console.log('[DEBUG] Tables.main.tsx MainComponent mounted');
     return (
       <View style={styles.container}>
         <Text style={styles.tableHeader}>Voting History</Text>
         {tableData.length === 0 ? (
           <Text style={styles.errorText}>No voting history found.</Text>
         ) : (
-          <FlatList
-            data={tableData}
-            keyExtractor={(item) => item.id}
-            renderItem={({ item }) => (
-              <View style={styles.row}>
-                <Text style={[styles.cell, { flex: 1 }]}>{item.timestamp}</Text>
-                <Text style={[styles.cell, { flex: 2 }]}>{item.description}</Text>
-              </View>
-            )}
-            style={styles.tableList}
-            contentContainerStyle={styles.tableContentContainer}
-            showsVerticalScrollIndicator={true}
-          />
+          <View>
+            <View style={styles.headerRow}>
+              <Text style={[styles.headerCell, { flex: 2 }]}>Name</Text>
+              <Text style={[styles.headerCell, { flex: 2 }]}>Created At</Text>
+            </View>
+            <FlatList
+              data={tableData}
+              keyExtractor={(item) => item.id}
+              renderItem={({ item }) => {
+                console.log('[DEBUG] Rendering row:', item);
+                return (
+                  <View style={styles.row}>
+                    <Text style={[styles.cell, { flex: 2 }]}>{item.name || '[NO NAME]'}</Text>
+                    <Text style={[styles.cell, { flex: 2 }]}>{item.createdAt || '[NO CREATED AT]'}</Text>
+                  </View>
+                );
+              }}
+              style={styles.tableList}
+              contentContainerStyle={styles.tableContentContainer}
+              showsVerticalScrollIndicator={true}
+            />
+          </View>
         )}
       </View>
     );

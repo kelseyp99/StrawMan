@@ -127,7 +127,9 @@ interface GPTSpecialty {
   apiKey: string;
 }
 
-// Define DiscussionCount interface for Firebase
+
+// DiscussionCount and Category interfaces commented out to disable related logic
+/*
 export interface DiscussionCount {
   id?: string;
   discussionId: string;
@@ -136,8 +138,6 @@ export interface DiscussionCount {
   timestamp: Date | string;
   uid?: string;
 }
-
-// Define Category interface for Firebase
 export interface Category {
   id: string;
   name: string;
@@ -148,38 +148,13 @@ export interface Category {
   syncTimestamp?: Date | Timestamp;
   uid: string;
 }
+*/
 
 // Fet
 
-export const findDuplicateActivityLog = async (
-  discussionId: string,
-  category: string,
-  description: string,
-  uid: string
-): Promise<ActivityLog | null> => {
-  // Use user-level collection instead of root collection
-  assertDb(db);
-  const q = query(
-  collection(db, `Users/${uid}/ActivityLog`),
-    where('discussionId', '==', discussionId),
-    where('category', '==', category),
-    where('description', '==', description),
-    where('uid', '==', uid)
-  );
-  const snapshot = await getDocs(q);
-  return snapshot.empty
-    ? null
-    : ({
-        id: snapshot.docs[0].id,
-        ...snapshot.docs[0].data(),
-      } as unknown as ActivityLog);
-};
+// const findDuplicateActivityLog = async (...) => { ... } // Disabled: Discussion/category logic
 
-const getDiscussionCountsQuery = async () => {
-  const uid = await getUID();
-  assertDb(db);
-  return query(collection(db, `Users/${uid}/DiscussionCounts`));
-};
+// const getDiscussionCountsQuery = async () => { ... } // Disabled: Discussion logic
 
 // Existing functions (from previous response, abbreviated)
 export async function initializeUser(): Promise<void> {
@@ -207,38 +182,7 @@ export async function initializeUser(): Promise<void> {
   }
 }
 
-export async function addOrUpdateDiscussion(
-  description: string,
-  typeSay: string = 'tell',
-  id?: string
-): Promise<string> {
-  const uid = await getUID();
-  if (!uid) throw new Error('No UID available');
-  try {
-    const discussionId = id || Date.now().toString();
-    assertDb(db);
-    await setDoc(
-  doc(db, `Users/${uid}/Discussion`, discussionId),
-      {
-        id: discussionId,
-        discussionId: discussionId,
-        description,
-        typeSay,
-        cleared: false,
-        timestamp: new Date(),
-        uid,
-      },
-      { merge: true }
-    );
-    console.log(
-      `Discussion ${id ? 'updated' : 'added'} in Firestore: ${discussionId}`
-    );
-    return discussionId;
-  } catch (error) {
-    console.error('Error in addOrUpdateDiscussion:', error);
-    throw error;
-  }
-}
+// async function addOrUpdateDiscussion(...) { ... } // Disabled: Discussion logic
 
 // ... other existing functions (getDiscussions, addOrUpdateGPTResponse, etc.) ...
 
@@ -433,40 +377,7 @@ export const deleteDocument = async (docId: string) => {
 // Database functions for ActivityLog //
 //////////////////////////////////////////
 
-export async function getDistinctCategories(): Promise<string[]> {
-  console.log('Fetching distinct categories from Firestore...');
-  const uid = await getUID();
-  if (!uid) {
-    console.error('No UID available.');
-    return [];
-  }
-  try {
-    const snapshot = await getDocs(collection(db, `Users/${uid}/ActivityLog`));
-    const categoriesSet = new Set<string>();
-
-    try {
-      snapshot.forEach((doc: QueryDocumentSnapshot<DocumentData>) => {
-        const data = doc.data();
-        if (data.category) {
-          categoriesSet.add(data.category);
-        }
-      });
-      if (categoriesSet.has('Uncategorized')) {
-        categoriesSet.delete('Uncategorized');
-      }
-      if (categoriesSet.size === 0) {
-        categoriesSet.add('diet');
-      }
-    } catch (error) {
-      console.error('Error processing ActivityLog responses:', error);
-    }
-
-    return Array.from(categoriesSet);
-  } catch (error) {
-    console.error('Error fetching categories:', error);
-    return [];
-  }
-}
+// async function getDistinctCategories(...) { ... } // Disabled: Category logic
 
 export async function insertJsonFile(jsonData: Array<{ category: string; value: string }>): Promise<void> {
   const uid = await getUID();
@@ -545,222 +456,15 @@ export async function synchronizeActivityLog(
   }
 }
 
-export async function synchronizeDiscussions(
-  appVersion: string
-): Promise<void> {
-  if (!ENABLE_DISCUSSION_SYNC) {
-    console.log('Discussion synchronization disabled.');
-    return;
-  }
+// async function synchronizeDiscussions(...) { ... } // Disabled: Discussion logic
 
-  try {
-    if (!compareVersions(appVersion, '1.1.0')) {
-      console.log('Skipping sync for version >= 1.1.0');
-      return;
-    }
+// async function synchronizeCategories(...) { ... } // Disabled: Category logic
 
-    const uid = await getUID();
-    if (!uid) {
-      console.error('No user ID for synchronization.');
-      return;
-    }
+// async function getCategories(...) { ... } // Disabled: Category logic
 
-    console.log(
-      `Synchronizing Discussion for UID: ${uid} (Legacy app continues to write - ongoing sync needed)`
-    );
+// async function addOrUpdateCategory(...) { ... } // Disabled: Category logic
 
-    // Step 1: ONLY read from root Discussion collection
-    assertDb(db);
-    const globalDiscussionQuery = query(collection(db, 'Discussion'));
-    const globalSnapshot = await getDocs(globalDiscussionQuery);
-    console.log(
-      `Found ${globalSnapshot.docs.length} global Discussion entries to import`
-    );
-    // Legacy import logic removed. Implement Firestore-only import if needed.
-    // This function now only logs the available global discussions.
-    // Add Firestore-only sync logic here if required.
-  } catch (error) {
-    console.error('Error synchronizing Discussion:', error);
-    if ((error as { code?: string }).code === 'permission-denied') {
-      console.error(
-        'Permission denied. Check Firestore security rules for /Discussion and Users/{uid}/Discussion.'
-      );
-    }
-    throw error;
-  }
-}
-
-export async function synchronizeCategories(_appVersion: string): Promise<void> {
-  const uid = await getUID();
-  if (!uid) {
-    throw new Error('No UID available for category synchronization');
-  }
-
-  console.log(`Synchronizing Categories for UID: ${uid}`);
-
-  try {
-    // Get all unique categories from ActivityLog entries in Firestore
-    const activityLogsQuery = query(collection(db, `Users/${uid}/ActivityLog`));
-    const activityLogsSnap = await getDocs(activityLogsQuery);
-
-    const categories = new Set<string>();
-    activityLogsSnap.docs.forEach((doc) => {
-      const data = doc.data();
-      if (data.category && data.category !== 'uncategorized') {
-        categories.add(data.category);
-      }
-    });
-
-    // Sync categories to the Category collection
-    const batch = writeBatch(db);
-
-    for (const categoryName of categories) {
-      const categoryQuery = query(
-        collection(db, `Users/${uid}/Category`),
-        where('name', '==', categoryName)
-      );
-      const existingCategorySnap = await getDocs(categoryQuery);
-
-      if (existingCategorySnap.empty) {
-        // Create new category
-        const categoryId = Date.now().toString() + '_' + categoryName;
-        const categoryRef = doc(db, `Users/${uid}/Category`, categoryId);
-        batch.set(categoryRef, {
-          id: categoryId,
-          name: categoryName,
-          description: `Auto-generated category for ${categoryName}`,
-          createdAt: Timestamp.now(),
-          updatedAt: Timestamp.now(),
-          synced: true,
-          uid,
-        });
-        console.log(`Queued creation of category: ${categoryName}`);
-      } else {
-        // Update existing category timestamp
-        const existingCategory = existingCategorySnap.docs[0];
-        batch.update(existingCategory.ref, {
-          updatedAt: Timestamp.now(),
-          synced: true,
-        });
-        console.log(`Queued update of category: ${categoryName}`);
-      }
-    }
-
-    await batch.commit();
-    console.log('Category synchronization completed.');
-  } catch (error) {
-    console.error('Error synchronizing Categories:', error);
-    throw error;
-  }
-}
-
-export async function getCategories(): Promise<Category[]> {
-  const uid = await getUID();
-  if (!uid) {
-    throw new Error('No UID available for get categories operation');
-  }
-
-  try {
-    const snapshot = await getDocs(collection(db, `Users/${uid}/Category`));
-    const categories = snapshot.docs.map((doc) => {
-      const data = doc.data();
-      return {
-        id: data.id,
-        name: data.name,
-        description: data.description,
-        createdAt: data.createdAt,
-        updatedAt: data.updatedAt,
-        synced: data.synced,
-        syncTimestamp: data.syncTimestamp,
-        uid: data.uid,
-      } as Category;
-    });
-
-    // Filter out duplicates by name, keeping the most recent one
-    const uniqueCategories = new Map<string, Category>();
-    categories.forEach(category => {
-      const existing = uniqueCategories.get(category.name);
-      if (!existing || (category.updatedAt && existing.updatedAt && category.updatedAt > existing.updatedAt)) {
-        uniqueCategories.set(category.name, category);
-      }
-    });
-
-    return Array.from(uniqueCategories.values());
-  } catch (error) {
-    console.error('Error getting categories:', error);
-    return [];
-  }
-}
-
-export async function addOrUpdateCategory(
-  name: string,
-  description?: string,
-  id?: string
-): Promise<string> {
-  const uid = await getUID();
-  if (!uid) {
-    throw new Error('No UID available for add/update category operation');
-  }
-
-  try {
-    const categoryId = id || Date.now().toString() + '_' + name;
-    const categoryRef = doc(db, `Users/${uid}/Category`, categoryId);
-
-    const categoryData = {
-      id: categoryId,
-      name,
-      description: description || `Category: ${name}`,
-      updatedAt: Timestamp.now(),
-      synced: true,
-      uid,
-    };
-
-    const existingCategory = await getDoc(categoryRef);
-    if (existingCategory.exists()) {
-      await updateDoc(categoryRef, categoryData);
-    } else {
-      await setDoc(categoryRef, {
-        ...categoryData,
-        createdAt: Timestamp.now(),
-      });
-    }
-
-    console.log(`Category ${id ? 'updated' : 'added'}: ${categoryId}`);
-    return categoryId;
-  } catch (error) {
-    console.error('Error adding/updating category:', error);
-    throw error;
-  }
-}
-
-export async function deleteCategory(id: string): Promise<void> {
-  const uid = await getUID();
-  if (!uid) {
-    throw new Error('No UID available for delete category operation');
-  }
-
-  try {
-    const categoryRef = doc(db, `Users/${uid}/Category`, id);
-    const categorySnap = await getDoc(categoryRef);
-
-    if (categorySnap.exists()) {
-      const categoryData = categorySnap.data();
-      if (categoryData.uid === uid) {
-        await deleteDoc(categoryRef);
-        console.log(`Category with ID ${id} deleted.`);
-      } else {
-        console.error(
-          `You cannot delete a category that doesn't belong to you.`
-        );
-      }
-    } else {
-      console.error(`Category with ID ${id} does not exist.`);
-    }
-  } catch (error) {
-    console.error(`Error deleting category with ID ${id}:`, error);
-    throw error;
-  }
-}
+// async function deleteCategory(...) { ... } // Disabled: Category logic
 
 // Helper function to compare versions
 function compareVersions(
@@ -784,45 +488,7 @@ function compareVersions(
 // Database functions for Discussion //
 //////////////////////////////////////////
 
-export async function getDiscussions(
-  lastX?: number,
-  discussionId?: string
-): Promise<Discussion[]> {
-  const uid = await getUID();
-  if (!uid) {
-    throw new Error('No UID available for get discussions operation');
-  }
-  try {
-    let discussionsQuery = query(
-      collection(db, `Users/${uid}/Discussion`),
-      where('uid', '==', uid),
-      orderBy('timestamp', 'desc')
-    );
-    if (discussionId) {
-      const discussionRef = doc(db, `Users/${uid}/Discussion`, discussionId);
-      const discussionSnap = await getDoc(discussionRef);
-      if (discussionSnap.exists()) {
-        discussionsQuery = query(discussionsQuery, startAfter(discussionSnap));
-      } else {
-        console.warn(`Discussion ID ${discussionId} not found.`);
-      }
-    }
-    if (lastX !== undefined) {
-      discussionsQuery = query(discussionsQuery, limit(lastX));
-    }
-    const discussionSnapshot = await getDocs(discussionsQuery);
-    return discussionSnapshot.docs.map((doc) => ({
-      id: doc.id,
-      ...doc.data(),
-      timestamp: doc.data().timestamp
-        ? format(new Date(doc.data().timestamp.toDate()), 'M/d/yy \n h:mm a')
-        : 'N/A',
-    })) as Discussion[];
-  } catch (error) {
-    console.error('Error getting Discussion:', error);
-    return [];
-  }
-}
+// async function getDiscussions(...) { ... } // Disabled: Discussion logic
 
 export async function deleteDiscussion(id: string): Promise<void> {
   const uid = await getUID();
@@ -1030,16 +696,16 @@ export async function addQuestionDiscussion(
     console.log(
       `Adding question: ${question} to discussionId: ${discussionId}`
     );
-    await addOrUpdateDiscussion(question, 'ask', discussionId);
+  // await addOrUpdateDiscussion(question, 'ask', discussionId); // Disabled: Discussion logic
     console.log(`Successfully added question to discussion`);
     const gpts_names_string =
       '["openAI", "Gemini", "ChatGPT", "Claude", "DeepSeek"]';
     const gpts_names = JSON.parse(gpts_names_string);
     console.log(`GPT names:`, gpts_names);
-    const categories = await getDistinctCategories();
-    console.log(`Categories:`, categories);
+  // const categories = await getDistinctCategories(); // Disabled: Category logic
+  // console.log(`Categories:`, categories); // Disabled: Category logic
     const response = await sendQuestionForParsing({
-      categories,
+      categories: [], // Category logic disabled, pass empty array
       gpts_names,
       question,
       discussionId,

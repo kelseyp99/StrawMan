@@ -377,27 +377,40 @@ const MainComponent: React.FC = () => {
     if (!uid) return;
     try {
       setLoading(true);
-      // Fetch data with minimal processing
-      // Fetch vote history and merge into activities table
+      // Fetch vote history from cloud function
+      const { getUserVoteHistoryCloud } = require('../services/voteHistoryCloud');
       let voteHistoryRaw: any[] = [];
       let voteHistoryData: any[] = [];
       try {
-        voteHistoryRaw = await require('../services/dbServices').getCandidateResultHistory(50);
-        voteHistoryData = voteHistoryRaw.map((vote: any) => ({
-          id: String(vote.id || ''),
-          categoryId: '',
-          category: 'Vote',
-          description: vote.selectedId ? `Voted for candidate ${vote.selectedId}` : 'Vote recorded',
-          timestamp:
-            vote.timestamp instanceof Date
-              ? vote.timestamp.toLocaleDateString() + ' ' + vote.timestamp.toLocaleTimeString()
-              : String(vote.timestamp || 'No date'),
-          rawTimestamp:
-            vote.timestamp instanceof Date
-              ? vote.timestamp
-              : new Date(vote.timestamp || 0),
-          cleared: '',
-        }));
+        console.log('[DEBUG] Calling getUserVoteHistoryCloud...');
+        voteHistoryRaw = await getUserVoteHistoryCloud();
+        console.log('[DEBUG] voteHistoryRaw:', voteHistoryRaw);
+        if (!voteHistoryRaw || voteHistoryRaw.length === 0) {
+          console.warn('[DEBUG] No vote history returned from cloud function.');
+        }
+        voteHistoryData = voteHistoryRaw.map((vote: any) => {
+          const row = {
+            id: String(vote.id || ''),
+            category: 'Vote',
+            description: vote.selectedId || 'Vote recorded',
+            timestamp:
+              vote.timestamp && (vote.timestamp._seconds || vote.timestamp.seconds)
+                ? new Date((vote.timestamp._seconds || vote.timestamp.seconds) * 1000).toLocaleString()
+                : vote.timestamp && vote.timestamp.toDate
+                  ? vote.timestamp.toDate().toLocaleString()
+                  : String(vote.timestamp || 'No date'),
+            rawTimestamp:
+              vote.timestamp && (vote.timestamp._seconds || vote.timestamp.seconds)
+                ? new Date((vote.timestamp._seconds || vote.timestamp.seconds) * 1000)
+                : vote.timestamp && vote.timestamp.toDate
+                  ? vote.timestamp.toDate()
+                  : new Date(vote.timestamp || 0),
+            cleared: '',
+          };
+          console.log('[DEBUG] Processed vote row:', row);
+          return row;
+        });
+        console.log('[DEBUG] Final voteHistoryData for table:', voteHistoryData);
         console.log('[DEBUG] Raw vote history from Realm:', voteHistoryRaw);
       } catch (e) {
         console.error('Error fetching vote history:', e);
@@ -1420,32 +1433,14 @@ const MainComponent: React.FC = () => {
               </TouchableOpacity>
             </>
           )}
-          <View style={styles.filterRow}>
-            {tables[currentTableIndex]?.columns.map((col) =>
-              !col.hidden ? (
-                <TextInput
-                  key={col.accessor}
-                  style={[styles.filterInput, { flex: col.flex }]}
-                  placeholder={`Filter ${col.Header}`}
-                  value={
-                    typeof filters[col.accessor] === 'string'
-                      ? filters[col.accessor]
-                      : filters[col.accessor]?.toString() || ''
-                  }
-                  onChangeText={(text) =>
-                    setFilters((prev) => ({ ...prev, [col.accessor]: text }))
-                  }
-                />
-              ) : null
-            )}
-          </View>
+
           <View style={styles.headerRow}>
             {tables[currentTableIndex]?.columns.map((col) =>
               !col.hidden ? (
                 <TouchableOpacity
                   key={col.accessor}
+                  style={[styles.headerCell, col.style, { flex: col.flex }]}
                   onPress={() => handleSort(col.accessor)}
-                  style={[styles.headerCell, { flex: col.flex }]}
                 >
                   <Text style={styles.headerText}>
                     {col.Header}{' '}
