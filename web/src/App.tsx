@@ -8,6 +8,7 @@ import About from './pages/About';
 import './App.css';
 import { auth } from './firebase';
 import { GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged, User } from 'firebase/auth';
+const Admin = React.lazy(() => import('./pages/Admin'));
 
 function App() {
   const [user, setUser] = React.useState<User | null>(null);
@@ -40,7 +41,8 @@ function App() {
         <Link to="/">Home</Link>
         <Link to="/tables">Tables</Link>
         <Link to="/reports">Reports</Link>
-        <Link to="/about">About</Link>
+  <Link to="/about">About</Link>
+  <Link to="/admin">Admin</Link>
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
           {user ? (
             <>
@@ -53,12 +55,15 @@ function App() {
           )}
         </div>
       </nav>
-      <Routes>
-        <Route path="/" element={<Home />} />
-        <Route path="/tables" element={<Tables />} />
-        <Route path="/reports" element={<Reports />} />
-        <Route path="/about" element={<About />} />
-      </Routes>
+      <React.Suspense fallback={<div>Loading...</div>}>
+        <Routes>
+          <Route path="/" element={<Home />} />
+          <Route path="/tables" element={<Tables />} />
+          <Route path="/reports" element={<Reports />} />
+          <Route path="/about" element={<About />} />
+          <Route path="/admin" element={<Admin />} />
+        </Routes>
+      </React.Suspense>
     </Router>
   );
 }

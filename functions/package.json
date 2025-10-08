@@ -6,10 +6,16 @@
     "firebase-functions": "^4.4.1"
   },
   "engines": {
-  "node": "20"
+    "node": "20"
   },
   "scripts": {
-  "lint": "echo 'No linting configured'",
-  "build": "echo 'No build step required'"
+    "build": "tsc",
+    "lint": "echo 'No linting configured'"
+  },
+  "main": "lib/index.js",
+  "devDependencies": {
+    "@types/node": "^24.7.0",
+    "@types/node-fetch": "^2.6.13",
+    "typescript": "^5.9.3"
   }
 }
