@@ -38,7 +38,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.ballot = exports.elections = void 0;
+exports.getUserBallot = exports.saveUserAddress = exports.ballot = exports.elections = void 0;
 const https_1 = require("firebase-functions/v2/https");
 const logger = __importStar(require("firebase-functions/logger"));
 const admin = __importStar(require("firebase-admin"));
@@ -201,6 +201,143 @@ exports.ballot = (0, https_1.onRequest)({
             logger.error("ballot error", { msg });
             const isParam = msg.startsWith("Missing required param");
             return res.status(isParam ? 400 : 500).json({ error: msg });
+        }
+    });
+});
+// --- /saveUserAddress ---
+// Saves user address, fetches ballot data, stores ballot if new, updates user profile
+exports.saveUserAddress = (0, https_1.onRequest)({
+    secrets: [],
+}, (req, res) => {
+    cors(req, res, async () => {
+        if (req.method === "OPTIONS") {
+            res.status(204).send("");
+            return;
+        }
+        try {
+            if (req.method !== "POST")
+                return res.status(405).send("Method Not Allowed");
+            const { userId, address, electionId } = req.body;
+            if (!userId || !address || !electionId) {
+                return res.status(400).json({ error: "Missing required fields: userId, address, electionId" });
+            }
+            // Get user's current profile
+            const userRef = db.collection('users').doc(userId);
+            const userDoc = await userRef.get();
+            const userData = userDoc.data();
+            // Check if address has changed
+            if (userData?.address === address.trim()) {
+                return res.status(200).json({
+                    message: "Address unchanged. No action needed.",
+                    unchanged: true
+                });
+            }
+            // Fetch ballot data from Google Civic API
+            const civicApiKey = getCivicApiKey();
+            if (!civicApiKey) {
+                return res.status(500).json({ error: "Server configuration error: No Civic API key configured" });
+            }
+            const url = `https://civicinfo.googleapis.com/civicinfo/v2/voterinfo?${qs({
+                address,
+                electionId,
+                key: civicApiKey,
+            })}`;
+            const response = await (0, node_fetch_1.default)(url);
+            if (!response.ok) {
+                const errorText = await response.text();
+                logger.error("Civic API error in saveUserAddress", { status: response.status, errorText });
+                return res.status(response.status).json({
+                    error: `Civic API error: ${response.status}`,
+                    details: errorText
+                });
+            }
+            const api = await response.json();
+            const contests = normalizeContests(api);
+            const normalizedAddress = api.normalizedInput ?
+                `${api.normalizedInput.line1 || ''}, ${api.normalizedInput.city || ''}, ${api.normalizedInput.state || ''} ${api.normalizedInput.zip || ''}`.trim() :
+                address;
+            // Check if ballot exists in ballots collection
+            const ballotRef = db.collection('ballots').doc(electionId);
+            const ballotDoc = await ballotRef.get();
+            if (!ballotDoc.exists) {
+                // Create new ballot document
+                await ballotRef.set({
+                    electionId,
+                    contests,
+                    sourceAddress: normalizedAddress,
+                    lastUpdated: admin.firestore.FieldValue.serverTimestamp()
+                });
+                logger.info(`Created new ballot document for electionId: ${electionId}`);
+            }
+            else {
+                logger.info(`Ballot for electionId ${electionId} already exists`);
+            }
+            // Update user profile
+            await userRef.set({
+                address: normalizedAddress,
+                electionId,
+                lastUpdated: admin.firestore.FieldValue.serverTimestamp()
+            }, { merge: true });
+            return res.status(200).json({
+                message: "Address saved successfully",
+                electionId,
+                address: normalizedAddress,
+                ballotCreated: !ballotDoc.exists
+            });
+        }
+        catch (err) {
+            logger.error("saveUserAddress error", { error: err?.message });
+            return res.status(500).json({ error: err?.message || "Failed to save address" });
+        }
+    });
+});
+// --- /getUserBallot ---
+// Retrieves ballot data for a user based on their electionId
+exports.getUserBallot = (0, https_1.onRequest)({
+    secrets: [],
+}, (req, res) => {
+    cors(req, res, async () => {
+        if (req.method === "OPTIONS") {
+            res.status(204).send("");
+            return;
+        }
+        try {
+            if (req.method !== "GET")
+                return res.status(405).send("Method Not Allowed");
+            const userId = req.query.userId;
+            if (!userId) {
+                return res.status(400).json({ error: "Missing required parameter: userId" });
+            }
+            // Get user profile
+            const userDoc = await db.collection('users').doc(userId).get();
+            if (!userDoc.exists) {
+                return res.status(404).json({ error: "User not found" });
+            }
+            const userData = userDoc.data();
+            if (!userData?.electionId) {
+                return res.status(404).json({ error: "User has no election assigned. Please save your address first." });
+            }
+            // Get ballot data
+            const ballotDoc = await db.collection('ballots').doc(userData.electionId).get();
+            if (!ballotDoc.exists) {
+                return res.status(404).json({ error: "Ballot not found for this election" });
+            }
+            const ballotData = ballotDoc.data();
+            return res.status(200).json({
+                user: {
+                    address: userData.address,
+                    electionId: userData.electionId
+                },
+                ballot: {
+                    electionId: ballotData?.electionId,
+                    contests: ballotData?.contests || [],
+                    lastUpdated: ballotData?.lastUpdated
+                }
+            });
+        }
+        catch (err) {
+            logger.error("getUserBallot error", { error: err?.message });
+            return res.status(500).json({ error: err?.message || "Failed to get user ballot" });
         }
     });
 });

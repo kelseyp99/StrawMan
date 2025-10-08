@@ -9,6 +9,7 @@ import './App.css';
 import { auth } from './firebase';
 import { GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged, User } from 'firebase/auth';
 const Admin = React.lazy(() => import('./pages/Admin'));
+const Profile = React.lazy(() => import('./pages/Profile'));
 
 function App() {
   const [user, setUser] = React.useState<User | null>(null);
@@ -42,6 +43,7 @@ function App() {
         <Link to="/tables">Tables</Link>
         <Link to="/reports">Reports</Link>
   <Link to="/about">About</Link>
+  <Link to="/profile">Profile</Link>
   <Link to="/admin">Admin</Link>
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
           {user ? (
@@ -61,6 +63,7 @@ function App() {
           <Route path="/tables" element={<Tables />} />
           <Route path="/reports" element={<Reports />} />
           <Route path="/about" element={<About />} />
+          <Route path="/profile" element={<Profile />} />
           <Route path="/admin" element={<Admin />} />
         </Routes>
       </React.Suspense>
