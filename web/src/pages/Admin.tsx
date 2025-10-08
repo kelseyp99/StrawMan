@@ -4,6 +4,65 @@ import { collection, getDocs, query, where, orderBy } from 'firebase/firestore';
 
 const CIVIC_API_BASE = 'https://us-central1-strawman-42.cloudfunctions.net/ballot';
 
+// Mock contest data for demo purposes
+const MOCK_CONTESTS = [
+  {
+    id: 'president-2024',
+    office: 'President of the United States',
+    type: 'General',
+    district: { name: 'United States', scope: 'national' },
+    candidates: [
+      {
+        name: 'Kamala Harris',
+        party: 'Democratic Party',
+        candidateUrl: 'https://kamalaharris.com',
+        photoUrl: 'https://example.com/harris.jpg'
+      },
+      {
+        name: 'Donald Trump',
+        party: 'Republican Party',
+        candidateUrl: 'https://donaldtrump.com',
+        photoUrl: 'https://example.com/trump.jpg'
+      }
+    ]
+  },
+  {
+    id: 'senate-fl',
+    office: 'U.S. Senate',
+    type: 'General',
+    district: { name: 'Florida', scope: 'statewide' },
+    candidates: [
+      {
+        name: 'Rick Scott',
+        party: 'Republican Party',
+        candidateUrl: 'https://rickscott.senate.gov'
+      },
+      {
+        name: 'Debbie Mucarsel-Powell',
+        party: 'Democratic Party',
+        candidateUrl: 'https://debbieforsenate.com'
+      }
+    ]
+  },
+  {
+    id: 'house-fl-10',
+    office: 'U.S. House of Representatives - District 10',
+    type: 'General',
+    district: { name: 'Florida District 10', scope: 'congressional' },
+    candidates: [
+      {
+        name: 'Maxwell Frost',
+        party: 'Democratic Party',
+        candidateUrl: 'https://maxwellfrost.com'
+      },
+      {
+        name: 'Willie Montague',
+        party: 'Republican Party'
+      }
+    ]
+  }
+];
+
 const Admin: React.FC = () => {
   const [data, setData] = React.useState<any[]>([]);
   const [loading, setLoading] = React.useState(false);
@@ -28,6 +87,13 @@ const Admin: React.FC = () => {
       const res = await fetch(url);
       if (!res.ok) throw new Error('Failed to fetch Google Civic data');
       const ballot = await res.json();
+      
+      // If contests are empty, add mock data for demo purposes
+      if (!ballot.contests || ballot.contests.length === 0) {
+        ballot.contests = MOCK_CONTESTS;
+        ballot._note = 'Mock data added for demonstration (Google Civic API returned no contests)';
+      }
+      
       setCivicData(ballot);
     } catch (e: any) {
       setCivicError(e?.message || 'Unknown error');
@@ -61,54 +127,8 @@ const Admin: React.FC = () => {
   return (
     <div style={{ maxWidth: 900, margin: '48px auto', padding: 24, background: '#fff', borderRadius: 12, boxShadow: '0 2px 12px rgba(0,0,0,0.07)' }}>
       <h1>Admin Panel</h1>
-      <p>Download and view the full elections data for analysis or backup. Optionally filter by zip code.</p>
-      <div style={{ marginBottom: 16 }}>
-        <input
-          type="text"
-          placeholder="Filter by Zip Code (optional)"
-          value={zip}
-          onChange={e => setZip(e.target.value)}
-          style={{ fontSize: '1rem', padding: '8px 12px', borderRadius: 4, border: '1px solid #ccc', marginRight: 12 }}
-        />
-        <button onClick={handleDownload} style={{ fontSize: '1.1rem', padding: '10px 24px', background: '#2288AA', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer' }}>
-          Download Elections Data
-        </button>
-      </div>
-      {loading && <div>Loading...</div>}
-      {error && <div style={{ color: 'red' }}>{error}</div>}
-      {data.length > 0 && (
-        <div style={{ overflowX: 'auto', marginTop: 24 }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead>
-              <tr>
-                <th style={{ border: '1px solid #ccc', padding: 8 }}>Date</th>
-                <th style={{ border: '1px solid #ccc', padding: 8 }}>User</th>
-                <th style={{ border: '1px solid #ccc', padding: 8 }}>Candidate</th>
-                <th style={{ border: '1px solid #ccc', padding: 8 }}>Result</th>
-                <th style={{ border: '1px solid #ccc', padding: 8 }}>Zip</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.map(row => (
-                <tr key={row.id}>
-                  <td style={{ border: '1px solid #ccc', padding: 8 }}>
-                    {row.timestamp && row.timestamp.seconds
-                      ? new Date(row.timestamp.seconds * 1000).toLocaleString()
-                      : ''}
-                  </td>
-                  <td style={{ border: '1px solid #ccc', padding: 8 }}>{row.userId || ''}</td>
-                  <td style={{ border: '1px solid #ccc', padding: 8 }}>{row.candidateName || ''}</td>
-                  <td style={{ border: '1px solid #ccc', padding: 8 }}>{row.result || ''}</td>
-                  <td style={{ border: '1px solid #ccc', padding: 8 }}>{row.zip || ''}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      <hr style={{ margin: '40px 0' }} />
-      <h2>Fetch Google Elections Info</h2>
+      
+      <h2>Enter Address for Election Info</h2>
       <div style={{ marginBottom: 16, display: 'flex', gap: 12, alignItems: 'center' }}>
         <input
           type="text"
@@ -125,7 +145,7 @@ const Admin: React.FC = () => {
           style={{ fontSize: '1rem', padding: '8px 12px', borderRadius: 4, border: '1px solid #ccc', width: 120 }}
         />
         <button onClick={fetchCivicInfo} style={{ fontSize: '1.1rem', padding: '10px 24px', background: '#2288AA', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer' }}>
-          Fetch Google Elections Info
+          Fetch Election Info
         </button>
       </div>
       {civicLoading && <div>Loading Google Civic data...</div>}
