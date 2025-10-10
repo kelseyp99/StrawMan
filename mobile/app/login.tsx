@@ -52,6 +52,7 @@ export default function Login() {
       ? (Constants.expoConfig?.extra as any)?.googleClientIdIos
       : (Constants.expoConfig?.extra as any)?.googleClientIdAndroid,
     scopes: ['profile', 'email'],
+    redirectUri: 'https://auth.expo.io/@smartcitiesfl/strawman',
   });
 
   useEffect(() => {

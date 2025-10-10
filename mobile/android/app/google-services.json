@@ -1,0 +1,54 @@
+{
+  "project_info": {
+    "project_number": "894321564476",
+    "project_id": "strawman-42",
+    "storage_bucket": "strawman-42.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:894321564476:android:4f2b3555932dce8ae25c39",
+        "android_client_info": {
+          "package_name": "com.smartcitiesfl.strawman"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "894321564476-20beoqlsrdftl2ngog9nv7col5aura8k.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.smartcitiesfl.strawman",
+            "certificate_hash": "2c1b4d3d38ecc2d0f01b790e1d207439b9f2e667"
+          }
+        },
+        {
+          "client_id": "894321564476-9a872v97sn3m5226lggmureca2e0o67m.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC1dU8xLrg-c7qS_ALHBi3p1VuH049vePk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "894321564476-9a872v97sn3m5226lggmureca2e0o67m.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "894321564476-7u1ddr8ikleq58aggju9g2eibuq526um.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.smartcitiesfl.strawman"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
