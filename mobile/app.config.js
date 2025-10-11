@@ -16,7 +16,7 @@ module.exports = {
     slug: 'strawman',
     owner: 'smartcitiesfl',
   scheme: 'strawman',
-    icon: './assets/images/ask-janet-icon2.png',
+    icon: './assets/images/StrawMan.png',
     android: {
       package: 'com.smartcitiesfl.strawman',
     },
@@ -32,9 +32,8 @@ module.exports = {
     },
     extra: {
   EXPO_PUBLIC_IS_EXPO_GO: process.env.EXPO_PUBLIC_IS_EXPO_GO || 'false',
-  // Web OAuth Client ID - used for both web and mobile (expo-auth-session)
-  // Android: uses Web client ID with redirect URI https://auth.expo.io/@smartcitiesfl/strawman
-  googleClientIdAndroid: process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID_ANDROID || '894321564476-9a872v97sn3m5226lggmureca2e0o67m.apps.googleusercontent.com',
+  // Android OAuth Client ID - using Android client type (not Web)
+  googleClientIdAndroid: process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID_ANDROID || '894321564476-20beoqlsrdftl2ngog9nv7col5aura8k.apps.googleusercontent.com',
   // iOS: create iOS OAuth client with bundle com.smartcitiesfl.strawman
   googleClientIdIos: process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID_IOS || '615690850067-e48fie6co3tnp7o1p2lnvmf299563tff.apps.googleusercontent.com',
       firebase: {
