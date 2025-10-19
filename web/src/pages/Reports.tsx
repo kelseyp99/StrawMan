@@ -1,22 +1,27 @@
-
-
 import React from 'react';
 import { db } from '../firebase';
-import { collection, getDocs } from 'firebase/firestore';
+import { collection, query, where, getDocs } from 'firebase/firestore';
 
-const Reports: React.FC = () => {
-	const [candidates, setCandidates] = React.useState<Array<{ name: string; voteTally: number }>>([]);
+
+interface ReportsProps {
+	electionId: string;
+}
+
+const Reports: React.FC<ReportsProps> = ({ electionId }) => {
+	const [candidates, setCandidates] = React.useState<Array<{ name: string; votes: number }>>([]);
 	const [loading, setLoading] = React.useState(true);
 	const [error, setError] = React.useState<string | null>(null);
 
 	React.useEffect(() => {
+		if (!electionId) return;
 		const fetchCandidates = async () => {
 			try {
-				const querySnapshot = await getDocs(collection(db, 'candidates'));
-				const data: Array<{ name: string; voteTally: number }> = [];
+				const q = query(collection(db, 'Candidates'), where('electionId', '==', electionId));
+				const querySnapshot = await getDocs(q);
+				const data: Array<{ name: string; votes: number }> = [];
 				querySnapshot.forEach(doc => {
 					const d = doc.data();
-					data.push({ name: d.name || doc.id, voteTally: d.voteTally ?? 0 });
+					data.push({ name: d.name, votes: d.votes ?? 0 });
 				});
 				setCandidates(data);
 				setLoading(false);
@@ -26,37 +31,21 @@ const Reports: React.FC = () => {
 			}
 		};
 		fetchCandidates();
-	}, []);
+	}, [electionId]);
 
 	if (loading) return <div>Loading...</div>;
 	if (error) return <div style={{ color: 'red' }}>{error}</div>;
 
 	return (
-		<div style={{ maxWidth: 500, margin: '2rem auto', textAlign: 'center' }}>
+		<div style={{ maxWidth: 400, margin: '2rem auto', textAlign: 'center' }}>
 			<h2>Vote Totals</h2>
-			<table style={{ width: '100%', borderCollapse: 'collapse', marginTop: 24 }}>
-				<thead>
-					<tr>
-						<th style={{ border: '1px solid #ccc', padding: 8 }}>Candidate</th>
-						<th style={{ border: '1px solid #ccc', padding: 8 }}>Votes</th>
-					</tr>
-				</thead>
-				<tbody>
-					{candidates.length === 0 ? (
-						<tr><td colSpan={2} style={{ padding: 16 }}>No votes yet.</td></tr>
-					) : (
-						candidates.map((c, i) => (
-							<tr key={i}>
-								<td style={{ border: '1px solid #ccc', padding: 8 }}>{c.name}</td>
-								<td style={{ border: '1px solid #ccc', padding: 8 }}>{c.voteTally}</td>
-							</tr>
-						))
-					)}
-				</tbody>
-			</table>
+			{candidates.map((c, i) => (
+				<div key={i} style={{ margin: '1rem 0' }}>
+					<strong>{c.name}:</strong> {c.votes}
+				</div>
+			))}
 		</div>
 	);
 };
-
 
 export default Reports;
