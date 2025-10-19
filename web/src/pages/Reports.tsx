@@ -37,13 +37,35 @@ const Reports: React.FC<ReportsProps> = ({ electionId }) => {
 	if (error) return <div style={{ color: 'red' }}>{error}</div>;
 
 	return (
-		<div style={{ maxWidth: 400, margin: '2rem auto', textAlign: 'center' }}>
-			<h2>Vote Totals</h2>
-			{candidates.map((c, i) => (
-				<div key={i} style={{ margin: '1rem 0' }}>
-					<strong>{c.name}:</strong> {c.votes}
+		<div style={{
+			minHeight: '100vh',
+			background: 'linear-gradient(135deg, #e0eafc 0%, #cfdef3 100%)',
+			display: 'flex',
+			flexDirection: 'row',
+			alignItems: 'stretch',
+			justifyContent: 'center',
+			padding: '2rem',
+		}}>
+			{/* Left AdSense ads */}
+			<div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'flex-start', alignItems: 'center', width: 120, minWidth: 120, marginRight: 24 }}>
+				<div style={{ width: 120, height: 300, background: '#fff', borderRadius: 12, boxShadow: '0 2px 8px #0001', marginBottom: 24, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+					<span style={{ color: '#bbb', fontSize: 14 }}>AdSense Ad 1</span>
 				</div>
-			))}
+				<div style={{ width: 120, height: 300, background: '#fff', borderRadius: 12, boxShadow: '0 2px 8px #0001', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+					<span style={{ color: '#bbb', fontSize: 14 }}>AdSense Ad 2</span>
+				</div>
+			</div>
+			{/* Main content */}
+			<div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+				<div style={{ maxWidth: 400, margin: '2rem auto', textAlign: 'center' }}>
+					<h2>Vote Totals</h2>
+					{candidates.map((c, i) => (
+						<div key={i} style={{ margin: '1rem 0' }}>
+							<strong>{c.name}:</strong> {c.votes}
+						</div>
+					))}
+				</div>
+			</div>
 		</div>
 	);
 };

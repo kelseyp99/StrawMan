@@ -68,6 +68,21 @@ function AppRoutes() {
 
   return (
     <>
+      {/* Admob Banner Placeholder - Top of every page */}
+      <div style={{
+        width: '100%',
+        height: 80,
+        background: 'linear-gradient(90deg, #f8fafc 0%, #e0eafc 100%)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        boxShadow: '0 2px 8px #0001',
+        marginBottom: 0,
+        position: 'relative',
+        zIndex: 100,
+      }}>
+        <span style={{ color: '#bbb', fontSize: 18 }}>Admob Banner</span>
+      </div>
       <nav style={{ display: 'flex', gap: 16, padding: 16, alignItems: 'center' }}>
         <Link to="/">Home</Link>
         <Link to="/ballot">Ballot</Link>
