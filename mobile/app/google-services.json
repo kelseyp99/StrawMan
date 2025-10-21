@@ -14,14 +14,6 @@
       },
       "oauth_client": [
         {
-          "client_id": "894321564476-20beoqlsrdftl2ngog9nv7col5aura8k.apps.googleusercontent.com",
-          "client_type": 1,
-          "android_info": {
-            "package_name": "com.smartcitiesfl.strawman",
-            "certificate_hash": "2c1b4d3d38ecc2d0f01b790e1d207439b9f2e667"
-          }
-        },
-        {
           "client_id": "894321564476-9a872v97sn3m5226lggmureca2e0o67m.apps.googleusercontent.com",
           "client_type": 3
         }

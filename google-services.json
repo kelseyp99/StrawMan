@@ -1,35 +1,43 @@
 {
   "project_info": {
-    "project_number": "341732508688",
-    "project_id": "lifelog-f2904",
-    "storage_bucket": "lifelog-f2904.firebasestorage.app"
+    "project_number": "894321564476",
+    "project_id": "strawman-42",
+    "storage_bucket": "strawman-42.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:341732508688:android:bdf334e3ff70450218f695",
+        "mobilesdk_app_id": "1:894321564476:android:4f2b3555932dce8ae25c39",
         "android_client_info": {
-          "package_name": "com.anonymous.lifelog"
+          "package_name": "com.smartcitiesfl.strawman"
         }
       },
       "oauth_client": [
         {
-          "client_id": "341732508688-18q0agi8fa8db210ehm9s3cb8qh9t0p7.apps.googleusercontent.com",
-          "client_type": 1,
-          "android_info": {
-            "package_name": "com.anonymous.lifelog",
-            "certificate_hash": "b3b1dad5ab98b3c2ca1304ddadbf20675b6d48b4"
-          }
+          "client_id": "894321564476-9a872v97sn3m5226lggmureca2e0o67m.apps.googleusercontent.com",
+          "client_type": 3
         }
       ],
       "api_key": [
         {
-          "current_key": "AIzaSyDba17ybV3s_h6gcZSP1-9nGgaALc1_2Pk"
+          "current_key": "AIzaSyC1dU8xLrg-c7qS_ALHBi3p1VuH049vePk"
         }
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "894321564476-9a872v97sn3m5226lggmureca2e0o67m.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "894321564476-7u1ddr8ikleq58aggju9g2eibuq526um.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.smartcitiesfl.strawman"
+              }
+            }
+          ]
         }
       }
     }

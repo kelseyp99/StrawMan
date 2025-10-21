@@ -3,7 +3,8 @@
   "description": "Cloud Functions for Firebase",
   "dependencies": {
     "firebase-admin": "^11.10.1",
-    "firebase-functions": "^4.4.1"
+    "firebase-functions": "^4.4.1",
+    "micro-stacks": "^1.2.1"
   },
   "engines": {
     "node": "20"

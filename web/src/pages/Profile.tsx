@@ -1,6 +1,7 @@
 import React from 'react';
 import { auth, db } from '../firebase';
 import { doc, getDoc } from 'firebase/firestore';
+import RedeemPanel from '../components/rewards/RedeemPanel';
 
 const SAVE_ADDRESS_API = 'https://us-central1-strawman-42.cloudfunctions.net/saveUserAddress';
 const GET_BALLOT_API = 'https://us-central1-strawman-42.cloudfunctions.net/getUserBallot';
@@ -89,6 +90,8 @@ const Profile: React.FC = () => {
     );
   }
 
+  const userEmail = userProfile?.email || '';
+
   return (
     <div style={{ maxWidth: 800, margin: '48px auto', padding: 24, background: '#fff', borderRadius: 12, boxShadow: '0 2px 12px rgba(0,0,0,0.07)' }}>
       <h1>My Profile</h1>
@@ -156,6 +159,8 @@ const Profile: React.FC = () => {
           )}
         </div>
       )}
+
+      <RedeemPanel email={userEmail} />
     </div>
   );
 };

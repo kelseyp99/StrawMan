@@ -1,0 +1,7 @@
+[network]
+name = "devnet"
+bootstrap_node = "http://localhost:20443"  # Adjust as needed for your devnet setup
+
+[settings]
+default_accounts = true
+

@@ -8,7 +8,7 @@ export type PlanType = 'free' | 'limited' | 'premium';
 export const PLAN_SKUS = {
   LIMITED: 'plan_limited_10', // $10 SKU
   PREMIUM: 'plan_premium_30', // $30 SKU
-};
+}; 
 
 export async function setPlanBySku(sku: string) {
   let plan: PlanType = 'free';

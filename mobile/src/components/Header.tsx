@@ -4,11 +4,14 @@ import * as Google from 'expo-auth-session/providers/google';
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 
+
 export default function Header() {
+  const clientId = Platform.OS === 'ios'
+    ? (Constants.expoConfig?.extra as any)?.googleClientIdIos
+    : (Constants.expoConfig?.extra as any)?.googleClientIdAndroid;
+  console.log('GOOGLE SIGN-IN CLIENT ID:', clientId);
   const [request, response, promptAsync] = Google.useIdTokenAuthRequest({
-    clientId: Platform.OS === 'ios'
-      ? (Constants.expoConfig?.extra as any)?.googleClientIdIos
-      : (Constants.expoConfig?.extra as any)?.googleClientIdAndroid,
+    clientId,
     scopes: ['profile', 'email'],
   });
 

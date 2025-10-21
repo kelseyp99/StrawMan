@@ -1,12 +1,18 @@
 
 import React, { useEffect, useState } from 'react';
-import { db } from '../firebase';
+import { db, auth } from '../firebase';
+import WalletBadge from '../components/WalletBadge';
+import SimulatedAdPlayer from '../components/SimulatedAdPlayer';
+import RedeemModal from '../components/RedeemModal';
+import { getFunctions, httpsCallable } from 'firebase/functions';
+import AdSenseAd from '../components/AdSenseAd';
 import { doc, getDoc } from 'firebase/firestore';
 
 const Ballot: React.FC<{ address: string; electionId: string }> = ({ address, electionId }) => {
   const [ballot, setBallot] = useState<any>(null);
   const [selected, setSelected] = useState<{ [contestId: string]: string[] }>({});
   const [loading, setLoading] = useState(false);
+  const [showRedeem, setShowRedeem] = useState(false);
 
   useEffect(() => {
     setLoading(true);
@@ -62,21 +68,63 @@ const Ballot: React.FC<{ address: string; electionId: string }> = ({ address, el
           <span style={{ color: '#bbb', fontSize: 14 }}>AdSense Ad 2</span>
         </div>
       </div>
+      {/* Wallet badge */}
+      <WalletBadge />
+
       {/* Main content */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
         <h2>Election Ballot</h2>
+        <div style={{ marginBottom: 12 }}>
+          {auth.currentUser ? (
+            <div>
+              <SimulatedAdPlayer duration={8} onComplete={async () => {
+                try {
+                  const funcs = getFunctions();
+                  const credit = httpsCallable(funcs, 'creditPoints') as any;
+                  const res = await credit({ amount: 1, reason: 'ad_watch' });
+                  const newBal = res?.data?.balance ?? 'unknown';
+                  alert('Thanks! You earned 1 point. New balance: ' + newBal);
+                } catch (err) {
+                  console.error(err);
+                  alert('Failed to credit points.');
+                }
+              }} />
+              <div style={{ marginTop: 8 }}>
+                <button onClick={() => setShowRedeem(true)}>Redeem rewards</button>
+              </div>
+            </div>
+          ) : (
+            <span>Please sign in to earn points.</span>
+          )}
+        </div>
+        {showRedeem && <RedeemModal onClose={() => setShowRedeem(false)} />}
         {ballot.contests?.map((contest: any) => (
           <div key={contest.id} style={{ marginBottom: 24 }}>
             <h3>{contest.office}</h3>
             {contest.candidates.map((candidate: any) => (
-              <label key={candidate.name} style={{ display: 'block' }}>
-                <input
-                  type="checkbox"
-                  checked={selected[contest.id]?.includes(candidate.name) || false}
-                  onChange={() => handleCheck(contest.id, candidate.name)}
-                />
-                {candidate.name}
-              </label>
+              <div key={candidate.name} style={{ display: 'flex', alignItems: 'center', marginBottom: 8 }}>
+                <label style={{ display: 'flex', alignItems: 'center', flex: 1 }}>
+                  <input
+                    type="checkbox"
+                    checked={selected[contest.id]?.includes(candidate.name) || false}
+                    onChange={() => handleCheck(contest.id, candidate.name)}
+                    style={{ marginRight: 8 }}
+                  />
+                  <span>{candidate.name}</span>
+                </label>
+
+                {/* Sponsored ad slot for this candidate (non-reward). */}
+                {candidate.sponsoredAd ? (
+                  <div style={{ width: 160, marginLeft: 12, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <AdSenseAd
+                      client={candidate.sponsoredAd.client || 'ca-pub-1315319831980259'}
+                      slot={candidate.sponsoredAd.slot || '1234567890'}
+                      style={{ width: 160, height: 90, display: 'block' }}
+                      test={true}
+                    />
+                  </div>
+                ) : null}
+              </div>
             ))}
           </div>
         ))}

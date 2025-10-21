@@ -9,6 +9,7 @@ import Tables from './pages/Tables';
 import Reports from './pages/Reports';
 import About from './pages/About';
 import Ballot from './pages/Ballot';
+import Betting from './pages/Betting';
 import './App.css';
 
 
@@ -88,6 +89,7 @@ function AppRoutes() {
         <Link to="/ballot">Ballot</Link>
         <Link to="/tables">Tables</Link>
         <Link to="/reports">Reports</Link>
+        <Link to="/betting">Betting</Link>
         <Link to="/about">About</Link>
         <div style={{ marginLeft: 'auto' }}>
           {user ? (
@@ -105,6 +107,7 @@ function AppRoutes() {
         <Route path="/ballot" element={<Ballot address={profile?.address || "123 Main St, City, State ZIP"} electionId={profile?.electionId || "2000"} />} />
         <Route path="/tables" element={<Tables />} />
         <Route path="/reports" element={<Reports electionId={profile?.electionId || "2000"} />} />
+        <Route path="/betting" element={<Betting />} />
         <Route path="/about" element={<About />} />
       </Routes>
     </>

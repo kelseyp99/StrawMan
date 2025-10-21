@@ -347,3 +347,100 @@ export const getUserBallot = onRequest({
     }
   });
 });
+
+// --- creditPoints (callable) ---
+// Usage: callable function from client to credit points to the authenticated user
+export const creditPoints = functions.https.onCall(async (data, context) => {
+  // Require authentication
+  if (!context.auth || !context.auth.uid) {
+    throw new functions.https.HttpsError('unauthenticated', 'The function must be called while authenticated.');
+  }
+
+  const uid = context.auth.uid;
+  const amount = Number(data?.amount || 0);
+  const reason = String(data?.reason || 'credit');
+
+  if (!amount || isNaN(amount) || Math.abs(amount) > 10000) {
+    throw new functions.https.HttpsError('invalid-argument', 'Invalid amount');
+  }
+
+  const walletRef = db.collection('users').doc(uid).collection('wallet').doc('account');
+  const txRef = db.collection('users').doc(uid).collection('wallet').doc();
+
+  try {
+    await db.runTransaction(async (t) => {
+      const snap = await t.get(walletRef);
+      const prev = (snap.exists && snap.data()?.balance) ? Number(snap.data()?.balance) : 0;
+      const next = prev + amount;
+      t.set(walletRef, { balance: next, updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+      t.set(txRef, { amount, reason, createdAt: admin.firestore.FieldValue.serverTimestamp(), type: 'credit' });
+    });
+
+    const newSnap = await walletRef.get();
+    const newBalance = newSnap.exists ? Number(newSnap.data()?.balance || 0) : 0;
+    return { success: true, balance: newBalance };
+  } catch (err: any) {
+    logger.error('creditPoints error', { err: err?.message });
+    throw new functions.https.HttpsError('internal', 'Failed to credit points');
+  }
+});
+
+// --- redeemPoints (callable) ---
+// Allows a user to redeem points for a virtual reward. Records a redemption tx.
+export const redeemPoints = functions.https.onCall(async (data, context) => {
+  if (!context.auth || !context.auth.uid) {
+    throw new functions.https.HttpsError('unauthenticated', 'The function must be called while authenticated.');
+  }
+  const uid = context.auth.uid;
+  const cost = Number(data?.cost || 0);
+  const item = String(data?.item || 'redeem');
+
+  if (!cost || isNaN(cost) || cost <= 0) {
+    throw new functions.https.HttpsError('invalid-argument', 'Invalid cost');
+  }
+
+  const walletRef = db.collection('users').doc(uid).collection('wallet').doc('account');
+  const txRef = db.collection('users').doc(uid).collection('wallet').doc();
+
+  try {
+    await db.runTransaction(async (t) => {
+      const snap = await t.get(walletRef);
+      const prev = (snap.exists && snap.data()?.balance) ? Number(snap.data()?.balance) : 0;
+      if (prev < cost) {
+        throw new functions.https.HttpsError('failed-precondition', 'Insufficient balance');
+      }
+      const next = prev - cost;
+      t.set(walletRef, { balance: next, updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+      t.set(txRef, { amount: -cost, item, createdAt: admin.firestore.FieldValue.serverTimestamp(), type: 'redeem' });
+    });
+
+    const newSnap = await walletRef.get();
+    const newBalance = newSnap.exists ? Number(newSnap.data()?.balance || 0) : 0;
+    return { success: true, balance: newBalance };
+  } catch (err: any) {
+    logger.error('redeemPoints error', { err: err?.message });
+    if (err instanceof functions.https.HttpsError) throw err;
+    throw new functions.https.HttpsError('internal', 'Failed to redeem points');
+  }
+});
+
+// --- listUserTransactions (callable) ---
+// Admin-only: list recent wallet transactions for a user
+export const listUserTransactions = functions.https.onCall(async (data, context) => {
+  if (!context.auth || !context.auth.token || !context.auth.token.admin) {
+    throw new functions.https.HttpsError('permission-denied', 'Requires admin privileges');
+  }
+  const uid = String(data?.uid || '');
+  if (!uid) throw new functions.https.HttpsError('invalid-argument', 'Missing uid');
+
+  try {
+    const q = db.collection('users').doc(uid).collection('wallet').orderBy('createdAt', 'desc').limit(100);
+    const snaps = await q.get();
+    const items: any[] = [];
+    snaps.forEach(s => items.push({ id: s.id, ...(s.data() || {}) }));
+    return { success: true, transactions: items };
+  } catch (err: any) {
+    logger.error('listUserTransactions error', { err: err?.message });
+    throw new functions.https.HttpsError('internal', 'Failed to list transactions');
+  }
+});

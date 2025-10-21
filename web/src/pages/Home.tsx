@@ -1,5 +1,6 @@
 
 import React from 'react';
+import AdSenseAd from '../components/AdSenseAd';
 
 const Home: React.FC = () => {
 		return (
@@ -15,12 +16,12 @@ const Home: React.FC = () => {
 				{/* Left AdSense ads */}
 				<div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'flex-start', alignItems: 'center', width: 120, minWidth: 120, marginRight: 24 }}>
 					<div style={{ width: 120, height: 300, background: '#fff', borderRadius: 12, boxShadow: '0 2px 8px #0001', marginBottom: 24, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-						{/* AdSense ad slot 1 */}
-						<span style={{ color: '#bbb', fontSize: 14 }}>AdSense Ad 1</span>
+						{/* AdSense ad slot 1 (test) */}
+						<AdSenseAd style={{ width: 120, height: 300, display: 'block' }} />
 					</div>
 					<div style={{ width: 120, height: 300, background: '#fff', borderRadius: 12, boxShadow: '0 2px 8px #0001', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-						{/* AdSense ad slot 2 */}
-						<span style={{ color: '#bbb', fontSize: 14 }}>AdSense Ad 2</span>
+						{/* AdSense ad slot 2 (test) */}
+						<AdSenseAd style={{ width: 120, height: 300, display: 'block' }} />
 					</div>
 				</div>
 
