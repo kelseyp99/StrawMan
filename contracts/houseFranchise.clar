@@ -1,3 +1,12 @@
+;; Airdrop function: distribute STX to candidate coin holders at snapshot time
+(define-public (airdrop (recipients (list 200 { to: principal, amount: uint })))
+  (fold check-err (map send-stx-airdrop recipients) (ok true))
+)
+
+(define-private (send-stx-airdrop (recipient { to: principal, amount: uint }))
+  (try! (stx-transfer? (get amount recipient) tx-sender (get to recipient)))
+  (ok true)
+)
 ;;below uncomment for Clarinet
  (impl-trait .sip009-nft-trait.sip009-nft-trait)
  (use-trait ft-trait .sip010-ft-trait.sip010-ft-trait)
