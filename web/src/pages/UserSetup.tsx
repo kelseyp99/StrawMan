@@ -120,14 +120,14 @@ const UserSetup: React.FC = () => {
 
   return (
     <div style={{ maxWidth: 1200, margin: '0 auto', padding: 24 }}>
-      <h2>User Setup (Optional)</h2>
+  <h2>Welcome! Tell Us About Yourself</h2>
       <form onSubmit={handleSubmit} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '24px' }}>
         <div>
           <h3>Contact & Location</h3>
           <label>Name (optional):<br />
             <input name="name" value={form.name} onChange={handleChange} />
           </label><br /><br />
-          <label>Address (required for ballot):<br />
+          <label style={{ fontWeight: 'bold' }}>Address <span style={{ color: '#c00' }}>*</span> (required for ballot):<br />
             <input name="address" value={form.address} onChange={handleChange} required placeholder="Enter your address" />
           </label><br /><br />
           <label>City:<br />
@@ -371,8 +371,9 @@ const UserSetup: React.FC = () => {
       <button style={{ marginTop: 16 }} onClick={handleDownloadBallot}>Download Ballot</button>
       {ballotStatus && <div style={{ marginTop: 12, color: ballotStatus.startsWith('Error') ? 'red' : 'green' }}>{ballotStatus}</div>}
       {saved && <div style={{ color: 'green', marginTop: 16 }}>Saved!</div>}
-      <p style={{ marginTop: 24, fontSize: 14, color: '#555' }}>
-        All fields are optional except address, city, state, and zip, which are needed to determine your ballot. Demographic info helps improve political polling and research.
+      <p style={{ marginTop: 24, fontSize: 15, color: '#555' }}>
+        <strong>Why do we ask?</strong> Sharing a few details helps us improve political polling and research. <br /><br />
+        <strong>What is required?</strong> <span style={{ color: '#c00' }}>You must provide an address in your precinct (or your precinct's address) so we can detect your ballot. All other fields are optional.</span>
       </p>
     </div>
   );
