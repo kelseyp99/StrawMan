@@ -188,19 +188,49 @@ const UserSetup: React.FC = () => {
           </select>
         </label><br /><br />
         <label>Race/Ethnicity (optional):<br />
-          <input name="race" value={form.race} onChange={handleChange} />
+          <select name="race" value={form.race} onChange={handleChange}>
+            <option value="">Select...</option>
+            <option value="asian">Asian</option>
+            <option value="black">Black/African American</option>
+            <option value="hispanic">Hispanic/Latino</option>
+            <option value="native">Native American</option>
+            <option value="white">White</option>
+            <option value="other">Other</option>
+            <option value="prefer_not">Prefer not to say</option>
+          </select>
         </label><br /><br />
         <label>Age (optional):<br />
           <input name="age" value={form.age} onChange={handleChange} type="number" min="18" max="120" />
         </label><br /><br />
         <label>Education Level (optional):<br />
-          <input name="education" value={form.education} onChange={handleChange} />
+          <select name="education" value={form.education} onChange={handleChange}>
+            <option value="">Select...</option>
+            <option value="none">No formal education</option>
+            <option value="highschool">High school diploma or equivalent</option>
+            <option value="somecollege">Some college, no degree</option>
+            <option value="associate">Associate degree</option>
+            <option value="bachelor">Bachelor's degree</option>
+            <option value="master">Master's degree</option>
+            <option value="doctorate">Doctorate or professional degree</option>
+            <option value="other">Other</option>
+            <option value="prefer_not">Prefer not to say</option>
+          </select>
         </label><br /><br />
         <label>Occupation (optional):<br />
           <input name="occupation" value={form.occupation} onChange={handleChange} />
         </label><br /><br />
         <label>Political Party (optional):<br />
-          <input name="party" value={form.party} onChange={handleChange} />
+          <select name="party" value={form.party} onChange={handleChange}>
+            <option value="">Select...</option>
+            <option value="democratic">Democratic</option>
+            <option value="republican">Republican</option>
+            <option value="libertarian">Libertarian</option>
+            <option value="green">Green</option>
+            <option value="constitution">Constitution</option>
+            <option value="independent">Independent</option>
+            <option value="other">Other</option>
+            <option value="prefer_not">Prefer not to say</option>
+          </select>
         </label><br /><br />
         <label>Other (optional):<br />
           <input name="other" value={form.other} onChange={handleChange} />
