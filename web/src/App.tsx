@@ -2,9 +2,10 @@ import React, { useEffect, useState } from 'react';
 
 import { BrowserRouter as Router, Routes, Route, Link, useNavigate } from 'react-router-dom';
 import { auth, db } from './firebase';
-import { signInWithEmailAndPassword } from 'firebase/auth';
+import { signInWithEmailAndPassword, GoogleAuthProvider, signInWithRedirect, getRedirectResult, signInAnonymously } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
 import Home from './pages/Home';
+import UserSetup from './pages/UserSetup';
 import Tables from './pages/Tables';
 import Reports from './pages/Reports';
 import About from './pages/About';
@@ -12,14 +13,83 @@ import Ballot from './pages/Ballot';
 import Betting from './pages/Betting';
 import './App.css';
 
-
+console.log('App.tsx loaded');
 
 function AppRoutes() {
+  console.log('AppRoutes rendering');
   const [user, setUser] = useState<any>(null);
   const [profile, setProfile] = useState<any>(null);
+  const [loginError, setLoginError] = useState<string | null>(null);
   const navigate = useNavigate();
 
   useEffect(() => {
+    // Dev-only: prefer seeded email/password (if set) or fallback to anonymous on localhost
+    if (typeof window !== 'undefined' && window.location.hostname.includes('localhost')) {
+      (async () => {
+        try {
+          console.log('Dev login: checking env vars', { devEmail: import.meta.env.VITE_DEV_EMAIL, devPass: !!import.meta.env.VITE_DEV_PASSWORD });
+          const already = localStorage.getItem('dev:seeded-signed-strawman');
+          const devEmail = import.meta.env.VITE_DEV_EMAIL;
+          const devPass = import.meta.env.VITE_DEV_PASSWORD;
+          if (!auth.currentUser && !already) {
+            if (devEmail && devPass) {
+              console.log('Dev login: attempting seeded sign-in with', devEmail);
+              try {
+                await signInWithEmailAndPassword(auth, devEmail, devPass);
+                localStorage.setItem('dev:seeded-signed-strawman', '1');
+                console.log('Dev login: seeded sign-in successful');
+                return;
+              } catch (e) {
+                console.error('Dev login: seeded sign-in failed', e);
+                // seeded login failed, fall back to anonymous
+              }
+            }
+            console.log('Dev login: falling back to anonymous');
+            try {
+              await signInAnonymously(auth);
+              localStorage.setItem('dev:seeded-signed-strawman', '1');
+              console.log('Dev login: anonymous sign-in successful');
+            } catch (e) {
+              console.error('Dev login: anonymous failed', e);
+              // ignore
+            }
+          } else {
+            console.log('Dev login: already signed in or skipped', { currentUser: !!auth.currentUser, already });
+          }
+        } catch (e) {
+          console.error('Dev login: error', e);
+          // dev helper - ignore
+        }
+      })();
+    }
+    // Process redirect result (if returning from Google redirect sign-in)
+    (async () => {
+      try {
+        const result = await getRedirectResult(auth);
+        if (result) {
+          // user signed in via redirect; onAuthStateChanged will also fire
+          // give explicit feedback so devs see the result immediately
+          try {
+            // result.user may be undefined in some flows; guard defensively
+            // eslint-disable-next-line no-alert
+            alert('Signed in as ' + ((result as any).user?.email || 'unknown'));
+          } catch {
+            // ignore alert errors
+          }
+          setLoginError?.(null);
+        }
+      } catch (e: any) {
+        const details = {
+          message: e?.message,
+          code: e?.code,
+          customData: e?.customData,
+          raw: e
+        };
+        (window as any).__LAST_SIGNIN_ERROR = details;
+        setLoginError?.(e?.message || String(e));
+      }
+    })();
+
     const unsub = auth.onAuthStateChanged(async (u) => {
       setUser(u);
       if (u && u.email) {
@@ -57,8 +127,34 @@ function AppRoutes() {
       try {
         await signInWithEmailAndPassword(auth, email, password);
       } catch (e: any) {
-        alert(e.message);
+        // store error on window so user can copy it if needed
+        // Some Firebase errors expose additional JSON in e.customData or e.code.
+        const details = {
+          message: e?.message,
+          code: e?.code,
+          customData: e?.customData,
+          raw: e
+        };
+        (window as any).__LAST_SIGNIN_ERROR = details;
+        // Prefer a short human message for UI
+        setLoginError?.(e?.message || String(e));
       }
+    }
+  };
+
+  const handleGoogleSignIn = async () => {
+    const provider = new GoogleAuthProvider();
+    try {
+      await signInWithRedirect(auth, provider);
+    } catch (e: any) {
+      const details = {
+        message: e?.message,
+        code: e?.code,
+        customData: e?.customData,
+        raw: e
+      };
+      (window as any).__LAST_SIGNIN_ERROR = details;
+      setLoginError?.(e?.message || String(e));
     }
   };
 
@@ -84,31 +180,40 @@ function AppRoutes() {
       }}>
         <span style={{ color: '#bbb', fontSize: 18 }}>Admob Banner</span>
       </div>
-      <nav style={{ display: 'flex', gap: 16, padding: 16, alignItems: 'center' }}>
-        <Link to="/">Home</Link>
-        <Link to="/ballot">Ballot</Link>
-        <Link to="/tables">Tables</Link>
-        <Link to="/reports">Reports</Link>
-        <Link to="/betting">Betting</Link>
-        <Link to="/about">About</Link>
+  <nav style={{ display: 'flex', gap: 16, padding: 16, alignItems: 'center' }}>
+  <Link to="/">Home</Link>
+  <Link to="/ballot">Ballot</Link>
+  <Link to="/tables">Tables</Link>
+  <Link to="/reports">Reports</Link>
+  <Link to="/betting">Betting</Link>
+  <Link to="/setup">User Setup</Link>
+  <Link to="/about">About</Link>
         <div style={{ marginLeft: 'auto' }}>
+          {loginError && <span style={{ color: 'red', marginRight: 12 }}>{loginError}</span>}
           {user ? (
             <>
               <span style={{ marginRight: 12 }}>{user.email}</span>
               <button onClick={handleLogout}>Logout</button>
             </>
           ) : (
-            <button onClick={handleLogin}>Login</button>
+            <>
+              <button onClick={handleGoogleSignIn} style={{ marginRight: 8 }}>Sign in with Google</button>
+              <button onClick={handleLogin}>Login</button>
+            </>
           )}
         </div>
       </nav>
+      {user?.isAnonymous && (
+        <div style={{position:'fixed',right:12,top:96,zIndex:9999,background:'#ffeb3b',color:'#000',padding:'6px 10px',borderRadius:6,fontSize:12,fontWeight:600}}>DEV: anon {String(user.uid).slice(0,8)}</div>
+      )}
       <Routes>
-        <Route path="/" element={<Home />} />
-        <Route path="/ballot" element={<Ballot address={profile?.address || "123 Main St, City, State ZIP"} electionId={profile?.electionId || "2000"} />} />
-        <Route path="/tables" element={<Tables />} />
-        <Route path="/reports" element={<Reports electionId={profile?.electionId || "2000"} />} />
-        <Route path="/betting" element={<Betting />} />
-        <Route path="/about" element={<About />} />
+  <Route path="/" element={<Home />} />
+  <Route path="/ballot" element={<Ballot address={profile?.address || "123 Main St, City, State ZIP"} electionId={profile?.electionId || "2000"} />} />
+  <Route path="/tables" element={<Tables />} />
+  <Route path="/reports" element={<Reports electionId={profile?.electionId || "2000"} />} />
+  <Route path="/betting" element={<Betting />} />
+  <Route path="/about" element={<About />} />
+  <Route path="/setup" element={<UserSetup />} />
       </Routes>
     </>
   );

@@ -19,6 +19,14 @@ const Ballot: React.FC<{ address: string; electionId: string }> = ({ address, el
     console.log('[Ballot] Fetching ballot for electionId:', electionId);
     const fetchBallot = async () => {
       try {
+        // Only attempt to read civic_cache if the user is authenticated.
+        if (!auth.currentUser) {
+          console.log('[Ballot] user not authenticated - skipping civic_cache read');
+          setBallot(null);
+          setLoading(false);
+          return;
+        }
+
         const ballotDoc = await getDoc(doc(db, 'civic_cache', electionId));
         if (ballotDoc.exists()) {
           const data = ballotDoc.data();

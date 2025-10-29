@@ -75,7 +75,7 @@ const SongRequestForm: React.FC = () => {
 
   return (
     <div style={{maxWidth:500,margin:'60px auto',padding:32,background:'#222',borderRadius:16,boxShadow:'0 4px 24px rgba(0,0,0,0.3)',textAlign:'center',color:'#fff'}}>
-      <img src="/sequoia logo.png" alt="Sequoia Logo" style={{width:'160px',marginBottom:'24px'}} />
+  <img src="/StrawMan.png" alt="StrawMan Logo" style={{width:'160px',marginBottom:'24px'}} />
       <h1>Song Request</h1>
       <div style={{background:'#232323',color:'#fff',borderRadius:8,padding:'18px',marginBottom:'2em',boxShadow:'0 2px 8px rgba(0,0,0,0.10)'}}>
         <strong>Thanks for your song request!</strong><br />
