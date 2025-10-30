@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import AdSenseAd from '../components/AdSenseAd';
 // import PlacesAutocomplete, { geocodeByAddress, getLatLng } from 'react-places-autocomplete';
 import { getAuth } from 'firebase/auth';
 import { doc, setDoc } from 'firebase/firestore';
@@ -119,9 +120,19 @@ const UserSetup: React.FC = () => {
   }
 
   return (
-    <div style={{ maxWidth: 1200, margin: '0 auto', padding: 24 }}>
-  <h2>Welcome! Tell Us About Yourself</h2>
-      <form onSubmit={handleSubmit} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '24px' }}>
+    <div style={{ maxWidth: 1200, margin: '0 auto', padding: 24, display: 'flex', flexDirection: 'row', alignItems: 'flex-start' }}>
+      {/* Left AdSense ads */}
+      <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'flex-start', alignItems: 'center', width: 120, minWidth: 120, marginRight: 24 }}>
+        <div style={{ width: 120, height: 300, background: '#fff', borderRadius: 12, boxShadow: '0 2px 8px #0001', marginBottom: 24, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <AdSenseAd style={{ width: 120, height: 300, display: 'block' }} />
+        </div>
+        <div style={{ width: 120, height: 300, background: '#fff', borderRadius: 12, boxShadow: '0 2px 8px #0001', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <AdSenseAd style={{ width: 120, height: 300, display: 'block' }} />
+        </div>
+      </div>
+      <div style={{ flex: 1 }}>
+        <h2>Welcome! Tell Us About Yourself</h2>
+        <form onSubmit={handleSubmit} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '24px' }}>
         <div>
           <h3>Contact & Location</h3>
           <label>Name (optional):<br />
@@ -367,14 +378,15 @@ const UserSetup: React.FC = () => {
         <div style={{ gridColumn: '1 / span 3' }}>
           <button type="submit" disabled={saving}>{saving ? 'Saving...' : 'Save Info'}</button>
         </div>
-      </form>
-      <button style={{ marginTop: 16 }} onClick={handleDownloadBallot}>Download Ballot</button>
-      {ballotStatus && <div style={{ marginTop: 12, color: ballotStatus.startsWith('Error') ? 'red' : 'green' }}>{ballotStatus}</div>}
-      {saved && <div style={{ color: 'green', marginTop: 16 }}>Saved!</div>}
-      <p style={{ marginTop: 24, fontSize: 15, color: '#555' }}>
-        <strong>Why do we ask?</strong> Sharing a few details helps us improve political polling and research. <br /><br />
-        <strong>What is required?</strong> <span style={{ color: '#c00' }}>You must provide an address in your precinct (or your precinct's address) so we can detect your ballot. All other fields are optional.</span>
-      </p>
+        </form>
+        <button style={{ marginTop: 16 }} onClick={handleDownloadBallot}>Download Ballot</button>
+        {ballotStatus && <div style={{ marginTop: 12, color: ballotStatus.startsWith('Error') ? 'red' : 'green' }}>{ballotStatus}</div>}
+        {saved && <div style={{ color: 'green', marginTop: 16 }}>Saved!</div>}
+        <p style={{ marginTop: 24, fontSize: 15, color: '#555' }}>
+          <strong>Why do we ask?</strong> Sharing a few details helps us improve political polling and research. <br /><br />
+          <strong>What is required?</strong> <span style={{ color: '#c00' }}>You must provide an address in your precinct (or your precinct's address) so we can detect your ballot. All other fields are optional.</span>
+        </p>
+      </div>
     </div>
   );
 };

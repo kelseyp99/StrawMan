@@ -5,6 +5,7 @@ import { auth, db } from './firebase';
 import { signInWithEmailAndPassword, GoogleAuthProvider, signInWithRedirect, getRedirectResult, signInAnonymously } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
 import Home from './pages/Home';
+import Elections from './pages/Elections';
 import UserSetup from './pages/UserSetup';
 import Tables from './pages/Tables';
 import Reports from './pages/Reports';
@@ -187,6 +188,7 @@ function AppRoutes() {
   <Link to="/reports">Reports</Link>
   <Link to="/betting">Betting</Link>
   <Link to="/setup">User Setup</Link>
+  <Link to="/elections">Elections</Link>
   <Link to="/about">About</Link>
         <div style={{ marginLeft: 'auto' }}>
           {loginError && <span style={{ color: 'red', marginRight: 12 }}>{loginError}</span>}
@@ -212,8 +214,9 @@ function AppRoutes() {
   <Route path="/tables" element={<Tables />} />
   <Route path="/reports" element={<Reports electionId={profile?.electionId || "2000"} />} />
   <Route path="/betting" element={<Betting />} />
-  <Route path="/about" element={<About />} />
   <Route path="/setup" element={<UserSetup />} />
+  <Route path="/elections" element={<Elections />} />
+  <Route path="/about" element={<About />} />
       </Routes>
     </>
   );

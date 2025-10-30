@@ -7,19 +7,21 @@ import RedeemModal from '../components/RedeemModal';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import AdSenseAd from '../components/AdSenseAd';
 import { doc, getDoc } from 'firebase/firestore';
+import { setDoc } from 'firebase/firestore';
 
 const Ballot: React.FC<{ address: string; electionId: string }> = ({ address, electionId }) => {
   const [ballot, setBallot] = useState<any>(null);
   const [selected, setSelected] = useState<{ [contestId: string]: string[] }>({});
   const [loading, setLoading] = useState(false);
   const [showRedeem, setShowRedeem] = useState(false);
+  const [customBallotId, setCustomBallotId] = useState<string>('');
+  const [activeElectionId, setActiveElectionId] = useState<string>(electionId);
 
   useEffect(() => {
     setLoading(true);
-    console.log('[Ballot] Fetching ballot for electionId:', electionId);
+    console.log('[Ballot] Fetching ballot for electionId:', activeElectionId);
     const fetchBallot = async () => {
       try {
-        // Only attempt to read civic_cache if the user is authenticated.
         if (!auth.currentUser) {
           console.log('[Ballot] user not authenticated - skipping civic_cache read');
           setBallot(null);
@@ -27,14 +29,30 @@ const Ballot: React.FC<{ address: string; electionId: string }> = ({ address, el
           return;
         }
 
-        const ballotDoc = await getDoc(doc(db, 'civic_cache', electionId));
+        const ballotRef = doc(db, 'civic_cache', activeElectionId);
+        const ballotDoc = await getDoc(ballotRef);
         if (ballotDoc.exists()) {
           const data = ballotDoc.data();
           console.log('[Ballot] Loaded ballot data:', data);
           setBallot(data);
         } else {
-          console.log('[Ballot] No ballot found for electionId:', electionId);
-          setBallot(null);
+          // Fetch from Civic API and save to Firestore
+          try {
+            const apiKey = import.meta.env.VITE_CIVIC_API_KEY;
+            // For demo, use a default address if none provided
+            const addressParam = address || '1600 Pennsylvania Ave NW, Washington, DC 20500';
+            const url = `https://www.googleapis.com/civicinfo/v2/voterinfo?address=${encodeURIComponent(addressParam)}&electionId=${activeElectionId}&key=${apiKey}`;
+            const response = await fetch(url);
+            if (!response.ok) throw new Error('Civic API error');
+            const data = await response.json();
+            // Save to Firestore
+            await setDoc(ballotRef, data, { merge: true });
+            setBallot(data);
+            console.log('[Ballot] Saved new ballot data to Firestore:', data);
+          } catch (apiErr) {
+            console.log('[Ballot] Error fetching/saving ballot from Civic API:', apiErr);
+            setBallot(null);
+          }
         }
       } catch (err) {
         console.log('[Ballot] Error fetching ballot:', err);
@@ -43,7 +61,7 @@ const Ballot: React.FC<{ address: string; electionId: string }> = ({ address, el
       setLoading(false);
     };
     fetchBallot();
-  }, [electionId]);
+  }, [activeElectionId]);
 
   const handleCheck = (contestId: string, candidate: string) => {
     setSelected(prev => ({
@@ -82,6 +100,33 @@ const Ballot: React.FC<{ address: string; electionId: string }> = ({ address, el
       {/* Main content */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
         <h2>Election Ballot</h2>
+        <div style={{ marginBottom: 16 }}>
+          <label htmlFor="ballotIdInput" style={{ fontWeight: 'bold', marginRight: 8 }}>Select Ballot by ID (optional):</label>
+          <input
+            id="ballotIdInput"
+            type="text"
+            value={customBallotId}
+            onChange={e => setCustomBallotId(e.target.value)}
+            placeholder="Enter ballot/election ID"
+            style={{ marginRight: 8, padding: '4px 8px', fontSize: 15 }}
+          />
+          <button
+            type="button"
+            onClick={() => {
+              if (customBallotId.trim()) {
+                setBallot(null);
+                setLoading(true);
+                setActiveElectionId(customBallotId.trim());
+              }
+            }}
+            style={{ padding: '4px 12px', fontSize: 15 }}
+          >
+            Load Ballot
+          </button>
+        <div style={{ marginBottom: 8, fontSize: 14, color: '#888' }}>
+          <strong>Currently loaded ballot ID:</strong> {activeElectionId}
+        </div>
+        </div>
         <div style={{ marginBottom: 12 }}>
           {auth.currentUser ? (
             <div>
