@@ -9,13 +9,13 @@ import AdSenseAd from '../components/AdSenseAd';
 import { doc, getDoc } from 'firebase/firestore';
 import { setDoc } from 'firebase/firestore';
 
-const Ballot: React.FC<{ address: string; electionId: string }> = ({ address, electionId }) => {
+const Ballot: React.FC<{ address?: string; electionId?: string }> = () => {
   const [ballot, setBallot] = useState<any>(null);
   const [selected, setSelected] = useState<{ [contestId: string]: string[] }>({});
   const [loading, setLoading] = useState(false);
   const [showRedeem, setShowRedeem] = useState(false);
   const [customBallotId, setCustomBallotId] = useState<string>('');
-  const [activeElectionId, setActiveElectionId] = useState<string>(electionId);
+  const [activeElectionId, setActiveElectionId] = useState<string>('9132');
 
   useEffect(() => {
     setLoading(true);
@@ -40,7 +40,7 @@ const Ballot: React.FC<{ address: string; electionId: string }> = ({ address, el
           try {
             const apiKey = import.meta.env.VITE_CIVIC_API_KEY;
             // For demo, use a default address if none provided
-            const addressParam = address || '1600 Pennsylvania Ave NW, Washington, DC 20500';
+            const addressParam = '1600 Pennsylvania Ave NW, Washington, DC 20500';
             const url = `https://www.googleapis.com/civicinfo/v2/voterinfo?address=${encodeURIComponent(addressParam)}&electionId=${activeElectionId}&key=${apiKey}`;
             const response = await fetch(url);
             if (!response.ok) throw new Error('Civic API error');
@@ -151,36 +151,54 @@ const Ballot: React.FC<{ address: string; electionId: string }> = ({ address, el
           )}
         </div>
         {showRedeem && <RedeemModal onClose={() => setShowRedeem(false)} />}
-        {ballot.contests?.map((contest: any) => (
-          <div key={contest.id} style={{ marginBottom: 24 }}>
-            <h3>{contest.office}</h3>
-            {contest.candidates.map((candidate: any) => (
-              <div key={candidate.name} style={{ display: 'flex', alignItems: 'center', marginBottom: 8 }}>
-                <label style={{ display: 'flex', alignItems: 'center', flex: 1 }}>
-                  <input
-                    type="checkbox"
-                    checked={selected[contest.id]?.includes(candidate.name) || false}
-                    onChange={() => handleCheck(contest.id, candidate.name)}
-                    style={{ marginRight: 8 }}
-                  />
-                  <span>{candidate.name}</span>
-                </label>
-
-                {/* Sponsored ad slot for this candidate (non-reward). */}
-                {candidate.sponsoredAd ? (
-                  <div style={{ width: 160, marginLeft: 12, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <AdSenseAd
-                      client={candidate.sponsoredAd.client || 'ca-pub-1315319831980259'}
-                      slot={candidate.sponsoredAd.slot || '1234567890'}
-                      style={{ width: 160, height: 90, display: 'block' }}
-                      test={true}
-                    />
+        {/* Support both array of candidates and array of contests */}
+        {Array.isArray(ballot.contests) && ballot.contests.length > 0 && (
+          typeof ballot.contests[0].office === 'string' && !ballot.contests[0].candidates
+            ? ballot.contests.map((candidate: any, idx: number) => (
+                <div key={candidate.name + idx} style={{ marginBottom: 24 }}>
+                  <h3>{candidate.office}</h3>
+                  <div style={{ display: 'flex', alignItems: 'center', marginBottom: 8 }}>
+                    <label style={{ display: 'flex', alignItems: 'center', flex: 1 }}>
+                      <input
+                        type="checkbox"
+                        checked={selected[candidate.office]?.includes(candidate.name) || false}
+                        onChange={() => handleCheck(candidate.office, candidate.name)}
+                        style={{ marginRight: 8 }}
+                      />
+                      <span>{candidate.name}</span>
+                    </label>
                   </div>
-                ) : null}
-              </div>
-            ))}
-          </div>
-        ))}
+                </div>
+              ))
+            : ballot.contests.map((contest: any) => (
+                <div key={contest.id || contest.office} style={{ marginBottom: 24 }}>
+                  <h3>{contest.office}</h3>
+                  {contest.candidates && contest.candidates.map((candidate: any) => (
+                    <div key={candidate.name} style={{ display: 'flex', alignItems: 'center', marginBottom: 8 }}>
+                      <label style={{ display: 'flex', alignItems: 'center', flex: 1 }}>
+                        <input
+                          type="checkbox"
+                          checked={selected[contest.id]?.includes(candidate.name) || false}
+                          onChange={() => handleCheck(contest.id, candidate.name)}
+                          style={{ marginRight: 8 }}
+                        />
+                        <span>{candidate.name}</span>
+                      </label>
+                      {candidate.sponsoredAd ? (
+                        <div style={{ width: 160, marginLeft: 12, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          <AdSenseAd
+                            client={candidate.sponsoredAd.client || 'ca-pub-1315319831980259'}
+                            slot={candidate.sponsoredAd.slot || '1234567890'}
+                            style={{ width: 160, height: 90, display: 'block' }}
+                            test={true}
+                          />
+                        </div>
+                      ) : null}
+                    </div>
+                  ))}
+                </div>
+              ))
+        )}
       </div>
     </div>
   );
