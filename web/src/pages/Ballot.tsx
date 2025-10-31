@@ -1,5 +1,6 @@
 
 import React, { useEffect, useState } from 'react';
+import { ensureCandidatesExist } from '../services/candidateUtils';
 import { db, auth } from '../firebase';
 import WalletBadge from '../components/WalletBadge';
 import SimulatedAdPlayer from '../components/SimulatedAdPlayer';
@@ -16,6 +17,13 @@ const Ballot: React.FC<{ address?: string; electionId?: string }> = () => {
   const [showRedeem, setShowRedeem] = useState(false);
   const [customBallotId, setCustomBallotId] = useState<string>('');
   const [activeElectionId, setActiveElectionId] = useState<string>('9132');
+
+  useEffect(() => {
+    if (customBallotId && customBallotId !== activeElectionId) {
+      setActiveElectionId(customBallotId);
+    }
+    // eslint-disable-next-line
+  }, [customBallotId]);
 
   useEffect(() => {
     setLoading(true);
@@ -35,24 +43,6 @@ const Ballot: React.FC<{ address?: string; electionId?: string }> = () => {
           const data = ballotDoc.data();
           console.log('[Ballot] Loaded ballot data:', data);
           setBallot(data);
-        } else {
-          // Fetch from Civic API and save to Firestore
-          try {
-            const apiKey = import.meta.env.VITE_CIVIC_API_KEY;
-            // For demo, use a default address if none provided
-            const addressParam = '1600 Pennsylvania Ave NW, Washington, DC 20500';
-            const url = `https://www.googleapis.com/civicinfo/v2/voterinfo?address=${encodeURIComponent(addressParam)}&electionId=${activeElectionId}&key=${apiKey}`;
-            const response = await fetch(url);
-            if (!response.ok) throw new Error('Civic API error');
-            const data = await response.json();
-            // Save to Firestore
-            await setDoc(ballotRef, data, { merge: true });
-            setBallot(data);
-            console.log('[Ballot] Saved new ballot data to Firestore:', data);
-          } catch (apiErr) {
-            console.log('[Ballot] Error fetching/saving ballot from Civic API:', apiErr);
-            setBallot(null);
-          }
         }
       } catch (err) {
         console.log('[Ballot] Error fetching ballot:', err);
@@ -63,13 +53,63 @@ const Ballot: React.FC<{ address?: string; electionId?: string }> = () => {
     fetchBallot();
   }, [activeElectionId]);
 
-  const handleCheck = (contestId: string, candidate: string) => {
+  // Candidate syncing effect
+  useEffect(() => {
+    if (!ballot) return;
+    let candidateList: any[] = [];
+    if (Array.isArray(ballot.contests)) {
+      if (typeof ballot.contests[0]?.office === 'string' && !ballot.contests[0]?.candidates) {
+        candidateList = ballot.contests;
+      } else {
+        candidateList = ballot.contests.flatMap((contest: any) =>
+          (contest.candidates || []).map((c: any) => ({ ...c, office: contest.office }))
+        );
+      }
+    }
+    if (candidateList.length > 0) {
+      ensureCandidatesExist(candidateList);
+    }
+  }, [ballot]);
+
+  const handleCheck = async (contestId: string, candidate: string) => {
     setSelected(prev => ({
       ...prev,
       [contestId]: prev[contestId]?.includes(candidate)
         ? prev[contestId].filter(c => c !== candidate)
         : [...(prev[contestId] || []), candidate]
     }));
+
+    // Call castVote Cloud Function
+    try {
+      const functions = getFunctions();
+      const castVote = httpsCallable(functions, 'castVote');
+      // Find candidateId from ballot data
+      let candidateId = null;
+      if (Array.isArray(ballot.contests)) {
+        for (const contest of ballot.contests) {
+          if (contest.id === contestId || contest.office === contestId) {
+            if (contest.candidates) {
+              const found = contest.candidates.find((c: any) => c.name === candidate);
+              if (found && found.id) candidateId = found.id;
+            } else if (contest.name === candidate && contest.id) {
+              candidateId = contest.id;
+            }
+          }
+        }
+      }
+      if (!candidateId) {
+        alert('Candidate ID not found.');
+        return;
+      }
+      const userId = auth.currentUser?.uid;
+      const electionId = activeElectionId;
+      await castVote({ userId, electionId, candidateId });
+      // Optionally, show a success message or refresh ballot/candidate data
+      console.log('Vote cast for candidate:', candidateId);
+    } catch (err) {
+      console.error('Error casting vote:', err);
+      alert('Failed to cast vote.');
+    }
   };
 
   if (loading) return <div>Loading ballot...</div>;
@@ -119,36 +159,31 @@ const Ballot: React.FC<{ address?: string; electionId?: string }> = () => {
                 setActiveElectionId(customBallotId.trim());
               }
             }}
-            style={{ padding: '4px 12px', fontSize: 15 }}
-          >
-            Load Ballot
-          </button>
-        <div style={{ marginBottom: 8, fontSize: 14, color: '#888' }}>
-          <strong>Currently loaded ballot ID:</strong> {activeElectionId}
-        </div>
-        </div>
-        <div style={{ marginBottom: 12 }}>
-          {auth.currentUser ? (
-            <div>
-              <SimulatedAdPlayer duration={8} onComplete={async () => {
-                try {
-                  const funcs = getFunctions();
-                  const credit = httpsCallable(funcs, 'creditPoints') as any;
-                  const res = await credit({ amount: 1, reason: 'ad_watch' });
-                  const newBal = res?.data?.balance ?? 'unknown';
-                  alert('Thanks! You earned 1 point. New balance: ' + newBal);
-                } catch (err) {
-                  console.error(err);
-                  alert('Failed to credit points.');
+            style={{ padding: '4px 12px', fontSize: 15, marginRight: 8 }}
+          >Load Ballot</button>
+          <button
+            type="button"
+            onClick={async () => {
+              if (!ballot) return alert('No ballot loaded!');
+              let candidateList = [];
+              if (Array.isArray(ballot.contests)) {
+                if (typeof ballot.contests[0]?.office === 'string' && !ballot.contests[0]?.candidates) {
+                  candidateList = ballot.contests;
+                } else {
+                  candidateList = ballot.contests.flatMap((contest) =>
+                    (contest.candidates || []).map((c) => ({ ...c, office: contest.office }))
+                  );
                 }
-              }} />
-              <div style={{ marginTop: 8 }}>
-                <button onClick={() => setShowRedeem(true)}>Redeem rewards</button>
-              </div>
-            </div>
-          ) : (
-            <span>Please sign in to earn points.</span>
-          )}
+              }
+              if (candidateList.length > 0) {
+                await ensureCandidatesExist(candidateList);
+                alert('Candidates synced to Firebase!');
+              } else {
+                alert('No candidates found in ballot!');
+              }
+            }}
+            style={{ padding: '4px 12px', fontSize: 15 }}
+          >Simulate Ballot Load & Sync</button>
         </div>
         {showRedeem && <RedeemModal onClose={() => setShowRedeem(false)} />}
         {/* Support both array of candidates and array of contests */}
@@ -202,6 +237,5 @@ const Ballot: React.FC<{ address?: string; electionId?: string }> = () => {
       </div>
     </div>
   );
-};
-
+}
 export default Ballot;

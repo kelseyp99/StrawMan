@@ -42,17 +42,32 @@ function AppRoutes() {
                 return;
               } catch (e) {
                 console.error('Dev login: seeded sign-in failed', e);
-                // seeded login failed, fall back to anonymous
+                // seeded login failed, only fall back to anonymous if still not signed in
+                if (!auth.currentUser) {
+                  console.log('Dev login: falling back to anonymous');
+                  try {
+                    await signInAnonymously(auth);
+                    localStorage.setItem('dev:seeded-signed-strawman', '1');
+                    console.log('Dev login: anonymous sign-in successful');
+                  } catch (e) {
+                    console.error('Dev login: anonymous failed', e);
+                    // ignore
+                  }
+                }
               }
-            }
-            console.log('Dev login: falling back to anonymous');
-            try {
-              await signInAnonymously(auth);
-              localStorage.setItem('dev:seeded-signed-strawman', '1');
-              console.log('Dev login: anonymous sign-in successful');
-            } catch (e) {
-              console.error('Dev login: anonymous failed', e);
-              // ignore
+            } else {
+              // Only sign in anonymously if not already signed in
+              if (!auth.currentUser) {
+                console.log('Dev login: falling back to anonymous');
+                try {
+                  await signInAnonymously(auth);
+                  localStorage.setItem('dev:seeded-signed-strawman', '1');
+                  console.log('Dev login: anonymous sign-in successful');
+                } catch (e) {
+                  console.error('Dev login: anonymous failed', e);
+                  // ignore
+                }
+              }
             }
           } else {
             console.log('Dev login: already signed in or skipped', { currentUser: !!auth.currentUser, already });
