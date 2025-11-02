@@ -266,6 +266,38 @@ export const saveUserAddress = onRequest({
           lastUpdated: admin.firestore.FieldValue.serverTimestamp()
         });
         logger.info(`Created new ballot document for electionId: ${electionId}`);
+
+          // --- Candidate/ballot linking logic ---
+          for (const contest of contests) {
+            for (const candidate of contest.candidates) {
+              // Normalize candidate name for search
+              const normName = candidate.name.trim().toUpperCase();
+              // Search for candidate by normalized name
+              const q = db.collection('candidates').where('name', '==', normName).limit(1);
+              const snap = await q.get();
+              if (snap.empty) {
+                // Create new candidate doc with ballotIds array
+                await db.collection('candidates').add({
+                  name: normName,
+                  ballotIds: [electionId],
+                  createdAt: admin.firestore.FieldValue.serverTimestamp(),
+                  ...candidate
+                });
+                logger.info(`Created candidate: ${normName} for ballot ${electionId}`);
+              } else {
+                // Update ballotIds array if not present
+                const docRef = snap.docs[0].ref;
+                const data = snap.docs[0].data();
+                const ballotIds = Array.isArray(data.ballotIds) ? data.ballotIds : [];
+                if (!ballotIds.includes(electionId)) {
+                  await docRef.update({
+                    ballotIds: admin.firestore.FieldValue.arrayUnion(electionId)
+                  });
+                  logger.info(`Updated candidate: ${normName} with new ballot ${electionId}`);
+                }
+              }
+            }
+          }
       } else {
         logger.info(`Ballot for electionId ${electionId} already exists`);
       }
@@ -442,5 +474,79 @@ export const listUserTransactions = functions.https.onCall(async (data, context)
   } catch (err: any) {
     logger.error('listUserTransactions error', { err: err?.message });
     throw new functions.https.HttpsError('internal', 'Failed to list transactions');
+  }
+});
+
+// --- processVote (callable) ---
+// Accepts: { userId, candidateId, electionId }
+// User can vote multiple times. If previously voted in same election, check candidateresultshistory.
+// If for same candidate, just post to user history. No candidate tally change needed.
+// If voting for a different candidate, update history, decrease tally for last candidate, increase for new.
+// If not voted in election, enter history and increase tally for candidate.
+// Returns: { success: boolean, message: string }
+export const processVote = functions.https.onCall(async (data, context) => {
+  const userId = String(data?.userId || '');
+  const candidateName = String(data?.candidateName || '');
+  const electionId = String(data?.electionId || '');
+  if (!userId || !candidateName || !electionId) {
+    throw new functions.https.HttpsError('invalid-argument', 'Missing required fields');
+  }
+  try {
+    // Normalize candidate name for search
+    const normName = candidateName.trim().toUpperCase();
+    // Find candidate doc with name and electionId in ballotIds
+    const q = db.collection('candidates').where('name', '==', normName).where('ballotIds', 'array-contains', electionId).limit(1);
+    const snap = await q.get();
+    if (snap.empty) {
+      throw new functions.https.HttpsError('not-found', 'Candidate not found for this election.');
+    }
+    const candidateDoc = snap.docs[0];
+    const candidateRef = candidateDoc.ref;
+    // User's vote history for this election
+    const historyRef = db.collection('candidateresultshistory').doc(userId);
+    const historySnap = await historyRef.get();
+    let lastCandidateName = null;
+    let history = [];
+    if (historySnap.exists) {
+      history = historySnap.data()?.[electionId] || [];
+      if (history.length > 0) {
+        lastCandidateName = history[history.length - 1];
+      }
+    }
+    // If user is voting for same candidate as last time
+    if (lastCandidateName === normName) {
+      // Just post to user history, no tally change
+      history.push(normName);
+      await historyRef.set({ [electionId]: history }, { merge: true });
+      return { success: true, message: 'Vote recorded (no tally change).' };
+    }
+    // If user is changing vote to a different candidate
+    if (lastCandidateName && lastCandidateName !== normName) {
+      // Decrease tally for last candidate
+      const lastQ = db.collection('candidates').where('name', '==', lastCandidateName).where('ballotIds', 'array-contains', electionId).limit(1);
+      const lastSnap = await lastQ.get();
+      if (!lastSnap.empty) {
+        await lastSnap.docs[0].ref.update({ tally: admin.firestore.FieldValue.increment(-1) });
+      }
+      // Increase tally for new candidate
+      await candidateRef.update({ tally: admin.firestore.FieldValue.increment(1) });
+      // Update history
+      history.push(normName);
+      await historyRef.set({ [electionId]: history }, { merge: true });
+      return { success: true, message: 'Vote changed and tallies updated.' };
+    }
+    // If user has not voted in this election
+    if (!lastCandidateName) {
+      // Increase tally for candidate
+      await candidateRef.update({ tally: admin.firestore.FieldValue.increment(1) });
+      // Enter history
+      history = [normName];
+      await historyRef.set({ [electionId]: history }, { merge: true });
+      return { success: true, message: 'First vote recorded and tally updated.' };
+    }
+    return { success: false, message: 'Unknown voting state.' };
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    throw new functions.https.HttpsError('internal', errorMsg);
   }
 });
