@@ -1,5 +1,5 @@
-
 ;; house-token.clar
+
 ;; Fungible token contract to represent a share in profits for a specific election event
 
 (define-fungible-token house-token u1000000000)
@@ -15,76 +15,52 @@
 (define-constant ERR-INVALID-PARAMETERS u403)
 (define-constant ERR-NOT-ENOUGH-FUND u101)
 
-(impl-trait 'SP3FBR2AGK5H9QBDH3EEN6DF8EK8JY7RX8QJ5SVTE.sip-010-trait-ft-standard.sip-010-trait)
-
 ;; Variables
 (define-data-var contract-owner principal tx-sender)
 
-;; SIP-10 Functions
+;; SIP-010 Functions (manually implemented)
 (define-public (transfer (amount uint) (from principal) (to principal) (memo (optional (buff 34))))
-    (begin
-        (asserts! (is-eq from tx-sender)
-            (err ERR-UNAUTHORIZED))
-        ;; Perform the token transfer
-        (try! (ft-transfer? house-token amount from to))
-        (print memo)
-        (ok true)
-    )
+  (begin
+    (asserts! (is-eq from tx-sender)
+      (err ERR-UNAUTHORIZED))
+    (try! (ft-transfer? house-token amount from to))
+    (print memo)
+    (ok true)
+  )
 )
 
-;; DEFINE METADATA
-(define-data-var token-uri (optional (string-utf8 256)) (some u"https://gaia.hiro.so/hub/1N4KbsPkdcV6XMrQKu6Zkv7J5Tq4TVUDoW/housewins-0-decimals.json"))
-
-(define-public (set-token-uri (value (string-utf8 256)))
-    (begin
-        (asserts! (is-eq tx-sender (var-get contract-owner)) (err ERR-UNAUTHORIZED))
-        (var-set token-uri (some value))
-        (ok (print {
-              notification: "token-metadata-update",
-              payload: {
-                contract-id: (as-contract tx-sender),
-                token-class: "ft"
-              }
-            })
-        )
-    )
+(define-public (get-name)
+  (ok "HouseToken")
 )
 
-(define-read-only (get-balance (owner principal))
-  (ok (ft-get-balance house-token owner))
-)
-(define-read-only (get-name)
-  (ok "HouseWins")
+(define-public (get-symbol)
+  (ok "HOUSE")
 )
 
-(define-read-only (get-symbol)
-  (ok "hsw")
-)
-
-(define-read-only (get-decimals)
+(define-public (get-decimals)
   (ok u0)
 )
 
-(define-read-only (get-total-supply)
-  (ok (ft-get-supply house-token))
+(define-public (get-balance (owner principal))
+  (ok (ft-get-balance house-token owner))
 )
 
-(define-read-only (get-token-uri)
+(define-public (get-total-supply)
+  (ok (var-get total-supply))
+)
+
+(define-data-var token-uri (optional (string-utf8 256)) (some u"https://gaia.hiro.so/hub/1N4KbsPkdcV6XMrQKu6Zkv7J5Tq4TVUDoW/housewins-0-decimals.json"))
+
+(define-public (get-token-uri)
   (ok (var-get token-uri))
 )
 
-;; transfer ownership
-(define-public (transfer-ownership (new-owner principal))
+(define-public (set-token-uri (value (string-utf8 256)))
   (begin
-    ;; Checks if the sender is the current owner
-    (if (is-eq tx-sender (var-get contract-owner))
-      (begin
-        ;; Sets the new owner
-        (var-set contract-owner new-owner)
-        ;; Returns success message
-        (ok "Ownership transferred successfully"))
-      ;; Error if the sender is not the owner
-      (err ERR-NOT-OWNER)))
+    (asserts! (is-eq tx-sender (var-get contract-owner)) (err ERR-NOT-OWNER))
+    (var-set token-uri (some value))
+    (ok true)
+  )
 )
 
 ;; Mint tokens to investors up to max supply
@@ -101,10 +77,3 @@
     ;; Accumulate profits in house pool
     (var-set house-pool (+ (var-get house-pool) amount))
     (ok "Profits received")))
-
-;; Note: Distribute dividends is complex in Clarity without holder enumeration.
-;; This is a simplified version; in practice, you'd need off-chain logic or a different approach.
-
-(define-read-only (get-contract-stx-balance)
-  (ok (stx-get-balance (as-contract tx-sender)))
-)

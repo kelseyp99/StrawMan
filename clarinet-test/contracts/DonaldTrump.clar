@@ -8,7 +8,11 @@
 (define-constant ERR-INVALID-PARAMETERS u403)
 (define-constant ERR-NOT-ENOUGH-FUND u101)
 
+;; For local Clarinet testing:
 (use-trait ft-trait .sip010-ft-trait.sip010-ft-trait)
+;; For testnet/mainnet deployment, replace above with:
+;; (use-trait ft-trait 'STREPLACEWITHADDRESS.sip010-ft-trait)
+
 ;;(impl-trait 'ST1NXBK3K5YYMD6FD41MVNP3JS1GABZ8TRVX023PT.sip-010-trait-ft-standard.sip-010-trait)
 ;;(impl-trait 'SP3FBR2AGK5H9QBDH3EEN6DF8EK8JY7RX8QJ5SVTE.sip-010-trait-ft-standard.sip-010-trait)
 
