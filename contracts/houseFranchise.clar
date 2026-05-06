@@ -190,6 +190,39 @@
   )
 )
 
+;; Get candidate coin contract address by candidate ID
+(define-read-only (get-candidate-contract (id uint))
+  (get contractAddress (map-get? candidates-map {id: id}))
+)
+
+;; Buy candidate coin: pass candidate ID, buyer, amount, price
+(define-public (buy-candidate-coin (candidate-id uint) (buyer principal) (amount uint) (price uint))
+  (let (
+    (candidate-contract (get-candidate-contract candidate-id))
+  )
+    (if (is-some candidate-contract)
+      (let (
+        (contract-addr (unwrap! candidate-contract (err ERR-NOT-CANDIDATE)))
+        (transfer-result (contract-call? contract-addr sell-to-user amount buyer price))
+      )
+        (print {
+          action: "buy",
+          candidate-id: candidate-id,
+          buyer: buyer,
+          amount: amount,
+          price: price,
+          transfer-result: transfer-result
+        })
+        (if (is-ok transfer-result)
+          (ok transfer-result)
+          (err transfer-result)
+        )
+      )
+      (err ERR-NOT-CANDIDATE)
+    )
+  )
+)
+
 ;;-- BEGIN DELETE SECTION --
 ;; this marks the begining of the sectin ath will be deleted emtrily by the compiler
 

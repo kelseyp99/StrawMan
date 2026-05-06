@@ -36,7 +36,7 @@
       (ok true)
     )
   )
-)
+). 
 
 ;; Read-only functions
 (define-read-only (get-balance (owner principal))

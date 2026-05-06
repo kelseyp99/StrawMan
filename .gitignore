@@ -1,3 +1,7 @@
+# Ignore jar files
+*.jar
+# Ignore secrets directory
+secrets/
 # Ignore environment files
 .env
 # Ignore APK build artifacts

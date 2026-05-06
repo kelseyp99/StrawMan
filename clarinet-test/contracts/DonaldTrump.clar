@@ -8,13 +8,9 @@
 (define-constant ERR-INVALID-PARAMETERS u403)
 (define-constant ERR-NOT-ENOUGH-FUND u101)
 
-;; For local Clarinet testing:
-(use-trait ft-trait .sip010-ft-trait.sip010-ft-trait)
-;; For testnet/mainnet deployment, replace above with:
-;; (use-trait ft-trait 'STREPLACEWITHADDRESS.sip010-ft-trait)
-
-;;(impl-trait 'ST1NXBK3K5YYMD6FD41MVNP3JS1GABZ8TRVX023PT.sip-010-trait-ft-standard.sip-010-trait)
-;;(impl-trait 'SP3FBR2AGK5H9QBDH3EEN6DF8EK8JY7RX8QJ5SVTE.sip-010-trait-ft-standard.sip-010-trait)
+;; For testnet/mainnet deployment, use your actual trait contract address below:
+(impl-trait 'ST209T4CCF7HVQQN8VT71HY9RC2KCJPF1D0H8SDFY.sip-010-trait.sip-010-trait)
+;; traits
 
 (define-constant housewins-contract 'STDTR40QBV3E3G8SNHH1KX9H9A4MZKGDD6Z188AS.houseFranchise)
 
@@ -28,8 +24,6 @@
 (define-data-var weekly-sold uint u0) ;; Tokens sold in the current week
 (define-data-var last-sale-reset uint u0) ;; Timestamp of the last weekly reset
 
-
-
 ;; SIP-10 Functions
 (define-public (transfer (amount uint) (from principal) (to principal) (memo (optional (buff 34))))
     (begin
@@ -39,7 +33,6 @@
         (ft-transfer? dt24 amount from to)
     )
 )
-
 
 ;; DEFINE METADATA
 (define-data-var token-uri (optional (string-utf8 256)) (some u"https://gaia.hiro.so/hub/1N4KbsPkdcV6XMrQKu6Zkv7J5Tq4TVUDoW/donald-trump-2024-0-decimals.json"))
@@ -58,7 +51,6 @@
         )
     )
 )
-
 
 (define-read-only (get-balance (owner principal))
   (ok (ft-get-balance dt24 owner))
@@ -98,7 +90,6 @@
       (err ERR-NOT-OWNER)))
 )
 
-
 ;; ---------------------------------------------------------
 ;; Utility Functions
 ;; ---------------------------------------------------------
@@ -130,15 +121,15 @@
 (define-public (buy-token (amount uint))
   (begin
     ;; Handle token minting/purchase logic here
-    (asserts! (<= amount (ft-get-supply mytoken)) (err "Not enough tokens available"))
-    (ft-transfer? mytoken amount tx-sender housewins-contract)
+    (asserts! (<= amount (ft-get-supply dt24)) (err "Not enough tokens available"))
+    (ft-transfer? dt24 amount tx-sender housewins-contract)
     (ok "Token purchased and proceeds sent to housewins"))
 )
 
 ;;Add a private function to reset the weekly sales counter at the start of a new week:
-;;This function resets the weekly-sold counter if more than a week (about 1008 blocks) has passed since the last reset.;;
+;;This function resets the weekly-sold counter if more than a week (about 1008 blocks) has passed since the last reset;;
 (define-private (reset-weekly-sales)
-  (let ((current-block-time (as-max-lifetime (block-height))))
+  (let ((current-block-time (block-height)))
     (if (> (- current-block-time (var-get last-sale-reset)) u1008) ;; ~7 days assuming ~10-minute blocks
       (begin
         (var-set weekly-sold u0)
@@ -156,7 +147,7 @@
     ;; Update the weekly sales counter
     (var-set weekly-sold (+ (var-get weekly-sold) amount))
     ;; Transfer the tokens to the buyer
-    (ft-transfer? candidate-token amount tx-sender buyer)
+    (ft-transfer? dt24 amount tx-sender buyer)
     (ok "Tokens sold successfully")))
 
 ;;Optionally, you can provide a method to adjust the max-weekly-sale limit. This can be restricted to the contract owner:

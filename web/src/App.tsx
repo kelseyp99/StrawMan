@@ -5,6 +5,7 @@ import { auth, db } from './firebase';
 import { signInWithEmailAndPassword, GoogleAuthProvider, signInWithRedirect, getRedirectResult, signInAnonymously } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
 import Home from './pages/Home';
+import AdminParameters from './pages/AdminParameters';
 import Elections from './pages/Elections';
 import UserSetup from './pages/UserSetup';
 import Tables from './pages/Tables';
@@ -12,6 +13,7 @@ import Reports from './pages/Reports';
 import About from './pages/About';
 import Ballot from './pages/Ballot';
 import Betting from './pages/Betting';
+import LoginButton from './components/LoginButton';
 import './App.css';
 
 console.log('App.tsx loaded');
@@ -205,6 +207,7 @@ function AppRoutes() {
   <Link to="/setup">User Setup</Link>
   <Link to="/elections">Elections</Link>
   <Link to="/about">About</Link>
+  <Link to="/admin-parameters">Admin Parameters</Link>
         <div style={{ marginLeft: 'auto' }}>
           {loginError && <span style={{ color: 'red', marginRight: 12 }}>{loginError}</span>}
           {user ? (
@@ -214,8 +217,7 @@ function AppRoutes() {
             </>
           ) : (
             <>
-              <button onClick={handleGoogleSignIn} style={{ marginRight: 8 }}>Sign in with Google</button>
-              <button onClick={handleLogin}>Login</button>
+              <LoginButton />
             </>
           )}
         </div>
@@ -232,6 +234,7 @@ function AppRoutes() {
   <Route path="/setup" element={<UserSetup />} />
   <Route path="/elections" element={<Elections />} />
   <Route path="/about" element={<About />} />
+  <Route path="/admin-parameters" element={<AdminParameters />} />
       </Routes>
     </>
   );

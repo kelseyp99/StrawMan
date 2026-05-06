@@ -9,7 +9,7 @@
 
 import { onRequest } from 'firebase-functions/v2/https';
 import { onSchedule } from 'firebase-functions/v2/scheduler';
-import * as admin from 'firebase-admin';
+// ...existing code...
 
 admin.initializeApp();
 
@@ -116,3 +116,22 @@ export const migrateLegacyDiscussions = onSchedule({
 //   logger.info("Hello logs!", {structuredData: true});
 //   response.send("Hello from Firebase!");
 // });
+import * as admin from 'firebase-admin';
+import { onCall } from 'firebase-functions/v2/https';
+
+// Initialize Firebase Admin if not already initialized
+if (!admin.apps.length) {
+  admin.initializeApp();
+}
+
+/**
+ * Cloud Function: processVote
+ * Accepts: { userId, candidateId, electionId }
+ * Logic:
+ * - User can vote multiple times
+ * - If user previously voted in same election, check candidateresultshistory
+ *   - If for same candidate, just post to user history (no tally change)
+ *   - If for different candidate, update history, decrease tally for last candidate, increase for new
+ * - If not voted in election, enter history and increase tally for candidate
+ * Returns: { success: boolean, message: string }
+ */

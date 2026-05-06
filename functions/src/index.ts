@@ -7,6 +7,7 @@ import * as logger from "firebase-functions/logger";
 import * as admin from "firebase-admin";
 import corsLib from "cors";
 import fetch from "node-fetch";
+const { buyCandidateCoin } = require('./buyCandidateCoin');
 
 admin.initializeApp();
 const db = admin.firestore();
@@ -277,11 +278,11 @@ export const saveUserAddress = onRequest({
               const snap = await q.get();
               if (snap.empty) {
                 // Create new candidate doc with ballotIds array
+                const candidateData = { ...candidate, name: normName };
                 await db.collection('candidates').add({
-                  name: normName,
+                  ...candidateData,
                   ballotIds: [electionId],
                   createdAt: admin.firestore.FieldValue.serverTimestamp(),
-                  ...candidate
                 });
                 logger.info(`Created candidate: ${normName} for ballot ${electionId}`);
               } else {
@@ -484,69 +485,172 @@ export const listUserTransactions = functions.https.onCall(async (data, context)
 // If voting for a different candidate, update history, decrease tally for last candidate, increase for new.
 // If not voted in election, enter history and increase tally for candidate.
 // Returns: { success: boolean, message: string }
-export const processVote = functions.https.onCall(async (data, context) => {
-  const userId = String(data?.userId || '');
+export const processVote = functions.https.onCall(async (data: any, context: any) => {
+  const userId = String(data?.userId || context?.auth?.uid || '');
   const candidateName = String(data?.candidateName || '');
   const electionId = String(data?.electionId || '');
   if (!userId || !candidateName || !electionId) {
-    throw new functions.https.HttpsError('invalid-argument', 'Missing required fields');
+    throw new functions.https.HttpsError('invalid-argument', 'Missing required fields: userId, candidateName, electionId');
   }
   try {
-    // Normalize candidate name for search
-    const normName = candidateName.trim().toUpperCase();
-    // Find candidate doc with name and electionId in ballotIds
-    const q = db.collection('candidates').where('name', '==', normName).where('ballotIds', 'array-contains', electionId).limit(1);
+    const normName = candidateName.trim();
+    console.log('[processVote] userId:', userId, 'candidateName:', normName, 'electionId:', electionId);
+    // Find candidate doc — saved with exact name and electionId field
+    const q = db.collection('candidates')
+      .where('name', '==', normName)
+      .where('electionId', '==', electionId)
+      .limit(1);
     const snap = await q.get();
-    if (snap.empty) {
-      throw new functions.https.HttpsError('not-found', 'Candidate not found for this election.');
+    console.log('[processVote] exact name query returned:', snap.size, 'docs');
+    // Fallback: try uppercase
+    let candidateDoc = snap.empty ? null : snap.docs[0];
+    if (!candidateDoc) {
+      const q2 = db.collection('candidates')
+        .where('name', '==', normName.toUpperCase())
+        .where('electionId', '==', electionId)
+        .limit(1);
+      const snap2 = await q2.get();
+      console.log('[processVote] uppercase query returned:', snap2.size, 'docs');
+      candidateDoc = snap2.empty ? null : snap2.docs[0];
     }
-    const candidateDoc = snap.docs[0];
+    if (!candidateDoc) {
+      // Log all candidates for this election to debug
+      const allQ = db.collection('candidates').where('electionId', '==', electionId).limit(5);
+      const allSnap = await allQ.get();
+      const sampleNames = allSnap.docs.map(d => d.data().name).join(', ');
+      console.log('[processVote] sample candidate names in election:', sampleNames);
+      throw new functions.https.HttpsError('not-found', `Candidate "${normName}" not found for election ${electionId}. Samples: ${sampleNames}`);
+    }
     const candidateRef = candidateDoc.ref;
-    // User's vote history for this election
+    // User vote history
     const historyRef = db.collection('candidateresultshistory').doc(userId);
     const historySnap = await historyRef.get();
-    let lastCandidateName = null;
-    let history = [];
+    let history: string[] = [];
+    let lastCandidateName: string | null = null;
     if (historySnap.exists) {
       history = historySnap.data()?.[electionId] || [];
-      if (history.length > 0) {
-        lastCandidateName = history[history.length - 1];
-      }
+      if (history.length > 0) lastCandidateName = history[history.length - 1];
     }
-    // If user is voting for same candidate as last time
     if (lastCandidateName === normName) {
-      // Just post to user history, no tally change
       history.push(normName);
       await historyRef.set({ [electionId]: history }, { merge: true });
-      return { success: true, message: 'Vote recorded (no tally change).' };
+      return { success: true, message: 'Vote recorded (same candidate, no tally change).' };
     }
-    // If user is changing vote to a different candidate
     if (lastCandidateName && lastCandidateName !== normName) {
-      // Decrease tally for last candidate
-      const lastQ = db.collection('candidates').where('name', '==', lastCandidateName).where('ballotIds', 'array-contains', electionId).limit(1);
+      const lastQ = db.collection('candidates')
+        .where('name', '==', lastCandidateName)
+        .where('electionId', '==', electionId)
+        .limit(1);
       const lastSnap = await lastQ.get();
       if (!lastSnap.empty) {
-        await lastSnap.docs[0].ref.update({ tally: admin.firestore.FieldValue.increment(-1) });
+        await lastSnap.docs[0].ref.set({ tally: admin.firestore.FieldValue.increment(-1) }, { merge: true });
       }
-      // Increase tally for new candidate
-      await candidateRef.update({ tally: admin.firestore.FieldValue.increment(1) });
-      // Update history
+      await candidateRef.set({ tally: admin.firestore.FieldValue.increment(1) }, { merge: true });
       history.push(normName);
       await historyRef.set({ [electionId]: history }, { merge: true });
       return { success: true, message: 'Vote changed and tallies updated.' };
     }
-    // If user has not voted in this election
-    if (!lastCandidateName) {
-      // Increase tally for candidate
-      await candidateRef.update({ tally: admin.firestore.FieldValue.increment(1) });
-      // Enter history
-      history = [normName];
-      await historyRef.set({ [electionId]: history }, { merge: true });
-      return { success: true, message: 'First vote recorded and tally updated.' };
-    }
-    return { success: false, message: 'Unknown voting state.' };
+    await candidateRef.set({ tally: admin.firestore.FieldValue.increment(1) }, { merge: true });
+    history = [normName];
+    await historyRef.set({ [electionId]: history }, { merge: true });
+    return { success: true, message: 'Vote recorded!' };
   } catch (error) {
+    if (error instanceof functions.https.HttpsError) throw error;
     const errorMsg = error instanceof Error ? error.message : String(error);
     throw new functions.https.HttpsError('internal', errorMsg);
   }
 });
+
+  // --- processVoteHttp (CORS-enabled HTTP wrapper)
+  export const processVoteHttp = onRequest(async (req, res) => {
+    cors(req, res, async () => {
+      if (req.method === 'OPTIONS') {
+        res.status(204).send('');
+        return;
+      }
+      if (req.method !== 'POST') return res.status(405).json({ error: 'Method Not Allowed' });
+      try {
+        const body = req.body || {};
+        // Try to verify Authorization header if present
+        let uidFromToken: string | null = null;
+        const authHeader = (req.headers['authorization'] || req.headers['Authorization']) as string | undefined;
+        if (authHeader && authHeader.startsWith('Bearer ')) {
+          const idToken = authHeader.split('Bearer ')[1];
+          try {
+            const decoded = await admin.auth().verifyIdToken(idToken);
+            uidFromToken = String(decoded.uid);
+          } catch (tokenErr) {
+            console.warn('[processVoteHttp] invalid id token:', String(tokenErr));
+          }
+        }
+        const userId = String(body?.userId || uidFromToken || '');
+        const candidateName = String(body?.candidateName || '');
+        const electionId = String(body?.electionId || '');
+        if (!userId || !candidateName || !electionId) {
+          return res.status(400).json({ error: 'Missing required fields: userId, candidateName, electionId' });
+        }
+        const normName = candidateName.trim();
+        console.log('[processVoteHttp] userId:', userId, 'candidateName:', normName, 'electionId:', electionId);
+
+        // Duplicate of logic from callable processVote
+        const q = db.collection('candidates')
+          .where('name', '==', normName)
+          .where('electionId', '==', electionId)
+          .limit(1);
+        const snap = await q.get();
+        let candidateDoc = snap.empty ? null : snap.docs[0];
+        if (!candidateDoc) {
+          const q2 = db.collection('candidates')
+            .where('name', '==', normName.toUpperCase())
+            .where('electionId', '==', electionId)
+            .limit(1);
+          const snap2 = await q2.get();
+          candidateDoc = snap2.empty ? null : snap2.docs[0];
+        }
+        if (!candidateDoc) {
+          const allQ = db.collection('candidates').where('electionId', '==', electionId).limit(5);
+          const allSnap = await allQ.get();
+          const sampleNames = allSnap.docs.map(d => d.data().name).join(', ');
+          console.log('[processVoteHttp] candidate not found. samples:', sampleNames);
+          return res.status(404).json({ error: `Candidate "${normName}" not found for election ${electionId}. Samples: ${sampleNames}` });
+        }
+        const candidateRef = candidateDoc.ref;
+        const historyRef = db.collection('candidateresultshistory').doc(userId);
+        const historySnap = await historyRef.get();
+        let history: string[] = [];
+        let lastCandidateName: string | null = null;
+        if (historySnap.exists) {
+          history = historySnap.data()?.[electionId] || [];
+          if (history.length > 0) lastCandidateName = history[history.length - 1];
+        }
+        if (lastCandidateName === normName) {
+          history.push(normName);
+          await historyRef.set({ [electionId]: history }, { merge: true });
+          return res.json({ success: true, message: 'Vote recorded (same candidate, no tally change).' });
+        }
+        if (lastCandidateName && lastCandidateName !== normName) {
+          const lastQ = db.collection('candidates')
+            .where('name', '==', lastCandidateName)
+            .where('electionId', '==', electionId)
+            .limit(1);
+          const lastSnap = await lastQ.get();
+          if (!lastSnap.empty) {
+            await lastSnap.docs[0].ref.set({ tally: admin.firestore.FieldValue.increment(-1) }, { merge: true });
+          }
+          await candidateRef.set({ tally: admin.firestore.FieldValue.increment(1) }, { merge: true });
+          history.push(normName);
+          await historyRef.set({ [electionId]: history }, { merge: true });
+          return res.json({ success: true, message: 'Vote changed and tallies updated.' });
+        }
+        await candidateRef.set({ tally: admin.firestore.FieldValue.increment(1) }, { merge: true });
+        history = [normName];
+        await historyRef.set({ [electionId]: history }, { merge: true });
+        return res.json({ success: true, message: 'Vote recorded!' });
+      } catch (err: any) {
+        console.error('[processVoteHttp] error:', err);
+        return res.status(500).json({ error: err?.message || 'internal' });
+      }
+    });
+  });
+
+  exports.buyCandidateCoin = buyCandidateCoin;

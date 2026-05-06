@@ -1,241 +1,159 @@
-
 import React, { useEffect, useState } from 'react';
-import { ensureCandidatesExist } from '../services/candidateUtils';
+import { doc, getDoc, collection, query, where, getDocs } from 'firebase/firestore';
 import { db, auth } from '../firebase';
-import WalletBadge from '../components/WalletBadge';
-import SimulatedAdPlayer from '../components/SimulatedAdPlayer';
-import RedeemModal from '../components/RedeemModal';
-import { getFunctions, httpsCallable } from 'firebase/functions';
-import AdSenseAd from '../components/AdSenseAd';
-import { doc, getDoc } from 'firebase/firestore';
-import { setDoc } from 'firebase/firestore';
+import { onAuthStateChanged, User } from 'firebase/auth';
 
-const Ballot: React.FC<{ address?: string; electionId?: string }> = () => {
-  const [ballot, setBallot] = useState<any>(null);
-  const [selected, setSelected] = useState<{ [contestId: string]: string[] }>({});
-  const [loading, setLoading] = useState(false);
-  const [showRedeem, setShowRedeem] = useState(false);
-  const [customBallotId, setCustomBallotId] = useState<string>('');
-  const [activeElectionId, setActiveElectionId] = useState<string>('9132');
+interface Candidate {
+  id: string;
+  name: string;
+  party: string;
+  office: string;
+  district?: string;
+  level?: string;
+  roles?: string;
+  contestType?: string;
+  electionId: string;
+  electionName: string;
+  candidateUrl?: string;
+  photoUrl?: string;
+}
 
+const Ballot: React.FC = () => {
+  const [user, setUser] = useState<User | null>(null);
+  const [electionId, setElectionId] = useState<string>('');
+  const [address, setAddress] = useState<string>('');
+  const [candidates, setCandidates] = useState<Candidate[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [voteStatus, setVoteStatus] = useState<Record<string, string>>({});
+
+  // 1. Listen for auth state — load electionId from localStorage first, then Firestore
   useEffect(() => {
-    if (customBallotId && customBallotId !== activeElectionId) {
-      setActiveElectionId(customBallotId);
-    }
-    // eslint-disable-next-line
-  }, [customBallotId]);
+    // Immediately load from localStorage — no waiting for auth
+    const localEid = localStorage.getItem('electionId') || '9440'; // default to WV
+    const localAddr = localStorage.getItem('userAddress') || '';
+    setElectionId(localEid);
+    if (localAddr) setAddress(localAddr);
 
+    return onAuthStateChanged(auth, async (u) => {
+      setUser(u);
+      if (u) {
+        const [snapLower, snapUpper] = await Promise.all([
+          getDoc(doc(db, 'users', u.uid)),
+          getDoc(doc(db, 'Users', u.uid)),
+        ]);
+        const data = snapLower.exists() ? snapLower.data() : snapUpper.exists() ? snapUpper.data() : {};
+        const eid = data?.electionId || localEid;
+        const addr = data?.address || localAddr;
+        console.log('[Ballot] uid:', u.uid, 'electionId:', eid, 'address:', addr);
+        if (eid) setElectionId(eid);
+        if (addr) setAddress(addr);
+      }
+    });
+  }, []);
+
+  // 3. Load candidates when electionId changes
   useEffect(() => {
+    if (!electionId) { setLoading(false); return; }
     setLoading(true);
-    console.log('[Ballot] Fetching ballot for electionId:', activeElectionId);
-    const fetchBallot = async () => {
+    setError(null);
+    const load = async () => {
       try {
-        if (!auth.currentUser) {
-          console.log('[Ballot] user not authenticated - skipping civic_cache read');
-          setBallot(null);
-          setLoading(false);
-          return;
-        }
-
-        const ballotRef = doc(db, 'civic_cache', activeElectionId);
-        const ballotDoc = await getDoc(ballotRef);
-        if (ballotDoc.exists()) {
-          const data = ballotDoc.data();
-          console.log('[Ballot] Loaded ballot data:', data);
-          setBallot(data);
-        }
-      } catch (err) {
-        console.log('[Ballot] Error fetching ballot:', err);
-        setBallot(null);
+        const q = query(collection(db, 'candidates'), where('electionId', '==', electionId));
+        const snap = await getDocs(q);
+        const list: Candidate[] = snap.docs.map(d => ({ id: d.id, ...d.data() } as Candidate));
+        setCandidates(list);
+      } catch (e: any) {
+        setError(e.message);
       }
       setLoading(false);
     };
-    fetchBallot();
-  }, [activeElectionId]);
+    load();
+  }, [electionId]);
 
-  // Candidate syncing effect
-  useEffect(() => {
-    if (!ballot) return;
-    let candidateList: any[] = [];
-    if (Array.isArray(ballot.contests)) {
-      if (typeof ballot.contests[0]?.office === 'string' && !ballot.contests[0]?.candidates) {
-        candidateList = ballot.contests;
-      } else {
-        candidateList = ballot.contests.flatMap((contest: any) =>
-          (contest.candidates || []).map((c: any) => ({ ...c, office: contest.office }))
-        );
-      }
-    }
-    if (candidateList.length > 0) {
-      ensureCandidatesExist(candidateList);
-    }
-  }, [ballot]);
-
-  const handleCheck = async (contestId: string, candidate: string) => {
-    setSelected(prev => ({
-      ...prev,
-      [contestId]: prev[contestId]?.includes(candidate)
-        ? prev[contestId].filter(c => c !== candidate)
-        : [...(prev[contestId] || []), candidate]
-    }));
-
-    // Call castVote Cloud Function
+  const handleVote = async (candidate: Candidate) => {
+    if (!user) { alert('Please sign in to vote.'); return; }
     try {
-      const functions = getFunctions();
-      const castVote = httpsCallable(functions, 'castVote');
-      // Find candidateId from ballot data
-      let candidateId = null;
-      if (Array.isArray(ballot.contests)) {
-        for (const contest of ballot.contests) {
-          if (contest.id === contestId || contest.office === contestId) {
-            if (contest.candidates) {
-              const found = contest.candidates.find((c: any) => c.name === candidate);
-              if (found && found.id) candidateId = found.id;
-            } else if (contest.name === candidate && contest.id) {
-              candidateId = contest.id;
-            }
-          }
-        }
+      // Direct POST to CORS-enabled HTTP endpoint (processVoteHttp)
+      const idToken = await user.getIdToken();
+      console.log('[Vote] POST to processVoteHttp with:', { userId: user.uid, candidateId: candidate.id, candidateName: candidate.name, electionId });
+      const resp = await fetch('https://us-central1-strawman-42.cloudfunctions.net/processVoteHttp', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${idToken}`,
+        },
+        body: JSON.stringify({ userId: user.uid, candidateId: candidate.id, candidateName: candidate.name, electionId }),
+      });
+      if (!resp.ok) {
+        const txt = await resp.text();
+        throw new Error(`HTTP ${resp.status}: ${txt}`);
       }
-      if (!candidateId) {
-        alert('Candidate ID not found.');
-        return;
-      }
-      const userId = auth.currentUser?.uid;
-      const electionId = activeElectionId;
-      await castVote({ userId, electionId, candidateId });
-      // Optionally, show a success message or refresh ballot/candidate data
-      console.log('Vote cast for candidate:', candidateId);
-    } catch (err) {
-      console.error('Error casting vote:', err);
-      alert('Failed to cast vote.');
+      const data = await resp.json();
+      console.log('[Vote] http result:', data);
+      setVoteStatus(s => ({ ...s, [candidate.id]: data?.message || '✅ Vote recorded!' }));
+    } catch (err: any) {
+      console.error('[Vote] error (http):', err);
+      setVoteStatus(s => ({ ...s, [candidate.id]: `❌ ${err?.message || err?.code || JSON.stringify(err)}` }));
     }
   };
 
-  if (loading) return <div>Loading ballot...</div>;
-  if (!ballot) return <div>No ballot data found in Firestore.</div>;
+  // Group candidates by office
+  const byOffice = candidates.reduce((acc, c) => {
+    const key = c.office || c.district || c.roles || c.contestType || 'General Contest';
+    if (!acc[key]) acc[key] = [];
+    acc[key].push(c);
+    return acc;
+  }, {} as Record<string, Candidate[]>);
 
   return (
-    <div style={{
-      minHeight: '100vh',
-      background: 'linear-gradient(135deg, #e0eafc 0%, #cfdef3 100%)',
-      display: 'flex',
-      flexDirection: 'row',
-      alignItems: 'stretch',
-      justifyContent: 'center',
-      padding: '2rem',
-    }}>
-      {/* Left AdSense ads */}
-      <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'flex-start', alignItems: 'center', width: 120, minWidth: 120, marginRight: 24 }}>
-        <div style={{ width: 120, height: 300, background: '#fff', borderRadius: 12, boxShadow: '0 2px 8px #0001', marginBottom: 24, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <span style={{ color: '#bbb', fontSize: 14 }}>AdSense Ad 1</span>
-        </div>
-        <div style={{ width: 120, height: 300, background: '#fff', borderRadius: 12, boxShadow: '0 2px 8px #0001', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <span style={{ color: '#bbb', fontSize: 14 }}>AdSense Ad 2</span>
-        </div>
+    <div style={{ maxWidth: 800, margin: '0 auto', padding: 24 }}>
+      <h2>Your Ballot</h2>
+      {address && <div style={{ color: '#666', marginBottom: 8 }}>📍 {address}</div>}
+      <div style={{ fontSize: 12, color: '#aaa', marginBottom: 8 }}>
+        electionId: <strong>{electionId || '(none)'}</strong>
+        &nbsp;|&nbsp;localStorage: <strong>{localStorage.getItem('electionId') || '(none)'}</strong>
+        &nbsp;<button onClick={() => { setElectionId(localStorage.getItem('electionId') || ''); }} style={{ fontSize: 11, padding: '2px 8px', cursor: 'pointer' }}>↺ Reload</button>
       </div>
-      {/* Wallet badge */}
-      <WalletBadge />
-
-      {/* Main content */}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-        <h2>Election Ballot</h2>
-        <div style={{ marginBottom: 16 }}>
-          <label htmlFor="ballotIdInput" style={{ fontWeight: 'bold', marginRight: 8 }}>Select Ballot by ID (optional):</label>
-          <input
-            id="ballotIdInput"
-            type="text"
-            value={customBallotId}
-            onChange={e => setCustomBallotId(e.target.value)}
-            placeholder="Enter ballot/election ID"
-            style={{ marginRight: 8, padding: '4px 8px', fontSize: 15 }}
-          />
-          <button
-            type="button"
-            onClick={() => {
-              if (customBallotId.trim()) {
-                setBallot(null);
-                setLoading(true);
-                setActiveElectionId(customBallotId.trim());
-              }
-            }}
-            style={{ padding: '4px 12px', fontSize: 15, marginRight: 8 }}
-          >Load Ballot</button>
-          <button
-            type="button"
-            onClick={async () => {
-              if (!ballot) return alert('No ballot loaded!');
-              let candidateList = [];
-              if (Array.isArray(ballot.contests)) {
-                if (typeof ballot.contests[0]?.office === 'string' && !ballot.contests[0]?.candidates) {
-                  candidateList = ballot.contests;
-                } else {
-                  candidateList = ballot.contests.flatMap((contest) =>
-                    (contest.candidates || []).map((c) => ({ ...c, office: contest.office }))
-                  );
-                }
-              }
-              if (candidateList.length > 0) {
-                await ensureCandidatesExist(candidateList);
-                alert('Candidates synced to Firebase!');
-              } else {
-                alert('No candidates found in ballot!');
-              }
-            }}
-            style={{ padding: '4px 12px', fontSize: 15 }}
-          >Simulate Ballot Load & Sync</button>
+      {electionId
+        ? <div style={{ color: '#888', marginBottom: 16, fontSize: 13 }}>Election ID: {electionId}</div>
+        : <div style={{ color: 'orange', marginBottom: 16 }}>
+            No election selected. Go to <a href="/elections">Elections</a>, enter your address, and click ⬇ Fetch &amp; Save Candidates.
+          </div>
+      }
+      {loading && <p>Loading candidates...</p>}
+      {error && <p style={{ color: 'red' }}>Error: {error}</p>}
+      {!loading && candidates.length === 0 && electionId && (
+        <p style={{ color: 'orange' }}>No candidates found for this election. Try fetching candidates on the <a href="/elections">Elections</a> page.</p>
+      )}
+      {Object.entries(byOffice).map(([office, list]) => (
+        <div key={office} style={{ marginBottom: 28, background: '#f8fafc', borderRadius: 8, padding: 16, border: '1px solid #e0e8f0' }}>
+          <h3 style={{ marginTop: 0, color: '#334', borderBottom: '2px solid #c0d0e0', paddingBottom: 8 }}>
+            🏛 {office}
+            {list[0]?.district && office !== list[0].district && <span style={{ fontSize: 13, color: '#888', fontWeight: 400, marginLeft: 8 }}>({list[0].district})</span>}
+            {list[0]?.level && <span style={{ fontSize: 12, color: '#aaa', fontWeight: 400, marginLeft: 8 }}>{list[0].level}</span>}
+          </h3>
+          {list.map(c => (
+            <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10, padding: 10, background: '#fff', borderRadius: 6, border: '1px solid #e8eaf0' }}>
+              {c.photoUrl && <img src={c.photoUrl} alt={c.name} style={{ width: 48, height: 48, borderRadius: '50%', objectFit: 'cover' }} />}
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 600 }}>{c.name}</div>
+                <div style={{ fontSize: 13, color: '#888' }}>{c.party}</div>
+                {c.office && <div style={{ fontSize: 12, color: '#5577AA', marginTop: 2 }}>🏛 {c.office}</div>}
+              </div>
+              <button
+                onClick={() => handleVote(c)}
+                style={{ padding: '6px 16px', background: '#3366CC', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer', fontSize: 14 }}
+              >
+                Vote
+              </button>
+              {voteStatus[c.id] && <span style={{ fontSize: 13, color: voteStatus[c.id].startsWith('✅') ? 'green' : 'red' }}>{voteStatus[c.id]}</span>}
+            </div>
+          ))}
         </div>
-        {showRedeem && <RedeemModal onClose={() => setShowRedeem(false)} />}
-        {/* Support both array of candidates and array of contests */}
-        {Array.isArray(ballot.contests) && ballot.contests.length > 0 && (
-          typeof ballot.contests[0].office === 'string' && !ballot.contests[0].candidates
-            ? ballot.contests.map((candidate: any, idx: number) => (
-                <div key={candidate.name + idx} style={{ marginBottom: 24 }}>
-                  <h3>{candidate.office}</h3>
-                  <div style={{ display: 'flex', alignItems: 'center', marginBottom: 8 }}>
-                    <label style={{ display: 'flex', alignItems: 'center', flex: 1 }}>
-                      <input
-                        type="checkbox"
-                        checked={selected[candidate.office]?.includes(candidate.name) || false}
-                        onChange={() => handleCheck(candidate.office, candidate.name)}
-                        style={{ marginRight: 8 }}
-                      />
-                      <span>{candidate.name}</span>
-                    </label>
-                  </div>
-                </div>
-              ))
-            : ballot.contests.map((contest: any) => (
-                <div key={contest.id || contest.office} style={{ marginBottom: 24 }}>
-                  <h3>{contest.office}</h3>
-                  {contest.candidates && contest.candidates.map((candidate: any) => (
-                    <div key={candidate.name} style={{ display: 'flex', alignItems: 'center', marginBottom: 8 }}>
-                      <label style={{ display: 'flex', alignItems: 'center', flex: 1 }}>
-                        <input
-                          type="checkbox"
-                          checked={selected[contest.id]?.includes(candidate.name) || false}
-                          onChange={() => handleCheck(contest.id, candidate.name)}
-                          style={{ marginRight: 8 }}
-                        />
-                        <span>{candidate.name}</span>
-                      </label>
-                      {candidate.sponsoredAd ? (
-                        <div style={{ width: 160, marginLeft: 12, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                          <AdSenseAd
-                            client={candidate.sponsoredAd.client || 'ca-pub-1315319831980259'}
-                            slot={candidate.sponsoredAd.slot || '1234567890'}
-                            style={{ width: 160, height: 90, display: 'block' }}
-                            test={true}
-                          />
-                        </div>
-                      ) : null}
-                    </div>
-                  ))}
-                </div>
-              ))
-        )}
-      </div>
+      ))}
     </div>
   );
-}
+};
+
 export default Ballot;

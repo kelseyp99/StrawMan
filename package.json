@@ -2,6 +2,8 @@
   "name": "strawman-fb-script",
   "version": "1.0.0",
   "dependencies": {
+    "@micro-stacks/client": "^1.2.1",
+    "@micro-stacks/react": "^1.0.9",
     "firebase-admin": "^13.5.0"
   }
 }

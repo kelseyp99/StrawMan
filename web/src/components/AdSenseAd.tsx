@@ -19,22 +19,9 @@ const AdSenseAd: React.FC<AdSenseAdProps> = ({
   useEffect(() => {
     console.info('[AdSenseAd] mounting ad slot', { client, slot, test });
 
-  // Respect explicit opt-in for ads. Default: disabled in dev to avoid
-  // noisy ad-server 400s and ad-blocker interference.
-  // Use one of these to enable ads:
-  //  - Build-time: set REACT_APP_ADS_ENABLED=true (CRA) — accessible as process.env.REACT_APP_ADS_ENABLED
-  //  - Runtime: set window.__ADS_ENABLED = true in the page before React loads
-  // We must avoid accessing `process` directly in the browser (some builds don't define it),
-  // so check safely with typeof.
-  const buildFlag = (typeof process !== 'undefined' && process && process.env && process.env.REACT_APP_ADS_ENABLED === 'true');
-  const runtimeFlag = typeof window !== 'undefined' && (window as any).__ADS_ENABLED === true;
-  const adsEnabled = buildFlag || runtimeFlag;
-
     try {
-      // Trigger adsbygoogle to render into the ins element only when enabled.
-      if (!adsEnabled) {
-        console.info('[AdSenseAd] ads disabled by REACT_APP_ADS_ENABLED (skipping request)');
-      } else if ((window as any).adsbygoogle) {
+      // Trigger adsbygoogle to render into the ins element
+      if ((window as any).adsbygoogle) {
         (window as any).adsbygoogle.push({});
         console.info('[AdSenseAd] called (adsbygoogle).push()');
       } else {
@@ -65,12 +52,15 @@ const AdSenseAd: React.FC<AdSenseAdProps> = ({
     return () => clearTimeout(t);
   }, [client, slot, test]);
 
+  // Don't render if no real slot ID is provided
+  if (!slot || slot === '1234567890') {
+    return null; // suppress ad unit until a real slot ID is configured
+  }
+
   if (showFallback) {
-    // Minimal placeholder: blank space or subtle icon, no large message
     return (
-      <div style={{ width: style?.width || 120, height: style?.height || 300, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#fff', borderRadius: 8, boxShadow: '0 1px 6px #0001', color: '#ccc', fontSize: 13, padding: 8, textAlign: 'center' }}>
-        {/* Ad placeholder */}
-        <span style={{fontSize:24,opacity:0.2}}>🄰</span>
+      <div style={{ width: style?.width || 120, height: style?.height || 300, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#fff', borderRadius: 8, boxShadow: '0 1px 6px #0001', color: '#666', fontSize: 13, padding: 8, textAlign: 'center' }}>
+        Test ad (not loaded) — please disable ad blockers or try another browser.
       </div>
     );
   }

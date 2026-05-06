@@ -1,8 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import AdSenseAd from '../components/AdSenseAd';
 // import PlacesAutocomplete, { geocodeByAddress, getLatLng } from 'react-places-autocomplete';
 import { getAuth } from 'firebase/auth';
-import { doc, setDoc } from 'firebase/firestore';
+import { doc, setDoc, getDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 
 const UserSetup: React.FC = () => {
@@ -35,6 +35,27 @@ const UserSetup: React.FC = () => {
   const [ballotStatus, setBallotStatus] = useState('');
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [openRouterKey, setOpenRouterKey] = useState('');
+  const [openRouterModel, setOpenRouterModel] = useState('openai/gpt-4o');
+
+  useEffect(() => {
+    const loadData = async () => {
+      const auth = getAuth();
+      const user = auth.currentUser;
+      if (!user) return;
+
+      // Load user data
+      const userDoc = await getDoc(doc(db, 'Users', user.uid));
+      if (userDoc.exists()) {
+        const data = userDoc.data();
+        setForm(prev => ({ ...prev, ...data }));
+        // Load openRouterKey and openRouterModel from Firestore
+        setOpenRouterKey(data?.openRouterKey || '');
+        setOpenRouterModel(data?.openRouterModel || 'openai/gpt-4o');
+      }
+    };
+    loadData();
+  }, []);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     setForm({ ...form, [e.target.name]: e.target.value });
@@ -57,6 +78,8 @@ const UserSetup: React.FC = () => {
       if (!user) throw new Error('Not signed in');
       await setDoc(doc(db, 'Users', user.uid), {
         ...form,
+        openRouterKey,
+        openRouterModel,
         updatedAt: new Date(),
       }, { merge: true });
       setSaved(true);
@@ -386,6 +409,43 @@ const UserSetup: React.FC = () => {
           <strong>Why do we ask?</strong> Sharing a few details helps us improve political polling and research. <br /><br />
           <strong>What is required?</strong> <span style={{ color: '#c00' }}>You must provide an address in your precinct (or your precinct's address) so we can detect your ballot. All other fields are optional.</span>
         </p>
+
+        {/* OpenRouter AI Settings */}
+        <div style={{ marginTop: 24, background: '#f0f4ff', border: '1px solid #c0d0f0', borderRadius: 8, padding: 16 }}>
+          <h3 style={{ marginTop: 0 }}>🤖 AI Settings (OpenRouter)</h3>
+          <div style={{ marginBottom: 12 }}>
+            <label style={{ display: 'block', marginBottom: 4, fontWeight: 600 }}>OpenRouter API Key</label>
+            <input
+              type="password"
+              value={openRouterKey}
+              onChange={e => setOpenRouterKey(e.target.value)}
+              placeholder="sk-or-..."
+              style={{ width: '100%', padding: '6px 10px', fontSize: 14, borderRadius: 4, border: '1px solid #ccc' }}
+            />
+            <div style={{ fontSize: 12, color: '#888', marginTop: 4 }}>
+              Get your key at <a href="https://openrouter.ai/keys" target="_blank" rel="noreferrer">openrouter.ai/keys</a>
+            </div>
+          </div>
+          <div style={{ marginBottom: 12 }}>
+            <label style={{ display: 'block', marginBottom: 4, fontWeight: 600 }}>Model</label>
+            <select
+              value={openRouterModel}
+              onChange={e => setOpenRouterModel(e.target.value)}
+              style={{ width: '100%', padding: '6px 10px', fontSize: 14, borderRadius: 4, border: '1px solid #ccc' }}
+            >
+              <option value="openai/gpt-4o">GPT-4o (OpenAI)</option>
+              <option value="openai/gpt-4o-mini">GPT-4o Mini (OpenAI)</option>
+              <option value="anthropic/claude-3.5-sonnet">Claude 3.5 Sonnet (Anthropic)</option>
+              <option value="anthropic/claude-3-haiku">Claude 3 Haiku (Anthropic)</option>
+              <option value="google/gemini-pro-1.5">Gemini Pro 1.5 (Google)</option>
+              <option value="meta-llama/llama-3.1-8b-instruct:free">Llama 3.1 8B (Free)</option>
+              <option value="mistralai/mistral-7b-instruct:free">Mistral 7B (Free)</option>
+            </select>
+            <div style={{ fontSize: 12, color: '#888', marginTop: 4 }}>
+              Browse all models at <a href="https://openrouter.ai/models" target="_blank" rel="noreferrer">openrouter.ai/models</a>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );
