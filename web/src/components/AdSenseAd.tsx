@@ -1,81 +1,105 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef } from 'react';
 
-type AdSenseAdProps = {
-  client?: string;
+export type AdMode = 'adsense' | 'direct' | 'house';
+export type AdVariant = 'banner' | 'sidebar' | 'square';
+
+interface AdSenseAdProps {
+  // AdSense
   slot?: string;
+  format?: string;
+  // Direct sold
+  imageUrl?: string;
+  linkUrl?: string;
+  altText?: string;
+  // Layout
+  variant?: AdVariant;
   style?: React.CSSProperties;
-  test?: boolean;
+  // Force a mode (auto-detected if not set)
+  mode?: AdMode;
+}
+
+const PUBLISHER_ID = 'ca-pub-1315319831980259';
+const BANNER_SLOT = (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_AD_SLOT_BANNER) || '';
+const SIDEBAR_SLOT = (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_AD_SLOT_SIDEBAR) || '';
+
+const SIZES: Record<AdVariant, { width: number | string; height: number }> = {
+  banner:  { width: '100%', height: 90 },
+  sidebar: { width: 160,    height: 600 },
+  square:  { width: 300,    height: 250 },
 };
 
 const AdSenseAd: React.FC<AdSenseAdProps> = ({
-  client = 'ca-pub-1315319831980259',
-  slot = '1234567890',
-  style,
-  test = true,
+  slot, format, imageUrl, linkUrl, altText,
+  variant = 'banner', style, mode,
 }) => {
-  const insRef = useRef<HTMLDivElement | null>(null);
-  const [showFallback, setShowFallback] = useState(false);
+  const insRef = useRef<HTMLModElement>(null);
+  const resolvedSlot = slot || (variant === 'banner' ? BANNER_SLOT : variant === 'sidebar' ? SIDEBAR_SLOT : '');
+  const size = SIZES[variant];
+
+  // Auto-detect mode
+  const resolvedMode: AdMode =
+    mode ||
+    (imageUrl ? 'direct' :
+     (resolvedSlot && resolvedSlot !== '1234567890') ? 'adsense' : 'house');
 
   useEffect(() => {
-    console.info('[AdSenseAd] mounting ad slot', { client, slot, test });
-
+    if (resolvedMode !== 'adsense') return;
     try {
-      // Trigger adsbygoogle to render into the ins element
-      if ((window as any).adsbygoogle) {
-        (window as any).adsbygoogle.push({});
-        console.info('[AdSenseAd] called (adsbygoogle).push()');
-      } else {
-        console.info('[AdSenseAd] adsbygoogle not present on window');
-      }
-    } catch (e) {
-      console.warn('[AdSenseAd] push failed', e);
-    }
+      ((window as any).adsbygoogle = (window as any).adsbygoogle || []).push({});
+    } catch (e) {}
+  }, [resolvedMode]);
 
-    // After 2s, check whether an iframe was inserted by the ads script.
-    const t = setTimeout(() => {
-      try {
-        const el = insRef.current as any;
-        const hasIframe = el && el.querySelector && el.querySelector('iframe');
-        if (hasIframe) {
-          console.info('[AdSenseAd] ad iframe detected');
-          setShowFallback(false);
-        } else {
-          console.info('[AdSenseAd] no ad iframe detected — showing fallback');
-          setShowFallback(true);
-        }
-      } catch (err) {
-        console.warn('[AdSenseAd] detection error', err);
-        setShowFallback(true);
-      }
-    }, 2000);
+  const containerStyle: React.CSSProperties = {
+    display: 'block',
+    width: size.width,
+    height: size.height,
+    overflow: 'hidden',
+    borderRadius: 6,
+    ...style,
+  };
 
-    return () => clearTimeout(t);
-  }, [client, slot, test]);
-
-  // Don't render if no real slot ID is provided
-  if (!slot || slot === '1234567890') {
-    return null; // suppress ad unit until a real slot ID is configured
-  }
-
-  if (showFallback) {
+  // ── Direct sold banner ──────────────────────────────────────────
+  if (resolvedMode === 'direct') {
     return (
-      <div style={{ width: style?.width || 120, height: style?.height || 300, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#fff', borderRadius: 8, boxShadow: '0 1px 6px #0001', color: '#666', fontSize: 13, padding: 8, textAlign: 'center' }}>
-        Test ad (not loaded) — please disable ad blockers or try another browser.
-      </div>
+      <a href={linkUrl || '#'} target="_blank" rel="noopener noreferrer"
+         style={{ ...containerStyle, display: 'block', textDecoration: 'none' }}>
+        <img src={imageUrl} alt={altText || 'Advertisement'}
+             style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 6 }} />
+      </a>
     );
   }
 
+  // ── AdSense ─────────────────────────────────────────────────────
+  if (resolvedMode === 'adsense') {
+    return (
+      <ins
+        ref={insRef}
+        className="adsbygoogle"
+        style={{ display: 'block', width: size.width, height: size.height, ...style }}
+        data-ad-client={PUBLISHER_ID}
+        data-ad-slot={resolvedSlot}
+        data-ad-format={format || 'auto'}
+        data-full-width-responsive="true"
+      />
+    );
+  }
+
+  // ── House ad / placeholder ───────────────────────────────────────
   return (
-    <ins
-      ref={insRef as any}
-      className="adsbygoogle"
-      style={style}
-      data-ad-client={client}
-      data-ad-slot={slot}
-      data-ad-format="auto"
-      data-full-width-responsive="true"
-      {...(test ? { 'data-adtest': 'on' } : {})}
-    />
+    <div style={{
+      ...containerStyle,
+      background: 'linear-gradient(135deg, #e8eaf6 0%, #f3f4fe 100%)',
+      border: '1px dashed #9fa8da',
+      display: 'flex', flexDirection: 'column',
+      alignItems: 'center', justifyContent: 'center',
+      color: '#7986cb', fontSize: 13, gap: 4,
+    }}>
+      <span style={{ fontSize: 20 }}>📢</span>
+      <span style={{ fontWeight: 600 }}>Your Ad Here</span>
+      <span style={{ fontSize: 11, color: '#9fa8da' }}>
+        {variant === 'banner' ? '728×90 Leaderboard' : variant === 'sidebar' ? '160×600 Skyscraper' : '300×250 Rectangle'}
+      </span>
+    </div>
   );
 };
 

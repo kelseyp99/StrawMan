@@ -154,6 +154,10 @@ const UserSetup: React.FC = () => {
         </div>
       </div>
       <div style={{ flex: 1 }}>
+        {/* Banner ad across top of right-side content */}
+        <div style={{ width: '100%', marginBottom: 12 }}>
+          <AdSenseAd variant="banner" />
+        </div>
         <h2>Welcome! Tell Us About Yourself</h2>
         <form onSubmit={handleSubmit} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '24px' }}>
         <div>
