@@ -93,3 +93,5 @@ SmartCities.code-workspace
 # Google OAuth secrets
 client_secret*.json
 client_*.plist
+
+StrawMan-mirror/
