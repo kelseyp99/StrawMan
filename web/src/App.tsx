@@ -8,7 +8,6 @@ import Home from './pages/Home';
 import AdminParameters from './pages/AdminParameters';
 import Elections from './pages/Elections';
 import UserSetup from './pages/UserSetup';
-import Tables from './pages/Tables';
 import Reports from './pages/Reports';
 import About from './pages/About';
 import Ballot from './pages/Ballot';
@@ -201,7 +200,6 @@ function AppRoutes() {
   <nav style={{ display: 'flex', gap: 16, padding: 16, alignItems: 'center' }}>
   <Link to="/">Home</Link>
   <Link to="/ballot">Ballot</Link>
-  <Link to="/tables">Tables</Link>
   <Link to="/reports">Reports</Link>
   <Link to="/betting">Betting</Link>
   <Link to="/setup">User Setup</Link>
@@ -227,9 +225,8 @@ function AppRoutes() {
       )}
       <Routes>
   <Route path="/" element={<Home />} />
-  <Route path="/ballot" element={<Ballot address={profile?.address || "123 Main St, City, State ZIP"} electionId={profile?.electionId || "2000"} />} />
-  <Route path="/tables" element={<Tables />} />
-  <Route path="/reports" element={<Reports electionId={profile?.electionId || "2000"} />} />
+  <Route path="/ballot" element={<Ballot />} />
+  <Route path="/reports" element={<Reports />} />
   <Route path="/betting" element={<Betting />} />
   <Route path="/setup" element={<UserSetup />} />
   <Route path="/elections" element={<Elections />} />
