@@ -1,6 +1,6 @@
 
 import React from 'react';
-import AdSenseAd from '../components/AdSenseAd';
+import SponsorBanner from '../components/SponsorBanner';
 
 const Home: React.FC = () => {
 		return (
@@ -13,20 +13,11 @@ const Home: React.FC = () => {
 				justifyContent: 'center',
 				padding: '2rem',
 			}}>
-				{/* Left AdSense ads */}
-				<div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'flex-start', alignItems: 'center', width: 120, minWidth: 120, marginRight: 24 }}>
-					<div style={{ width: 120, height: 300, background: '#fff', borderRadius: 12, boxShadow: '0 2px 8px #0001', marginBottom: 24, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-						{/* AdSense ad slot 1 (test) */}
-						<AdSenseAd style={{ width: 120, height: 300, display: 'block' }} />
-					</div>
-					<div style={{ width: 120, height: 300, background: '#fff', borderRadius: 12, boxShadow: '0 2px 8px #0001', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-						{/* AdSense ad slot 2 (test) */}
-						<AdSenseAd style={{ width: 120, height: 300, display: 'block' }} />
-					</div>
-				</div>
-
 				{/* Main content */}
 				<div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+					<div style={{ width: '100%', maxWidth: 760, marginBottom: 24 }}>
+						<SponsorBanner />
+					</div>
 					<img
 						src="/StrawMan.png"
 						alt="StrawMan Logo"

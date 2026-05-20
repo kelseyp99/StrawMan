@@ -2,17 +2,20 @@ import React, { useEffect, useState } from 'react';
 
 import { BrowserRouter as Router, Routes, Route, Link, useNavigate } from 'react-router-dom';
 import { auth, db } from './firebase';
-import { signInWithEmailAndPassword, GoogleAuthProvider, signInWithRedirect, getRedirectResult, signInAnonymously } from 'firebase/auth';
+import { signInWithEmailAndPassword, getRedirectResult, signInAnonymously } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
 import Home from './pages/Home';
 import AdminParameters from './pages/AdminParameters';
 import Elections from './pages/Elections';
 import UserSetup from './pages/UserSetup';
+import RewardsPage from './pages/RewardsPage';
 import Reports from './pages/Reports';
 import About from './pages/About';
 import Ballot from './pages/Ballot';
 import Betting from './pages/Betting';
 import LoginButton from './components/LoginButton';
+import SponsorBanner from './components/SponsorBanner';
+import StrawHeader from './components/StrawHeader';
 import './App.css';
 
 console.log('App.tsx loaded');
@@ -136,45 +139,6 @@ function AppRoutes() {
     return () => unsub();
   }, []);
 
-  const handleLogin = async () => {
-    // Simple email/password login prompt
-    const email = prompt('Email:');
-    const password = prompt('Password:');
-    if (email && password) {
-      try {
-        await signInWithEmailAndPassword(auth, email, password);
-      } catch (e: any) {
-        // store error on window so user can copy it if needed
-        // Some Firebase errors expose additional JSON in e.customData or e.code.
-        const details = {
-          message: e?.message,
-          code: e?.code,
-          customData: e?.customData,
-          raw: e
-        };
-        (window as any).__LAST_SIGNIN_ERROR = details;
-        // Prefer a short human message for UI
-        setLoginError?.(e?.message || String(e));
-      }
-    }
-  };
-
-  const handleGoogleSignIn = async () => {
-    const provider = new GoogleAuthProvider();
-    try {
-      await signInWithRedirect(auth, provider);
-    } catch (e: any) {
-      const details = {
-        message: e?.message,
-        code: e?.code,
-        customData: e?.customData,
-        raw: e
-      };
-      (window as any).__LAST_SIGNIN_ERROR = details;
-      setLoginError?.(e?.message || String(e));
-    }
-  };
-
   const handleLogout = async () => {
     await auth.signOut();
     navigate('/');
@@ -182,56 +146,44 @@ function AppRoutes() {
 
   return (
     <>
-      {/* Admob Banner Placeholder - Top of every page */}
-      <div style={{
-        width: '100%',
-        height: 80,
-        background: 'linear-gradient(90deg, #f8fafc 0%, #e0eafc 100%)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        boxShadow: '0 2px 8px #0001',
-        marginBottom: 0,
-        position: 'relative',
-        zIndex: 100,
-      }}>
-        <span style={{ color: '#bbb', fontSize: 18 }}>Admob Banner</span>
-      </div>
-  <nav style={{ display: 'flex', gap: 16, padding: 16, alignItems: 'center' }}>
-  <Link to="/">Home</Link>
-  <Link to="/ballot">Ballot</Link>
-  <Link to="/reports">Reports</Link>
-  <Link to="/betting">Betting</Link>
-  <Link to="/setup">User Setup</Link>
-  <Link to="/elections">Elections</Link>
-  <Link to="/about">About</Link>
-  <Link to="/admin-parameters">Admin Parameters</Link>
-        <div style={{ marginLeft: 'auto' }}>
-          {loginError && <span style={{ color: 'red', marginRight: 12 }}>{loginError}</span>}
-          {user ? (
+      <StrawHeader
+        rightSlot={
+          user ? (
             <>
-              <span style={{ marginRight: 12 }}>{user.email}</span>
+              <span className="app-auth-email">{user.email}</span>
               <button onClick={handleLogout}>Logout</button>
             </>
           ) : (
-            <>
-              <LoginButton />
-            </>
-          )}
-        </div>
+            <LoginButton />
+          )
+        }
+      />
+      <SponsorBanner className="sponsor-banner--sticky" />
+      <nav className="app-nav">
+        <Link to="/">Home</Link>
+        <Link to="/ballot">Ballot</Link>
+        <Link to="/reports">Reports</Link>
+        <Link to="/rewards">🏆 Rewards</Link>
+        <Link to="/betting">Betting</Link>
+        <Link to="/setup">User Setup</Link>
+        <Link to="/elections">Elections</Link>
+        <Link to="/about">About</Link>
+        <Link to="/admin-parameters">Admin Parameters</Link>
+        {loginError && <span className="app-nav__error">{loginError}</span>}
       </nav>
       {user?.isAnonymous && (
         <div style={{position:'fixed',right:12,top:96,zIndex:9999,background:'#ffeb3b',color:'#000',padding:'6px 10px',borderRadius:6,fontSize:12,fontWeight:600}}>DEV: anon {String(user.uid).slice(0,8)}</div>
       )}
       <Routes>
-  <Route path="/" element={<Home />} />
-  <Route path="/ballot" element={<Ballot />} />
-  <Route path="/reports" element={<Reports />} />
-  <Route path="/betting" element={<Betting />} />
-  <Route path="/setup" element={<UserSetup />} />
-  <Route path="/elections" element={<Elections />} />
-  <Route path="/about" element={<About />} />
-  <Route path="/admin-parameters" element={<AdminParameters />} />
+        <Route path="/" element={<Home />} />
+        <Route path="/ballot" element={<Ballot />} />
+        <Route path="/reports" element={<Reports />} />
+        <Route path="/rewards" element={<RewardsPage />} />
+        <Route path="/betting" element={<Betting />} />
+        <Route path="/setup" element={<UserSetup />} />
+        <Route path="/elections" element={<Elections />} />
+        <Route path="/about" element={<About />} />
+        <Route path="/admin-parameters" element={<AdminParameters />} />
       </Routes>
     </>
   );

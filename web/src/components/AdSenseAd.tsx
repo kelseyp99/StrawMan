@@ -1,4 +1,5 @@
 import React, { useEffect, useRef } from 'react';
+import SponsorBanner from './SponsorBanner';
 
 export type AdMode = 'adsense' | 'direct' | 'house';
 export type AdVariant = 'banner' | 'sidebar' | 'square';
@@ -85,22 +86,7 @@ const AdSenseAd: React.FC<AdSenseAdProps> = ({
   }
 
   // ── House ad / placeholder ───────────────────────────────────────
-  return (
-    <div style={{
-      ...containerStyle,
-      background: 'linear-gradient(135deg, #e8eaf6 0%, #f3f4fe 100%)',
-      border: '1px dashed #9fa8da',
-      display: 'flex', flexDirection: 'column',
-      alignItems: 'center', justifyContent: 'center',
-      color: '#7986cb', fontSize: 13, gap: 4,
-    }}>
-      <span style={{ fontSize: 20 }}>📢</span>
-      <span style={{ fontWeight: 600 }}>Your Ad Here</span>
-      <span style={{ fontSize: 11, color: '#9fa8da' }}>
-        {variant === 'banner' ? '728×90 Leaderboard' : variant === 'sidebar' ? '160×600 Skyscraper' : '300×250 Rectangle'}
-      </span>
-    </div>
-  );
+  return <SponsorBanner compact={variant !== 'banner'} />;
 };
 
 export default AdSenseAd;

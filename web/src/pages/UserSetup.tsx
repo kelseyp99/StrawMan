@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import AdSenseAd from '../components/AdSenseAd';
+import SponsorBanner from '../components/SponsorBanner';
 // import PlacesAutocomplete, { geocodeByAddress, getLatLng } from 'react-places-autocomplete';
 import { getAuth } from 'firebase/auth';
 import { doc, setDoc, getDoc } from 'firebase/firestore';
@@ -144,19 +144,9 @@ const UserSetup: React.FC = () => {
 
   return (
     <div style={{ maxWidth: 1200, margin: '0 auto', padding: 24, display: 'flex', flexDirection: 'row', alignItems: 'flex-start' }}>
-      {/* Left AdSense ads */}
-      <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'flex-start', alignItems: 'center', width: 120, minWidth: 120, marginRight: 24 }}>
-        <div style={{ width: 120, height: 300, background: '#fff', borderRadius: 12, boxShadow: '0 2px 8px #0001', marginBottom: 24, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <AdSenseAd style={{ width: 120, height: 300, display: 'block' }} />
-        </div>
-        <div style={{ width: 120, height: 300, background: '#fff', borderRadius: 12, boxShadow: '0 2px 8px #0001', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <AdSenseAd style={{ width: 120, height: 300, display: 'block' }} />
-        </div>
-      </div>
       <div style={{ flex: 1 }}>
-        {/* Banner ad across top of right-side content */}
         <div style={{ width: '100%', marginBottom: 12 }}>
-          <AdSenseAd variant="banner" />
+          <SponsorBanner />
         </div>
         <h2>Welcome! Tell Us About Yourself</h2>
         <form onSubmit={handleSubmit} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '24px' }}>
